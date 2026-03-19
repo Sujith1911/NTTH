@@ -1,0 +1,37 @@
+[Unit]
+Description=NO TIME TO HACK — Adaptive Firewall Backend
+After=network.target postgresql.service docker.service
+Requires=network.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+
+WorkingDirectory=/opt/ntth/backend
+EnvironmentFile=/opt/ntth/backend/.env
+
+ExecStart=/opt/ntth/venv/bin/uvicorn app.main:app \
+    --host 0.0.0.0 \
+    --port 8000 \
+    --workers 1 \
+    --log-level info
+
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=5s
+
+# Security hardening — grant only needed capabilities
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW
+
+# Resource limits
+LimitNOFILE=65536
+TimeoutStopSec=30s
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=ntth
+
+[Install]
+WantedBy=multi-user.target

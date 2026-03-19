@@ -1,0 +1,68 @@
+version: "3.9"
+
+services:
+  # ── PostgreSQL (production DB) ────────────────────────────────
+  postgres:
+    image: postgres:15-alpine
+    container_name: ntth_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ntth}
+      POSTGRES_USER: ${POSTGRES_USER:-ntth_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ntth_user}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── FastAPI Backend ───────────────────────────────────────────
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ntth_backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-ntth_user}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-ntth}
+      SECRET_KEY: ${SECRET_KEY:-super-secret-change-in-production}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-changeme}
+      GEOIP_DB_PATH: /app/geoip/GeoLite2-City.mmdb
+      GEOIP_ASN_DB_PATH: /app/geoip/GeoLite2-ASN.mmdb
+      NETWORK_INTERFACE: ${NETWORK_INTERFACE:-eth0}
+      ENVIRONMENT: production
+    volumes:
+      - ./geoip:/app/geoip:ro
+      - ./logs:/app/logs
+      - /var/run/docker.sock:/var/run/docker.sock # Docker control for Cowrie
+    ports:
+      - "8000:8000"
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    network_mode: host # Required for Scapy packet capture
+
+  # ── Cowrie SSH Honeypot ───────────────────────────────────────
+  cowrie:
+    image: cowrie/cowrie:latest
+    container_name: ntth_cowrie
+    restart: unless-stopped
+    environment:
+      - COWRIE_HOSTNAME=server01
+    volumes:
+      - cowrie_logs:/cowrie/var/log/cowrie
+      - ./cowrie/cowrie.cfg:/cowrie/etc/cowrie.cfg:ro
+    ports:
+      - "2222:2222" # SSH honeypot port
+      - "2223:2223" # Telnet honeypot port
+
+volumes:
+  postgres_data:
+  cowrie_logs:
