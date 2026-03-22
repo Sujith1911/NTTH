@@ -19,10 +19,18 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
+from app.config import get_settings
 from app.core.event_bus import publish
 from app.core.logger import get_logger
+from app.database import crud
+from app.database.session import AsyncSessionLocal
 
 log = get_logger("network_scanner")
+settings = get_settings()
+_scan_running = False
+_last_scan_started_at: Optional[str] = None
+_last_scan_completed_at: Optional[str] = None
+_last_scan_device_count = 0
 
 # ── OUI → Vendor map (common prefixes) ─────────────────────────────────────────
 _OUI_MAP: dict[str, str] = {
@@ -97,20 +105,48 @@ def _arp_table() -> dict[str, str]:
     return result
 
 
-def _get_local_network() -> list[str]:
-    """Detect the /24 subnet of the primary WiFi/LAN interface."""
+def _choose_scan_network() -> Optional[ipaddress.IPv4Network]:
+    """Pick the subnet we should probe for device discovery."""
+    candidates = [
+        settings.scan_subnet.strip(),
+        settings.server_display_ip.strip(),
+        settings.gateway_ip.strip(),
+    ]
+
+    for candidate in candidates:
+        if not candidate:
+            continue
+        try:
+            if "/" in candidate:
+                return ipaddress.ip_network(candidate, strict=False)
+            ip = ipaddress.ip_address(candidate)
+            if ip.is_loopback:
+                continue
+            return ipaddress.ip_network(f"{ip}/24", strict=False)
+        except ValueError:
+            continue
+
     try:
-        # Connect to 8.8.8.8 to find the source IP
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("8.8.8.8", 80))
         local_ip = s.getsockname()[0]
         s.close()
-        # Assume /24 subnet
-        network = ipaddress.ip_network(f"{local_ip}/24", strict=False)
-        return [str(h) for h in network.hosts()]
+        ip = ipaddress.ip_address(local_ip)
+        if ip.is_loopback:
+            return None
+        return ipaddress.ip_network(f"{local_ip}/24", strict=False)
     except Exception as exc:
         log.warning("network_scanner.subnet_detect_failed", error=str(exc))
+        return None
+
+
+def _get_local_network() -> list[str]:
+    """Detect the scan target subnet and expand it to host IPs."""
+    network = _choose_scan_network()
+    if not network:
         return []
+    log.info("network_scanner.scan_target", subnet=str(network))
+    return [str(host) for host in network.hosts()]
 
 
 async def _resolve_hostname(ip: str) -> Optional[str]:
@@ -131,10 +167,16 @@ async def scan_network() -> list[dict]:
      4. Emit device_seen events for each live host
     Returns list of discovered device dicts.
     """
+    global _scan_running, _last_scan_started_at, _last_scan_completed_at, _last_scan_device_count
+    _scan_running = True
+    _last_scan_started_at = datetime.utcnow().isoformat()
     log.info("network_scanner.start")
     hosts = _get_local_network()
     if not hosts:
         log.warning("network_scanner.no_hosts_found")
+        _last_scan_completed_at = datetime.utcnow().isoformat()
+        _last_scan_device_count = 0
+        _scan_running = False
         return []
 
     # Concurrent pings (limit concurrency to avoid flooding)
@@ -154,31 +196,52 @@ async def scan_network() -> list[dict]:
 
     # Build device list
     devices = []
-    for ip in live_ips:
-        mac = arp.get(ip)
-        hostname = await _resolve_hostname(ip)
-        vendor = _vendor_from_mac(mac)
-        device = {
-            "src_ip": ip,
-            "mac_address": mac,
-            "hostname": hostname,
-            "vendor": vendor,
-            "pkt_len": 0,
-            "protocol": "arp_scan",
-            "dst_port": None,
-            "src_port": None,
-            "flags": None,
-            "is_syn": False,
-            "is_ack": False,
-            "is_rst": False,
-            "timestamp": datetime.utcnow().isoformat(),
-        }
-        devices.append(device)
-        # Publish so the threat_agent / device registry processes it
-        await publish("device_seen", device)
+    async with AsyncSessionLocal() as db:
+        for ip in live_ips:
+            mac = arp.get(ip)
+            hostname = await _resolve_hostname(ip)
+            vendor = _vendor_from_mac(mac)
+            device = {
+                "src_ip": ip,
+                "mac_address": mac,
+                "hostname": hostname,
+                "vendor": vendor,
+                "pkt_len": 0,
+                "protocol": "arp_scan",
+                "dst_port": None,
+                "src_port": None,
+                "flags": None,
+                "is_syn": False,
+                "is_ack": False,
+                "is_rst": False,
+                "timestamp": datetime.utcnow().isoformat(),
+            }
+            devices.append(device)
+            await crud.upsert_device_details(
+                db,
+                ip,
+                mac_address=mac,
+                hostname=hostname,
+                vendor=vendor,
+            )
+            # Publish so the threat_agent / device registry processes it
+            await publish("device_seen", device)
+        await db.commit()
 
+    _last_scan_completed_at = datetime.utcnow().isoformat()
+    _last_scan_device_count = len(devices)
+    _scan_running = False
     log.info("network_scanner.done", devices=len(devices))
     return devices
+
+
+def get_scan_state() -> dict[str, Optional[str] | int | bool]:
+    return {
+        "running": _scan_running,
+        "started_at": _last_scan_started_at,
+        "completed_at": _last_scan_completed_at,
+        "device_count": _last_scan_device_count,
+    }
 
 
 # ── Real-time live device registry (in-memory, per IP) ─────────────────────────

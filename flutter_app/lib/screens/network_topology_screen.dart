@@ -5,9 +5,12 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
+import 'package:timeago/timeago.dart' as timeago;
 
 import '../core/auth_service.dart';
 import '../core/websocket_service.dart';
+import '../widgets/app_shell_drawer.dart';
+import '../widgets/glassy_container.dart';
 
 class NetworkTopologyScreen extends StatefulWidget {
   const NetworkTopologyScreen({super.key});
@@ -24,6 +27,8 @@ class _NetworkTopologyScreenState extends State<NetworkTopologyScreen>
   String? _error;
   String? _selectedNodeId;
   Timer? _refreshTimer;
+  VoidCallback? _wsListener;
+  DateTime? _lastSyncedAt;
 
   // Canvas interaction
   Offset _panOffset = Offset.zero;
@@ -41,25 +46,33 @@ class _NetworkTopologyScreenState extends State<NetworkTopologyScreen>
       _listenWS();
     });
     // Refresh every 30s
-    _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) => _fetchTopology());
+    _refreshTimer =
+        Timer.periodic(const Duration(seconds: 30), (_) => _fetchTopology());
   }
 
   @override
   void dispose() {
     _refreshTimer?.cancel();
+    final listener = _wsListener;
+    if (listener != null) {
+      context.read<WebSocketService>().removeListener(listener);
+    }
     super.dispose();
   }
 
   void _listenWS() {
     final ws = context.read<WebSocketService>();
-    ws.addListener(_onWSEvent);
+    _wsListener ??= _onWSEvent;
+    ws.addListener(_wsListener!);
   }
 
   void _onWSEvent() {
     final ws = context.read<WebSocketService>();
     if (ws.events.isNotEmpty) {
       final latest = ws.events.first;
-      if (latest['type'] == 'topology_updated') {
+      if (latest['type'] == 'topology_updated' ||
+          latest['type'] == 'device_seen' ||
+          latest['type'] == 'device_updated') {
         _fetchTopology();
       }
     }
@@ -67,7 +80,10 @@ class _NetworkTopologyScreenState extends State<NetworkTopologyScreen>
 
   Future<void> _fetchTopology() async {
     if (!mounted) return;
-    setState(() { _loading = _topology == null; _error = null; });
+    setState(() {
+      _loading = _topology == null;
+      _error = null;
+    });
     try {
       final api = context.read<AuthService>().api;
       final resp = await api.get('/network/topology');
@@ -75,31 +91,69 @@ class _NetworkTopologyScreenState extends State<NetworkTopologyScreen>
       setState(() {
         _topology = data;
         _loading = false;
+        _lastSyncedAt = DateTime.now();
         _layoutNodes(data);
       });
     } catch (e) {
-      if (mounted) setState(() { _error = e.toString(); _loading = false; });
+      if (mounted) {
+        setState(() {
+          _error = e.toString();
+          _loading = false;
+        });
+      }
     }
   }
 
   Future<void> _triggerScan() async {
     setState(() => _scanning = true);
+    final theme = Theme.of(context);
     try {
       final api = context.read<AuthService>().api;
       await api.post('/network/scan', {});
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content:
+                const Text('Network scan started — results appear in ~30s'),
+            backgroundColor: theme.colorScheme.primary,
+          ),
+        );
+      }
+      _waitForScanCompletion();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _scanning = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Network scan started — results appear in ~30s'),
-          backgroundColor: Color(0xFF00FF88),
+        SnackBar(
+          content: Text('Unable to start scan: $e'),
+          backgroundColor: Colors.red,
         ),
       );
-      // Poll until done
-      Future.delayed(const Duration(seconds: 35), () {
-        _fetchTopology();
-        if (mounted) setState(() => _scanning = false);
-      });
-    } catch (e) {
-      if (mounted) setState(() => _scanning = false);
+    }
+  }
+
+  Future<void> _waitForScanCompletion() async {
+    final api = context.read<AuthService>().api;
+    try {
+      for (var attempt = 0; attempt < 18; attempt++) {
+        final resp = await api.get('/network/scan/status');
+        final status = resp.data as Map<String, dynamic>;
+        if (status['running'] != true) {
+          await _fetchTopology();
+          if (mounted) {
+            setState(() => _scanning = false);
+          }
+          return;
+        }
+        await Future.delayed(const Duration(seconds: 2));
+      }
+      await _fetchTopology();
+    } catch (_) {
+      await _fetchTopology();
+    } finally {
+      if (mounted) {
+        setState(() => _scanning = false);
+      }
     }
   }
 
@@ -109,18 +163,17 @@ class _NetworkTopologyScreenState extends State<NetworkTopologyScreen>
     final cx = size.width / 2;
     final cy = size.height / 2.2;
 
-    // Fixed positions for special nodes
     _nodePositions['gateway'] = Offset(cx, cy - 180);
     _nodePositions['server'] = Offset(cx, cy);
     _nodePositions['honeypot'] = Offset(cx + 200, cy);
 
-    // Devices in a semicircle below
     final deviceNodes = nodes.where((n) => n['type'] == 'device').toList();
     final attackerNodes = nodes.where((n) => n['type'] == 'attacker').toList();
 
     for (int i = 0; i < deviceNodes.length; i++) {
-      final angle = math.pi * (i / math.max(deviceNodes.length - 1, 1)) + math.pi;
-      final radius = 220.0;
+      final angle =
+          math.pi * (i / math.max(deviceNodes.length - 1, 1)) + math.pi;
+      const radius = 220.0;
       final id = deviceNodes[i]['id'] as String;
       if (!_nodePositions.containsKey(id)) {
         _nodePositions[id] = Offset(
@@ -130,7 +183,6 @@ class _NetworkTopologyScreenState extends State<NetworkTopologyScreen>
       }
     }
 
-    // Attackers top-right cluster
     for (int i = 0; i < attackerNodes.length; i++) {
       final id = attackerNodes[i]['id'] as String;
       if (!_nodePositions.containsKey(id)) {
@@ -144,31 +196,62 @@ class _NetworkTopologyScreenState extends State<NetworkTopologyScreen>
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final ws = context.watch<WebSocketService>();
+    final nodes =
+        (_topology?['nodes'] as List? ?? []).cast<Map<String, dynamic>>();
+    final deviceCount = nodes.where((n) => n['type'] == 'device').length;
+    final attackerCount = nodes.where((n) => n['type'] == 'attacker').length;
+    final blockedCount = nodes.where((n) => n['is_blocked'] == true).length;
+    final selected = _selectedNodeId != null
+        ? nodes.firstWhere((n) => n['id'] == _selectedNodeId, orElse: () => {})
+        : null;
+
     return Scaffold(
+      drawer: const AppShellDrawer(),
       appBar: AppBar(
         title: Text(
           'Network Topology',
-          style: GoogleFonts.inter(fontWeight: FontWeight.w700),
+          style: GoogleFonts.spaceGrotesk(fontWeight: FontWeight.w700),
         ),
         actions: [
           if (_scanning)
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Center(
                 child: SizedBox(
-                  width: 18, height: 18,
+                  width: 18,
+                  height: 18,
                   child: CircularProgressIndicator(
-                    strokeWidth: 2, color: Color(0xFF00FF88)),
+                    strokeWidth: 2,
+                    color: theme.colorScheme.primary,
+                  ),
                 ),
               ),
             )
           else
             TextButton.icon(
-              icon: const Icon(Icons.radar, color: Color(0xFF00FF88), size: 18),
-              label: const Text('Scan Network',
-                  style: TextStyle(color: Color(0xFF00FF88), fontSize: 13)),
+              icon:
+                  Icon(Icons.radar, color: theme.colorScheme.primary, size: 18),
+              label: Text(
+                'Scan Network',
+                style:
+                    TextStyle(color: theme.colorScheme.primary, fontSize: 13),
+              ),
               onPressed: _triggerScan,
             ),
+          IconButton(
+            icon: const Icon(Icons.center_focus_strong),
+            onPressed: () {
+              setState(() {
+                _panOffset = Offset.zero;
+                _lastPanStart = Offset.zero;
+                _scale = 1.0;
+              });
+            },
+            tooltip: 'Reset view',
+          ),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _fetchTopology,
@@ -177,29 +260,142 @@ class _NetworkTopologyScreenState extends State<NetworkTopologyScreen>
         ],
       ),
       body: _loading
-          ? const Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-              CircularProgressIndicator(color: Color(0xFF00FF88)),
-              SizedBox(height: 16),
-              Text('Scanning network…', style: TextStyle(color: Colors.white54)),
-            ]))
+          ? Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(color: theme.colorScheme.primary),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Building the latest network picture...',
+                    style: TextStyle(
+                      color: theme.colorScheme.onSurface.withOpacity(0.5),
+                    ),
+                  ),
+                ],
+              ),
+            )
           : _error != null
-              ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  const Icon(Icons.error_outline, color: Colors.red, size: 48),
-                  const SizedBox(height: 12),
-                  Text(_error!, style: const TextStyle(color: Colors.red)),
-                  const SizedBox(height: 12),
-                  ElevatedButton(onPressed: _fetchTopology, child: const Text('Retry')),
-                ]))
-              : Row(children: [
-                  Expanded(flex: 3, child: _buildCanvas()),
-                  _buildSidebar(),
-                ]),
+              ? Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.error_outline,
+                          color: Colors.red, size: 48),
+                      const SizedBox(height: 12),
+                      Text(_error!, style: const TextStyle(color: Colors.red)),
+                      const SizedBox(height: 12),
+                      ElevatedButton(
+                          onPressed: _fetchTopology,
+                          child: const Text('Retry')),
+                    ],
+                  ),
+                )
+              : Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                      child: GlassyContainer(
+                        borderRadius: 24,
+                        padding: const EdgeInsets.all(18),
+                        child: Wrap(
+                          alignment: WrapAlignment.spaceBetween,
+                          runSpacing: 12,
+                          spacing: 12,
+                          children: [
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Live network graph',
+                                  style: GoogleFonts.spaceGrotesk(
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.w700,
+                                    color: theme.colorScheme.onSurface,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  ws.connected
+                                      ? 'Realtime topology updates are active. New scans, device discoveries, and risk changes feed into this graph automatically.'
+                                      : 'Realtime is offline. You can still scan and refresh manually, but new device activity will not stream in live.',
+                                  style: TextStyle(
+                                    color: theme.colorScheme.onSurface
+                                        .withOpacity(0.64),
+                                    height: 1.5,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            Wrap(
+                              spacing: 10,
+                              runSpacing: 10,
+                              children: [
+                                _summaryPill(theme, 'Devices', '$deviceCount'),
+                                _summaryPill(
+                                    theme, 'Attackers', '$attackerCount',
+                                    color: Colors.red),
+                                _summaryPill(theme, 'Blocked', '$blockedCount',
+                                    color: Colors.orange),
+                                _summaryPill(
+                                  theme,
+                                  'Last sync',
+                                  _lastSyncedAt == null
+                                      ? 'Never'
+                                      : timeago.format(_lastSyncedAt!),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: Row(
+                        children: [
+                          Expanded(flex: 3, child: _buildCanvas(theme, isDark)),
+                          if (MediaQuery.of(context).size.width > 800)
+                            _buildSidebar(theme, isDark),
+                        ],
+                      ),
+                    ),
+                    if (MediaQuery.of(context).size.width <= 800)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                        child: selected != null && selected.isNotEmpty
+                            ? _buildMobileInspector(theme, selected)
+                            : GlassyContainer(
+                                borderRadius: 18,
+                                padding: const EdgeInsets.all(14),
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.touch_app_outlined,
+                                        size: 18,
+                                        color: theme.colorScheme.primary),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Text(
+                                        'Tap a node to inspect risk, traffic, and trust status.',
+                                        style: TextStyle(
+                                          color: theme.colorScheme.onSurface
+                                              .withOpacity(0.68),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                      ),
+                  ],
+                ),
     );
   }
 
-  Widget _buildCanvas() {
-    final nodes = (_topology?['nodes'] as List? ?? []).cast<Map<String, dynamic>>();
-    final edges = (_topology?['edges'] as List? ?? []).cast<Map<String, dynamic>>();
+  Widget _buildCanvas(ThemeData theme, bool isDark) {
+    final nodes =
+        (_topology?['nodes'] as List? ?? []).cast<Map<String, dynamic>>();
+    final edges =
+        (_topology?['edges'] as List? ?? []).cast<Map<String, dynamic>>();
 
     return GestureDetector(
       onScaleStart: (d) {
@@ -227,7 +423,23 @@ class _NetworkTopologyScreenState extends State<NetworkTopologyScreen>
         setState(() => _selectedNodeId = hit == _selectedNodeId ? null : hit);
       },
       child: Container(
-        color: const Color(0xFF080C18),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: isDark
+                ? const [
+                    Color(0xFF08111E),
+                    Color(0xFF0E1C30),
+                    Color(0xFF08111E)
+                  ]
+                : const [
+                    Color(0xFFF6FAFE),
+                    Color(0xFFE9F2FB),
+                    Color(0xFFF8FBFE)
+                  ],
+          ),
+        ),
         child: ClipRect(
           child: CustomPaint(
             painter: _TopologyPainter(
@@ -237,6 +449,8 @@ class _NetworkTopologyScreenState extends State<NetworkTopologyScreen>
               panOffset: _panOffset,
               scale: _scale,
               selectedNodeId: _selectedNodeId,
+              theme: theme,
+              isDark: isDark,
             ),
             child: const SizedBox.expand(),
           ),
@@ -245,8 +459,9 @@ class _NetworkTopologyScreenState extends State<NetworkTopologyScreen>
     );
   }
 
-  Widget _buildSidebar() {
-    final nodes = (_topology?['nodes'] as List? ?? []).cast<Map<String, dynamic>>();
+  Widget _buildSidebar(ThemeData theme, bool isDark) {
+    final nodes =
+        (_topology?['nodes'] as List? ?? []).cast<Map<String, dynamic>>();
     final meta = _topology?['meta'] as Map<String, dynamic>? ?? {};
     final selected = _selectedNodeId != null
         ? nodes.firstWhere((n) => n['id'] == _selectedNodeId, orElse: () => {})
@@ -254,164 +469,255 @@ class _NetworkTopologyScreenState extends State<NetworkTopologyScreen>
 
     return Container(
       width: 280,
-      color: const Color(0xFF0D1117),
-      padding: const EdgeInsets.all(16),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        // Legend
-        Text('Legend', style: GoogleFonts.inter(color: Colors.white54, fontSize: 11,
-            fontWeight: FontWeight.w600, letterSpacing: 1.2)),
-        const SizedBox(height: 8),
-        ..._legends(),
-        const Divider(color: Color(0xFF1F2937), height: 24),
-
-        // Network info
-        Text('Network', style: GoogleFonts.inter(color: Colors.white54, fontSize: 11,
-            fontWeight: FontWeight.w600, letterSpacing: 1.2)),
-        const SizedBox(height: 8),
-        _infoRow('Gateway', meta['gateway_ip'] ?? '—'),
-        _infoRow('Server IP', meta['local_ip'] ?? '—'),
-        _infoRow('Last scan', _shortTime(meta['last_scan'])),
-        _infoRow('Devices', '${nodes.where((n) => n['type'] == 'device').length}'),
-        _infoRow('Attackers', '${nodes.where((n) => n['type'] == 'attacker').length}'),
-        const Divider(color: Color(0xFF1F2937), height: 24),
-
-        // Selected node detail
-        if (selected != null && selected.isNotEmpty) ...[
-          Text('Selected Node', style: GoogleFonts.inter(color: Colors.white54, fontSize: 11,
-              fontWeight: FontWeight.w600, letterSpacing: 1.2)),
+      padding: const EdgeInsets.fromLTRB(0, 0, 16, 16),
+      child: GlassyContainer(
+        borderRadius: 24,
+        padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          // Legend
+          Text('Legend',
+              style: GoogleFonts.inter(
+                  color: theme.colorScheme.onSurface.withOpacity(0.6),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 1.2)),
           const SizedBox(height: 8),
-          _nodeDetailCard(selected),
-        ] else
-          const Text('Tap a node for details',
-              style: TextStyle(color: Colors.white24, fontSize: 12)),
+          ..._legends(theme),
+          Divider(color: theme.dividerColor.withOpacity(0.2), height: 24),
 
-        const Spacer(),
-        // Device count summary
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: const Color(0xFF00FF88).withOpacity(0.08),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: const Color(0xFF00FF88).withOpacity(0.3)),
-          ),
-          child: Row(children: [
-            const Icon(Icons.devices, color: Color(0xFF00FF88), size: 18),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                '${nodes.where((n) => n['type'] == 'device').length} devices on network',
-                style: const TextStyle(color: Color(0xFF00FF88), fontSize: 12),
+          // Network info
+          Text('Network',
+              style: GoogleFonts.inter(
+                  color: theme.colorScheme.onSurface.withOpacity(0.6),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 1.2)),
+          const SizedBox(height: 8),
+          _infoRow('Gateway', meta['gateway_ip'] ?? '—', theme),
+          _infoRow('Server IP', meta['local_ip'] ?? '—', theme),
+          _infoRow('Last scan', _shortTime(meta['last_scan']), theme),
+          _infoRow('Devices',
+              '${nodes.where((n) => n['type'] == 'device').length}', theme),
+          _infoRow('Attackers',
+              '${nodes.where((n) => n['type'] == 'attacker').length}', theme),
+          Divider(color: theme.dividerColor.withOpacity(0.2), height: 24),
+
+          // Selected node detail
+          if (selected != null && selected.isNotEmpty) ...[
+            Text('Selected Node',
+                style: GoogleFonts.inter(
+                    color: theme.colorScheme.onSurface.withOpacity(0.6),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 1.2)),
+            const SizedBox(height: 8),
+            _nodeDetailCard(selected, theme),
+          ] else
+            Text('Tap a node for details',
+                style: TextStyle(
+                    color: theme.colorScheme.onSurface.withOpacity(0.4),
+                    fontSize: 12)),
+
+          const Spacer(),
+          // Device count summary
+          GlassyContainer(
+            padding: const EdgeInsets.all(12),
+            borderRadius: 10,
+            color: theme.colorScheme.primary.withOpacity(isDark ? 0.08 : 0.15),
+            child: Row(children: [
+              Icon(Icons.devices, color: theme.colorScheme.primary, size: 18),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '${nodes.where((n) => n['type'] == 'device').length} devices on network',
+                  style: TextStyle(
+                      color: theme.colorScheme.primary,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600),
+                ),
               ),
-            ),
-          ]),
-        ),
-      ]),
+            ]),
+          ),
+        ]),
+      ),
     );
   }
 
-  List<Widget> _legends() => [
-    _legendItem(Colors.blue.shade300, 'Gateway/Router'),
-    _legendItem(const Color(0xFF00FF88), 'NTTH Server'),
-    _legendItem(Colors.purple.shade300, 'Device (trusted)'),
-    _legendItem(Colors.orange, 'Device (unknown)'),
-    _legendItem(Colors.red, 'Device (high-risk/blocked)'),
-    _legendItem(Colors.amber, 'Honeypot'),
-    _legendItem(Colors.red.shade800, 'External Attacker'),
-  ];
+  List<Widget> _legends(ThemeData theme) => [
+        _legendItem(Colors.blue.shade300, 'Gateway/Router', theme),
+        _legendItem(theme.colorScheme.primary, 'NTTH Server', theme),
+        _legendItem(Colors.purple.shade300, 'Device (trusted)', theme),
+        _legendItem(Colors.orange, 'Device (unknown)', theme),
+        _legendItem(Colors.red, 'Device (high-risk/blocked)', theme),
+        _legendItem(Colors.amber, 'Honeypot', theme),
+        _legendItem(Colors.red.shade800, 'External Attacker', theme),
+      ];
 
-  Widget _legendItem(Color color, String label) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 3),
-    child: Row(children: [
-      Container(width: 12, height: 12, decoration: BoxDecoration(
-        shape: BoxShape.circle, color: color)),
-      const SizedBox(width: 8),
-      Text(label, style: const TextStyle(color: Colors.white60, fontSize: 11)),
-    ]),
-  );
+  Widget _legendItem(Color color, String label, ThemeData theme) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 3),
+        child: Row(children: [
+          Container(
+              width: 12,
+              height: 12,
+              decoration: BoxDecoration(shape: BoxShape.circle, color: color)),
+          const SizedBox(width: 8),
+          Text(label,
+              style: TextStyle(
+                  color: theme.colorScheme.onSurface.withOpacity(0.8),
+                  fontSize: 11)),
+        ]),
+      );
 
-  Widget _nodeDetailCard(Map<String, dynamic> node) {
+  Widget _nodeDetailCard(Map<String, dynamic> node, ThemeData theme) {
     final type = node['type'] as String? ?? '';
     final live = node['live'] as Map<String, dynamic>? ?? {};
     final riskScore = (node['risk_score'] as num? ?? 0).toDouble();
-    final riskColor = riskScore > 0.85 ? Colors.red
-        : riskScore > 0.5 ? Colors.orange : const Color(0xFF00FF88);
+    final riskColor = riskScore > 0.85
+        ? Colors.red
+        : riskScore > 0.5
+            ? Colors.orange
+            : theme.colorScheme.primary;
 
-    return Container(
+    return GlassyContainer(
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: const Color(0xFF111827),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFF1F2937)),
-      ),
+      borderRadius: 10,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        _infoRow('IP', node['ip']?.toString() ?? '—'),
-        if (node['hostname'] != null) _infoRow('Host', node['hostname'].toString()),
-        if (node['mac'] != null) _infoRow('MAC', node['mac'].toString()),
-        if (node['vendor'] != null) _infoRow('Vendor', node['vendor'].toString()),
-        if (node['country'] != null) _infoRow('Country', node['country'].toString()),
-        _infoRow('Type', type),
+        _infoRow('IP', node['ip']?.toString() ?? '-', theme),
+        if (node['hostname'] != null)
+          _infoRow('Host', node['hostname'].toString(), theme),
+        if (node['mac'] != null) _infoRow('MAC', node['mac'].toString(), theme),
+        if (node['vendor'] != null)
+          _infoRow('Vendor', node['vendor'].toString(), theme),
+        if (node['country'] != null)
+          _infoRow('Country', node['country'].toString(), theme),
+        _infoRow('Type', type, theme),
         if (type == 'device') ...[
-          _infoRow('Trusted', node['is_trusted'] == true ? '✅ Yes' : '❌ No'),
-          _infoRow('Blocked', node['is_blocked'] == true ? '🔴 Yes' : 'No'),
+          _infoRow('Trusted', node['is_trusted'] == true ? 'Yes' : 'No', theme),
+          _infoRow('Blocked', node['is_blocked'] == true ? 'Yes' : 'No', theme),
           const SizedBox(height: 6),
-          Text('Risk Score', style: const TextStyle(color: Colors.white38, fontSize: 11)),
+          Text('Risk Score',
+              style: TextStyle(
+                  color: theme.colorScheme.onSurface.withOpacity(0.5),
+                  fontSize: 11)),
           const SizedBox(height: 4),
           ClipRRect(
             borderRadius: BorderRadius.circular(3),
             child: LinearProgressIndicator(
               value: riskScore,
-              backgroundColor: const Color(0xFF1F2937),
-              color: riskColor, minHeight: 6,
+              backgroundColor: theme.dividerColor.withOpacity(0.1),
+              color: riskColor,
+              minHeight: 6,
             ),
           ),
           Text('${(riskScore * 100).toInt()}%',
-              style: TextStyle(color: riskColor, fontSize: 11)),
+              style: TextStyle(
+                  color: riskColor, fontSize: 11, fontWeight: FontWeight.w700)),
         ],
         if (type == 'honeypot') ...[
-          _infoRow('Active Sessions', '${node['active_sessions'] ?? 0}'),
-          _infoRow('Total Sessions', '${node['total_sessions'] ?? 0}'),
+          _infoRow('Active Sessions', '${node['active_sessions'] ?? 0}', theme),
+          _infoRow('Total Sessions', '${node['total_sessions'] ?? 0}', theme),
         ],
         if (live.isNotEmpty) ...[
-          const Divider(color: Color(0xFF1F2937), height: 16),
-          Text('Live Traffic', style: const TextStyle(color: Colors.white38, fontSize: 11)),
-          _infoRow('Packets', '${live['packets'] ?? 0}'),
-          _infoRow('Bytes in', _humanBytes(live['bytes_in'] as int? ?? 0)),
-          _infoRow('Unique ports', '${live['unique_ports'] ?? 0}'),
+          Divider(color: theme.dividerColor.withOpacity(0.2), height: 16),
+          Text('Live Traffic',
+              style: TextStyle(
+                  color: theme.colorScheme.onSurface.withOpacity(0.5),
+                  fontSize: 11)),
+          _infoRow('Packets', '${live['packets'] ?? 0}', theme),
+          _infoRow(
+              'Bytes in', _humanBytes(live['bytes_in'] as int? ?? 0), theme),
+          _infoRow('Unique ports', '${live['unique_ports'] ?? 0}', theme),
         ],
       ]),
     );
   }
 
-  Widget _infoRow(String label, String value) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 2),
-    child: Row(children: [
-      SizedBox(
-        width: 80,
-        child: Text(label, style: const TextStyle(color: Colors.white38, fontSize: 11)),
-      ),
-      Expanded(
-        child: Text(value, style: const TextStyle(color: Colors.white, fontSize: 11),
-            overflow: TextOverflow.ellipsis),
-      ),
-    ]),
-  );
+  Widget _infoRow(String label, String value, ThemeData theme) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: Row(children: [
+          SizedBox(
+            width: 80,
+            child: Text(label,
+                style: TextStyle(
+                    color: theme.colorScheme.onSurface.withOpacity(0.5),
+                    fontSize: 11)),
+          ),
+          Expanded(
+            child: Text(value,
+                style:
+                    TextStyle(color: theme.colorScheme.onSurface, fontSize: 11),
+                overflow: TextOverflow.ellipsis),
+          ),
+        ]),
+      );
 
   String _shortTime(dynamic iso) {
     if (iso == null) return 'Never';
     try {
-      final dt = DateTime.parse(iso.toString()).toLocal();
-      final now = DateTime.now();
-      final diff = now.difference(dt);
-      if (diff.inMinutes < 1) return 'Just now';
-      if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-      return '${diff.inHours}h ago';
-    } catch (_) { return '—'; }
+      return timeago.format(DateTime.parse(iso.toString()).toLocal());
+    } catch (_) {
+      return '-';
+    }
   }
 
   String _humanBytes(int bytes) {
     if (bytes < 1024) return '$bytes B';
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
     return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+
+  Widget _buildMobileInspector(ThemeData theme, Map<String, dynamic> selected) {
+    return GlassyContainer(
+      borderRadius: 20,
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Selected node',
+            style: GoogleFonts.spaceGrotesk(
+              fontWeight: FontWeight.w700,
+              color: theme.colorScheme.onSurface,
+            ),
+          ),
+          const SizedBox(height: 10),
+          _nodeDetailCard(selected, theme),
+        ],
+      ),
+    );
+  }
+
+  Widget _summaryPill(ThemeData theme, String label, String value,
+      {Color? color}) {
+    final tone = color ?? theme.colorScheme.primary;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: tone.withOpacity(0.10),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              color: theme.colorScheme.onSurface.withOpacity(0.55),
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            value,
+            style: GoogleFonts.spaceGrotesk(
+              color: tone,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -424,6 +730,8 @@ class _TopologyPainter extends CustomPainter {
   final Offset panOffset;
   final double scale;
   final String? selectedNodeId;
+  final ThemeData theme;
+  final bool isDark;
 
   _TopologyPainter({
     required this.nodes,
@@ -432,33 +740,30 @@ class _TopologyPainter extends CustomPainter {
     required this.panOffset,
     required this.scale,
     this.selectedNodeId,
+    required this.theme,
+    required this.isDark,
   });
 
   Color _nodeColor(Map<String, dynamic> node) {
     final type = node['type'] as String? ?? '';
     switch (type) {
-      case 'gateway': return Colors.blue.shade300;
-      case 'server': return const Color(0xFF00FF88);
-      case 'honeypot': return Colors.amber;
-      case 'attacker': return Colors.red.shade800;
+      case 'gateway':
+        return Colors.blue.shade300;
+      case 'server':
+        return theme.colorScheme.primary;
+      case 'honeypot':
+        return Colors.amber;
+      case 'attacker':
+        return Colors.red.shade800;
       case 'device':
         if (node['is_blocked'] == true) return Colors.red;
         final rs = (node['risk_score'] as num? ?? 0).toDouble();
         if (rs > 0.85) return Colors.red;
         if (rs > 0.5) return Colors.orange;
         if (node['is_trusted'] == true) return Colors.purple.shade300;
-        return Colors.blueGrey;
-      default: return Colors.white38;
-    }
-  }
-
-  IconData _nodeIcon(String type) {
-    switch (type) {
-      case 'gateway': return Icons.router;
-      case 'server': return Icons.shield;
-      case 'honeypot': return Icons.bug_report;
-      case 'attacker': return Icons.gpp_bad;
-      default: return Icons.computer;
+        return isDark ? Colors.blueGrey : Colors.blueGrey.shade300;
+      default:
+        return theme.colorScheme.onSurface.withOpacity(0.4);
     }
   }
 
@@ -489,7 +794,7 @@ class _TopologyPainter extends CustomPainter {
               ? Colors.orange.withOpacity(0.6)
               : rs > 0.5
                   ? Colors.orange.withOpacity(0.5)
-                  : const Color(0xFF1F2937).withOpacity(0.9);
+                  : theme.dividerColor.withOpacity(0.3);
 
       final paint = Paint()
         ..color = edgeColor
@@ -497,7 +802,6 @@ class _TopologyPainter extends CustomPainter {
         ..style = PaintingStyle.stroke;
 
       if (isAttack || isRedirected) {
-        // Dashed line for attacks
         _drawDashedLine(canvas, fromPos, toPos, paint);
       } else {
         canvas.drawLine(fromPos, toPos, paint);
@@ -517,29 +821,41 @@ class _TopologyPainter extends CustomPainter {
 
   void _drawGrid(Canvas canvas, Size size) {
     final gridPaint = Paint()
-      ..color = const Color(0xFF0D1520)
+      ..color = theme.dividerColor.withOpacity(isDark ? 0.1 : 0.05)
       ..strokeWidth = 1;
     const step = 50.0;
     final w = size.width / scale;
     final h = size.height / scale;
-    for (double x = -panOffset.dx / scale % step - step; x < w + step; x += step) {
+    for (double x = -panOffset.dx / scale % step - step;
+        x < w + step;
+        x += step) {
       canvas.drawLine(Offset(x, -panOffset.dy / scale - step),
           Offset(x, h + step), gridPaint);
     }
-    for (double y = -panOffset.dy / scale % step - step; y < h + step; y += step) {
+    for (double y = -panOffset.dy / scale % step - step;
+        y < h + step;
+        y += step) {
       canvas.drawLine(Offset(-panOffset.dx / scale - step, y),
           Offset(w + step, y), gridPaint);
     }
   }
 
-  void _drawNode(Canvas canvas, Map<String, dynamic> node, Offset pos, bool selected) {
+  void _drawNode(
+      Canvas canvas, Map<String, dynamic> node, Offset pos, bool selected) {
     final type = node['type'] as String? ?? '';
     final color = _nodeColor(node);
-    final radius = type == 'gateway' ? 32.0 : type == 'server' ? 28.0 :
-        type == 'honeypot' ? 26.0 : 22.0;
+    final radius = type == 'gateway'
+        ? 32.0
+        : type == 'server'
+            ? 28.0
+            : type == 'honeypot'
+                ? 26.0
+                : 22.0;
 
     // Glow effect for selected + high-risk
-    if (selected || (node['risk_score'] as num? ?? 0) > 0.85 || type == 'attacker') {
+    if (selected ||
+        (node['risk_score'] as num? ?? 0) > 0.85 ||
+        type == 'attacker') {
       final glowPaint = Paint()
         ..color = color.withOpacity(0.2)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 16);
@@ -548,49 +864,75 @@ class _TopologyPainter extends CustomPainter {
 
     // Selection ring
     if (selected) {
-      canvas.drawCircle(pos, radius + 6, Paint()
-        ..color = Colors.white.withOpacity(0.6)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2);
+      canvas.drawCircle(
+          pos,
+          radius + 6,
+          Paint()
+            ..color = theme.colorScheme.onSurface.withOpacity(0.6)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 2);
     }
 
     // Node fill
-    canvas.drawCircle(pos, radius, Paint()
-      ..color = color.withOpacity(0.15)
-      ..style = PaintingStyle.fill);
-    canvas.drawCircle(pos, radius, Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.0);
+    canvas.drawCircle(
+        pos,
+        radius,
+        Paint()
+          ..color = theme.scaffoldBackgroundColor
+          ..style = PaintingStyle.fill);
+    canvas.drawCircle(
+        pos,
+        radius,
+        Paint()
+          ..color = color.withOpacity(0.15)
+          ..style = PaintingStyle.fill);
+    canvas.drawCircle(
+        pos,
+        radius,
+        Paint()
+          ..color = color
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2.0);
 
-    // Inner circle for honeypot + server
+    // Inner circle
     if (type == 'honeypot' || type == 'server') {
-      canvas.drawCircle(pos, radius * 0.55, Paint()
-        ..color = color.withOpacity(0.3)
-        ..style = PaintingStyle.fill);
+      canvas.drawCircle(
+          pos,
+          radius * 0.55,
+          Paint()
+            ..color = color.withOpacity(0.3)
+            ..style = PaintingStyle.fill);
     }
 
-    // Live traffic indicator (pulsing ring)
+    // Live traffic indicator
     final live = node['live'] as Map<String, dynamic>? ?? {};
     final packets = live['packets'] as int? ?? 0;
     if (packets > 0) {
-      canvas.drawCircle(pos, radius + 4, Paint()
-        ..color = const Color(0xFF00FF88).withOpacity(0.4)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.5);
+      canvas.drawCircle(
+          pos,
+          radius + 4,
+          Paint()
+            ..color = theme.colorScheme.primary.withOpacity(0.4)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.5);
     }
 
     // Label below
     final labelText = node['label']?.toString() ??
-        node['ip']?.toString() ?? node['id']?.toString() ?? '';
-    final short = labelText.length > 16 ? labelText.substring(0, 16) : labelText;
+        node['ip']?.toString() ??
+        node['id']?.toString() ??
+        '';
+    final short =
+        labelText.length > 16 ? labelText.substring(0, 16) : labelText;
     final tp = TextPainter(
       text: TextSpan(
         text: short,
         style: TextStyle(
-          color: selected ? Colors.white : Colors.white70,
+          color: selected
+              ? theme.colorScheme.onSurface
+              : theme.colorScheme.onSurface.withOpacity(0.7),
           fontSize: 9.5,
-          fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
+          fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
         ),
       ),
       textDirection: ui.TextDirection.ltr,
@@ -601,8 +943,9 @@ class _TopologyPainter extends CustomPainter {
     final sub = node['vendor']?.toString() ?? type;
     if (sub.isNotEmpty) {
       final tp2 = TextPainter(
-        text: TextSpan(text: sub,
-            style: TextStyle(color: color.withOpacity(0.7), fontSize: 8)),
+        text: TextSpan(
+            text: sub,
+            style: TextStyle(color: color.withOpacity(0.8), fontSize: 8)),
         textDirection: ui.TextDirection.ltr,
       )..layout(maxWidth: 100);
       tp2.paint(canvas, pos.translate(-tp2.width / 2, radius + 16));
@@ -640,5 +983,7 @@ class _TopologyPainter extends CustomPainter {
       oldDelegate.positions != positions ||
       oldDelegate.panOffset != panOffset ||
       oldDelegate.scale != scale ||
-      oldDelegate.selectedNodeId != selectedNodeId;
+      oldDelegate.selectedNodeId != selectedNodeId ||
+      oldDelegate.theme != theme ||
+      oldDelegate.isDark != isDark;
 }

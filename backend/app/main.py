@@ -75,7 +75,7 @@ async def lifespan(app: FastAPI):
     try:
         from app.monitor.packet_sniffer import start_sniffer
         sniffer_task = asyncio.create_task(start_sniffer(), name="packet_sniffer")
-        log.info("ntth.sniffer_started", interface=settings.network_interface)
+        log.info("ntth.sniffer_starting", interface=settings.network_interface)
     except Exception as exc:
         log.warning("ntth.sniffer_skipped", reason=str(exc))
 
@@ -104,15 +104,19 @@ async def lifespan(app: FastAPI):
             try:
                 from app.monitor.network_scanner import scan_network
                 from app.websocket.live_updates import broadcast
+                import datetime as _dt
                 devices = await scan_network()
+                now_iso = _dt.datetime.utcnow().isoformat() + "Z"
                 await broadcast({
                     "type": "topology_updated",
                     "devices_found": len(devices),
+                    "timestamp": now_iso,
+                    "scan_ts": now_iso,
                 })
                 log.info("ntth.auto_scan_done", devices=len(devices))
             except Exception as exc:
                 log.warning("ntth.auto_scan_failed", reason=str(exc))
-            await asyncio.sleep(300)                  # re-scan every 5 minutes
+            await asyncio.sleep(settings.device_scan_interval_seconds)
 
     scan_task = asyncio.create_task(_periodic_scan(), name="periodic_scan")
 
@@ -164,19 +168,19 @@ def create_app() -> FastAPI:
     app.include_router(ws_router,              prefix="/ws",                tags=["WebSocket"])
 
     # ── Serve Flutter Web App (SPA) ────────────────────────────────────────────
-    # main.py lives at: backend/app/main.py
-    # project root is:  backend/app/main.py -> ../../.. -> project root
-    project_root = Path(__file__).resolve().parent.parent.parent
-    flutter_build = project_root / "flutter_app" / "build" / "web"
-    log.info("ntth.flutter_path_check", path=str(flutter_build),
-             exists=flutter_build.is_dir())
+    current_file = Path(__file__).resolve()
+    flutter_candidates = [
+        current_file.parent.parent.parent / "flutter_app" / "build" / "web",
+        current_file.parent.parent / "flutter_app" / "build" / "web",
+        Path("/app/flutter_app/build/web"),
+        Path("/flutter_app/build/web"),
+    ]
+    flutter_build = next((path for path in flutter_candidates if path.is_dir()), flutter_candidates[0])
+    log.info("ntth.flutter_path_check", path=str(flutter_build), exists=flutter_build.is_dir())
     try:
         if flutter_build.is_dir():
             app.mount("/app", StaticFiles(directory=str(flutter_build), html=True), name="flutter")
-
-            @app.get("/", include_in_schema=False)
-            async def root():
-                return FileResponse(str(flutter_build / "index.html"))
+            app.mount("/", StaticFiles(directory=str(flutter_build), html=True), name="flutter_root")
 
             log.info("ntth.flutter_mounted", path=str(flutter_build))
         else:

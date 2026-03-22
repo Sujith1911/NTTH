@@ -10,6 +10,7 @@ import json
 from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
+from app.core import event_bus
 from app.core.logger import get_logger
 from app.core.security import verify_token
 
@@ -19,6 +20,10 @@ router = APIRouter()
 # Active WebSocket connections
 _connections: set[WebSocket] = set()
 _lock = asyncio.Lock()
+
+
+def connection_count() -> int:
+    return len(_connections)
 
 
 async def broadcast(payload: dict) -> None:
@@ -34,6 +39,11 @@ async def broadcast(payload: dict) -> None:
             except Exception:
                 dead.add(ws)
         _connections.difference_update(dead)
+
+
+async def _forward_topology_update(payload: dict[str, Any]) -> None:
+    """Bridge event-bus topology events to WebSocket clients."""
+    await broadcast(payload)
 
 
 @router.websocket("/live")
@@ -64,3 +74,6 @@ async def websocket_live(
         async with _lock:
             _connections.discard(websocket)
         log.info("ws.client_disconnected", user=payload.get("sub"), remaining=len(_connections))
+
+
+event_bus.subscribe("topology_updated", _forward_topology_update)

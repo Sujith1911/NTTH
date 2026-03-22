@@ -32,4 +32,28 @@ class DeviceModel {
         isTrusted: j['is_trusted'] ?? false,
         riskScore: (j['risk_score'] as num).toDouble(),
       );
+
+  DeviceModel copyWith({
+    String? id,
+    String? ipAddress,
+    String? macAddress,
+    String? hostname,
+    String? vendor,
+    DateTime? firstSeen,
+    DateTime? lastSeen,
+    bool? isTrusted,
+    double? riskScore,
+  }) {
+    return DeviceModel(
+      id: id ?? this.id,
+      ipAddress: ipAddress ?? this.ipAddress,
+      macAddress: macAddress ?? this.macAddress,
+      hostname: hostname ?? this.hostname,
+      vendor: vendor ?? this.vendor,
+      firstSeen: firstSeen ?? this.firstSeen,
+      lastSeen: lastSeen ?? this.lastSeen,
+      isTrusted: isTrusted ?? this.isTrusted,
+      riskScore: riskScore ?? this.riskScore,
+    );
+  }
 }

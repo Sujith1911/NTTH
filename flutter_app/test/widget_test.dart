@@ -1,30 +1,51 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:no_time_to_hack/main.dart';
+import 'package:no_time_to_hack/models/device_model.dart';
+import 'package:no_time_to_hack/models/threat_model.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  test('DeviceModel parses API payloads', () {
+    final model = DeviceModel.fromJson({
+      'id': 'dev-1',
+      'ip_address': '192.168.1.10',
+      'mac_address': 'aa:bb:cc:dd:ee:ff',
+      'hostname': 'camera',
+      'vendor': 'Acme',
+      'first_seen': '2026-03-19T00:00:00Z',
+      'last_seen': '2026-03-19T00:05:00Z',
+      'is_trusted': true,
+      'risk_score': 0.2,
+    });
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    expect(model.id, 'dev-1');
+    expect(model.ipAddress, '192.168.1.10');
+    expect(model.isTrusted, isTrue);
+    expect(model.riskScore, 0.2);
+  });
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+  test('ThreatModel parses realtime payload fields', () {
+    final model = ThreatModel.fromJson({
+      'id': 'thr-1',
+      'src_ip': '203.0.113.77',
+      'dst_ip': '192.168.1.1',
+      'dst_port': 22,
+      'protocol': 'tcp',
+      'threat_type': 'port_scan',
+      'risk_score': 0.6,
+      'action_taken': 'log',
+      'country': 'Testland',
+      'city': 'Example City',
+      'asn': 'AS64500',
+      'latitude': 12.34,
+      'longitude': 56.78,
+      'detected_at': '2026-03-19T00:00:00Z',
+      'acknowledged': false,
+    });
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    expect(model.id, 'thr-1');
+    expect(model.srcIp, '203.0.113.77');
+    expect(model.actionTaken, 'log');
+    expect(model.latitude, 12.34);
+    expect(model.acknowledged, isFalse);
   });
 }

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
@@ -13,7 +15,7 @@ class AuthService extends ChangeNotifier {
   bool _isAuthenticated = false;
 
   AuthService(this._storage) {
-    _api = ApiClient(_storage);
+    _api = ApiClient(_storage, onTokensRefreshed: _updateTokens);
     _tryRestoreSession();
   }
 
@@ -21,6 +23,7 @@ class AuthService extends ChangeNotifier {
   String get username => _username ?? '';
   String get role => _role ?? 'user';
   bool get isAdmin => _role == 'admin';
+  String? get accessToken => _accessToken;
   ApiClient get api => _api;
 
   Future<void> _tryRestoreSession() async {
@@ -28,7 +31,7 @@ class AuthService extends ChangeNotifier {
     if (token != null) {
       _accessToken = token;
       _username = await _storage.read(key: 'username');
-      _role = await _storage.read(key: 'role');
+      _role = _decodeRole(token) ?? await _storage.read(key: 'role');
       _isAuthenticated = true;
       notifyListeners();
     }
@@ -41,20 +44,17 @@ class AuthService extends ChangeNotifier {
         'password': password,
       });
       final data = resp.data as Map<String, dynamic>;
-      _accessToken = data['access_token'];
-
-      await _storage.write(key: 'access_token', value: data['access_token']);
-      await _storage.write(key: 'refresh_token', value: data['refresh_token']);
+      await _updateTokens(
+        data['access_token'] as String,
+        data['refresh_token'] as String,
+        notify: false,
+      );
       await _storage.write(key: 'username', value: username);
-
-      // Decode role from JWT payload (simple base64 decode)
-      _role = _decodeRole(data['access_token']);
-      await _storage.write(key: 'role', value: _role ?? 'user');
 
       _username = username;
       _isAuthenticated = true;
       notifyListeners();
-      return null; // success
+      return null;
     } catch (e) {
       return e.toString();
     }
@@ -69,19 +69,29 @@ class AuthService extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> _updateTokens(
+    String accessToken,
+    String refreshToken, {
+    bool notify = true,
+  }) async {
+    _accessToken = accessToken;
+    _role = _decodeRole(accessToken) ?? _role ?? 'user';
+    await _storage.write(key: 'access_token', value: accessToken);
+    await _storage.write(key: 'refresh_token', value: refreshToken);
+    await _storage.write(key: 'role', value: _role ?? 'user');
+    if (notify) {
+      notifyListeners();
+    }
+  }
+
   String? _decodeRole(String token) {
     try {
       final parts = token.split('.');
       if (parts.length != 3) return 'user';
-      final payload = parts[1];
-      final padded = payload + '=' * ((4 - payload.length % 4) % 4);
-      final decoded = String.fromCharCodes(
-        Uri.parse('data:application/octet-stream;base64,$padded')
-            .data!
-            .contentAsBytes(),
-      );
-      final map = RegExp(r'"role"\s*:\s*"(\w+)"').firstMatch(decoded);
-      return map?.group(1) ?? 'user';
+      final normalized = base64Url.normalize(parts[1]);
+      final decoded = utf8.decode(base64Url.decode(normalized));
+      final payload = jsonDecode(decoded) as Map<String, dynamic>;
+      return payload['role']?.toString() ?? 'user';
     } catch (_) {
       return 'user';
     }

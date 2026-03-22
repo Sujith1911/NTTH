@@ -12,7 +12,7 @@ psycopg2-binary==2.9.9     # Sync fallback for Alembic
 
 # ── Auth / Security ───────────────────────────────────────────
 python-jose[cryptography]==3.3.0
-bcrypt==4.1.2
+bcrypt==4.0.1
 passlib[bcrypt]==1.7.4
 
 # ── Network monitoring ────────────────────────────────────────

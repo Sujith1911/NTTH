@@ -58,6 +58,29 @@ async def get_or_create_device(db: AsyncSession, ip_address: str) -> tuple[Devic
     return device, True
 
 
+async def upsert_device_details(
+    db: AsyncSession,
+    ip_address: str,
+    *,
+    mac_address: Optional[str] = None,
+    hostname: Optional[str] = None,
+    vendor: Optional[str] = None,
+    risk_score: Optional[float] = None,
+) -> tuple[Device, bool]:
+    """Create or update a device row with the latest discovered metadata."""
+    device, created = await get_or_create_device(db, ip_address)
+    device.last_seen = datetime.utcnow()
+    if mac_address:
+        device.mac_address = mac_address
+    if hostname:
+        device.hostname = hostname
+    if vendor:
+        device.vendor = vendor
+    if risk_score is not None:
+        device.risk_score = risk_score
+    return device, created
+
+
 async def list_devices(db: AsyncSession, page: int = 1, page_size: int = 50) -> tuple[int, Sequence[Device]]:
     count_q = select(func.count()).select_from(Device)
     total = (await db.execute(count_q)).scalar_one()

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import 'glassy_container.dart';
+
 class RiskCard extends StatelessWidget {
   final String title;
   final String value;
@@ -17,37 +19,67 @@ class RiskCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: const Color(0xFF111827),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFF1F2937)),
-      ),
-      child: Row(children: [
-        Container(
-          width: 44, height: 44,
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.12),
-            borderRadius: BorderRadius.circular(10),
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return GlassyContainer(
+      padding: const EdgeInsets.all(22),
+      borderRadius: 24,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 50,
+                height: 50,
+                decoration: BoxDecoration(
+                  color: color.withOpacity(isDark ? 0.14 : 0.12),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: color.withOpacity(0.22)),
+                ),
+                child: Icon(icon, color: color, size: 24),
+              ),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(isDark ? 0.12 : 0.10),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  'LIVE',
+                  style: GoogleFonts.spaceGrotesk(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    color: color,
+                    letterSpacing: 0.6,
+                  ),
+                ),
+              ),
+            ],
           ),
-          child: Icon(icon, color: color, size: 22),
-        ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(
-              value,
-              style: GoogleFonts.inter(
-                fontSize: 26, fontWeight: FontWeight.w800, color: Colors.white),
+          const SizedBox(height: 22),
+          Text(
+            value,
+            style: GoogleFonts.spaceGrotesk(
+              fontSize: 30,
+              fontWeight: FontWeight.w700,
+              color: theme.colorScheme.onSurface,
+              height: 1,
             ),
-            Text(
-              title,
-              style: const TextStyle(color: Colors.white38, fontSize: 12),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            title,
+            style: TextStyle(
+              color: theme.colorScheme.onSurface.withOpacity(0.62),
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
             ),
-          ]),
-        ),
-      ]),
+          ),
+        ],
+      ),
     );
   }
 }

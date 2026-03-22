@@ -5,17 +5,19 @@ RUN apt-get update && apt-get install -y \
     libpcap-dev \
     nftables \
     iproute2 \
+    iputils-ping \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 # Install Python dependencies
-COPY requirements.txt .
+COPY backend/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
-COPY app/ ./app/
+# Copy application code and the prebuilt Flutter web app
+COPY backend/app/ ./app/
+COPY flutter_app/build/web/ ./flutter_app/build/web/
 
 # Create required directories
 RUN mkdir -p /app/geoip /app/logs /app/models

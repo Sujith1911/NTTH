@@ -1,7 +1,7 @@
 # NO TIME TO HACK — Developer Makefile
 # Usage: make <target>
 
-.PHONY: help dev prod test simulate lint flutter-run flutter-build
+.PHONY: help dev prod host-realtime support-services stop-backend test test-startup test-realtime test-all simulate lint flutter-run flutter-build
 
 help:
 	@echo ""
@@ -9,7 +9,13 @@ help:
 	@echo "  ────────────────────────────────────"
 	@echo "  make dev          Start backend in dev mode (SQLite, hot-reload)"
 	@echo "  make prod         Start all services via Docker Compose"
+	@echo "  make host-realtime Run backend on Windows host with Docker Postgres/Cowrie"
+	@echo "  make support-services Start only Postgres + Cowrie in Docker"
+	@echo "  make stop-backend Stop only Docker backend container"
 	@echo "  make test         Run API integration tests"
+	@echo "  make test-startup Verify backend startup with DEBUG=release"
+	@echo "  make test-realtime Run non-packet-capture realtime regression checks"
+	@echo "  make test-all     Run startup, API, and realtime regression checks"
 	@echo "  make simulate     Inject mixed attack simulation (100 packets)"
 	@echo "  make sim-scan     Inject port scan simulation"
 	@echo "  make sim-flood    Inject SYN flood simulation"
@@ -24,6 +30,15 @@ dev:
 prod:
 	cd backend && docker compose up -d
 
+support-services:
+	cd backend && docker compose up -d postgres cowrie
+
+stop-backend:
+	cd backend && docker compose stop backend
+
+host-realtime:
+	powershell -ExecutionPolicy Bypass -File scripts\\switch_to_host_realtime.ps1
+
 stop:
 	cd backend && docker compose down
 
@@ -32,6 +47,15 @@ logs:
 
 test:
 	cd backend && python test_api.py --base-url http://localhost:8000
+
+test-startup:
+	cd backend && python test_startup.py
+
+test-realtime:
+	cd backend && python test_realtime.py
+
+test-all:
+	cd backend && python test_startup.py && python test_api.py --base-url http://localhost:8000 && python test_realtime.py
 
 simulate:
 	cd backend && python simulate.py --scenario mixed --count 100

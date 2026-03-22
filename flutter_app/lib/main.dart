@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
 import 'core/app_settings.dart';
@@ -16,6 +15,8 @@ import 'screens/honeypot_screen.dart';
 import 'screens/system_health_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/network_topology_screen.dart';
+import 'theme/app_theme.dart';
+import 'theme/theme_provider.dart';
 
 const _storage = FlutterSecureStorage();
 
@@ -31,6 +32,7 @@ class NTTHApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
+        ChangeNotifierProvider(create: (_) => ThemeProvider()),
         ChangeNotifierProvider(create: (_) => AppSettings()),
         ChangeNotifierProxyProvider<AppSettings, AuthService>(
           create: (_) => AuthService(_storage),
@@ -50,48 +52,18 @@ class NTTHApp extends StatelessWidget {
       child: Builder(
         builder: (context) {
           final auth = context.watch<AuthService>();
-          return MaterialApp.router(
-            title: 'NO TIME TO HACK',
-            debugShowCheckedModeBanner: false,
-            theme: _buildTheme(),
-            routerConfig: _buildRouter(auth),
+          final themeProvider = context.watch<ThemeProvider>();
+          return _RealtimeSessionCoordinator(
+            child: MaterialApp.router(
+              title: 'NO TIME TO HACK',
+              debugShowCheckedModeBanner: false,
+              theme: AppTheme.light,
+              darkTheme: AppTheme.dark,
+              themeMode: themeProvider.themeMode,
+              routerConfig: _buildRouter(auth),
+            ),
           );
         },
-      ),
-    );
-  }
-
-  ThemeData _buildTheme() {
-    return ThemeData(
-      useMaterial3: true,
-      brightness: Brightness.dark,
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: const Color(0xFF00FF88),
-        brightness: Brightness.dark,
-        surface: const Color(0xFF0A0E1A),
-      ),
-      scaffoldBackgroundColor: const Color(0xFF080C18),
-      textTheme: GoogleFonts.interTextTheme(ThemeData.dark().textTheme),
-      cardTheme: CardThemeData(
-        color: const Color(0xFF111827),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        elevation: 0,
-      ),
-      appBarTheme: AppBarTheme(
-        backgroundColor: const Color(0xFF080C18),
-        foregroundColor: Colors.white,
-        elevation: 0,
-        titleTextStyle: GoogleFonts.inter(
-          color: Colors.white,
-          fontSize: 18,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-      navigationRailTheme: const NavigationRailThemeData(
-        backgroundColor: Color(0xFF0D1117),
-        indicatorColor: Color(0xFF00FF8820),
-        selectedIconTheme: IconThemeData(color: Color(0xFF00FF88)),
-        unselectedIconTheme: IconThemeData(color: Colors.white38),
       ),
     );
   }
@@ -118,5 +90,47 @@ class NTTHApp extends StatelessWidget {
         GoRoute(path: '/settings',   builder: (_, __) => const SettingsScreen()),
       ],
     );
+  }
+}
+
+class _RealtimeSessionCoordinator extends StatefulWidget {
+  final Widget child;
+
+  const _RealtimeSessionCoordinator({required this.child});
+
+  @override
+  State<_RealtimeSessionCoordinator> createState() =>
+      _RealtimeSessionCoordinatorState();
+}
+
+class _RealtimeSessionCoordinatorState
+    extends State<_RealtimeSessionCoordinator> {
+  String? _lastToken;
+  bool _disconnectQueued = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final auth = context.watch<AuthService>();
+    final ws = context.watch<WebSocketService>();
+    final token = auth.accessToken;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      if (auth.isAuthenticated && token != null && token.isNotEmpty) {
+        _disconnectQueued = false;
+        if (_lastToken != token || !ws.connected) {
+          _lastToken = token;
+          await ws.ensureConnected(token);
+        }
+        return;
+      }
+      if (!_disconnectQueued) {
+        _disconnectQueued = true;
+        _lastToken = null;
+        ws.disconnect(clearEvents: true);
+      }
+    });
+
+    return widget.child;
   }
 }

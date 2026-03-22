@@ -2,15 +2,21 @@ import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class ApiClient {
-  // Default to localhost for dev — user can override in Settings screen
   static const String _defaultBaseUrl = 'http://localhost:8000/api/v1';
 
   late Dio _dio;
   final FlutterSecureStorage _storage;
+  final Future<void> Function(String accessToken, String refreshToken)?
+      _onTokensRefreshed;
   String _baseUrl;
 
-  ApiClient(this._storage, {String? baseUrl})
-      : _baseUrl = baseUrl ?? _defaultBaseUrl {
+  ApiClient(
+    this._storage, {
+    String? baseUrl,
+    Future<void> Function(String accessToken, String refreshToken)?
+        onTokensRefreshed,
+  })  : _onTokensRefreshed = onTokensRefreshed,
+        _baseUrl = baseUrl ?? _defaultBaseUrl {
     _buildDio();
   }
 
@@ -50,19 +56,22 @@ class ApiClient {
     ));
   }
 
-  /// Token refresh sends the refresh_token in the REQUEST BODY (not query param).
   Future<bool> _refreshToken() async {
     try {
       final refresh = await _storage.read(key: 'refresh_token');
       if (refresh == null) return false;
-      // Create a bare Dio to avoid interceptor loops
       final plainDio = Dio(BaseOptions(baseUrl: _baseUrl));
       final resp = await plainDio.post(
         '/auth/refresh',
         data: {'refresh_token': refresh},
       );
-      await _storage.write(key: 'access_token', value: resp.data['access_token']);
-      await _storage.write(key: 'refresh_token', value: resp.data['refresh_token']);
+      final accessToken = resp.data['access_token'] as String;
+      final refreshToken = resp.data['refresh_token'] as String;
+      await _storage.write(key: 'access_token', value: accessToken);
+      await _storage.write(key: 'refresh_token', value: refreshToken);
+      if (_onTokensRefreshed != null) {
+        await _onTokensRefreshed(accessToken, refreshToken);
+      }
       return true;
     } catch (_) {
       return false;

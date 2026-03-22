@@ -8,13 +8,15 @@ import asyncio
 from collections import defaultdict
 from typing import Any, Callable, Coroutine
 
+from app.config import get_settings
 from app.core.logger import get_logger
 
 log = get_logger("event_bus")
+settings = get_settings()
 
 # Internal registry: topic → list of async handler coroutines
 _subscribers: dict[str, list[Callable[..., Coroutine]]] = defaultdict(list)
-_queue: asyncio.Queue = asyncio.Queue(maxsize=1000)
+_queue: asyncio.Queue = asyncio.Queue(maxsize=settings.event_bus_queue_size)
 
 
 def subscribe(topic: str, handler: Callable[..., Coroutine]) -> None:
@@ -49,6 +51,15 @@ async def _dispatch_loop() -> None:
 # ── Lifecycle ─────────────────────────────────────────────────────────────────
 
 _dispatch_task: asyncio.Task | None = None
+
+
+def get_metrics() -> dict[str, int]:
+    """Return lightweight runtime metrics for health and diagnostics."""
+    return {
+        "queue_size": _queue.qsize(),
+        "subscriber_topics": len(_subscribers),
+        "subscriber_handlers": sum(len(handlers) for handlers in _subscribers.values()),
+    }
 
 
 async def start_event_bus() -> None:

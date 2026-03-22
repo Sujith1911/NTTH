@@ -9,11 +9,13 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
 from app.database import crud
 from app.database.schemas import FirewallRuleCreate, FirewallRuleRead, PaginatedResponse
 from app.dependencies import get_current_user, get_db, require_admin
 
 router = APIRouter()
+settings = get_settings()
 
 
 @router.get("/rules", response_model=list[FirewallRuleRead])
@@ -47,6 +49,8 @@ async def add_rule(
     db: AsyncSession = Depends(get_db),
     admin=Depends(require_admin),
 ):
+    if not settings.firewall_enabled:
+        raise HTTPException(status_code=503, detail="Firewall control is disabled in this deployment")
     from app.firewall.nft_manager import NFTManager
     nft = NFTManager()
     handle = None
@@ -84,6 +88,8 @@ async def delete_rule(
     db: AsyncSession = Depends(get_db),
     _admin=Depends(require_admin),
 ):
+    if not settings.firewall_enabled:
+        raise HTTPException(status_code=503, detail="Firewall control is disabled in this deployment")
     rule = await crud.deactivate_firewall_rule(db, rule_id)
     if not rule:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rule not found")
@@ -95,6 +101,8 @@ async def delete_rule(
 @router.post("/flush", status_code=status.HTTP_200_OK)
 async def emergency_flush(_admin=Depends(require_admin)):
     """Flush ALL ntth firewall rules — emergency use only."""
+    if not settings.firewall_enabled:
+        raise HTTPException(status_code=503, detail="Firewall control is disabled in this deployment")
     from app.firewall.nft_manager import NFTManager
     success = await NFTManager().flush_chain()
     if not success:

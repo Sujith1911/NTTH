@@ -7,6 +7,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Literal
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -41,6 +42,14 @@ class Settings(BaseSettings):
     # ── Network ───────────────────────────────────────────────────
     network_interface: str = "eth0"
     gateway_ip: str = "192.168.1.1"  # NEVER block this IP
+    server_display_ip: str = ""
+    scan_subnet: str = ""
+    device_scan_interval_seconds: int = 60
+    ignored_monitor_cidrs: list[str] = [
+        "127.0.0.0/8",
+        "169.254.0.0/16",
+        "172.16.0.0/12",
+    ]
 
     # ── GeoIP ────────────────────────────────────────────────────
     geoip_db_path: str = "./geoip/GeoLite2-City.mmdb"
@@ -62,8 +71,11 @@ class Settings(BaseSettings):
     # ── Firewall ──────────────────────────────────────────────────
     nft_table: str = "inet ntth_filter"
     nft_chain: str = "ntth_input"
+    firewall_enabled: bool = True
     firewall_rule_ttl_seconds: int = 3600  # 1 hour default TTL
     cowrie_redirect_port: int = 2222
+
+    event_bus_queue_size: int = 5000
 
     # ── Honeypot ─────────────────────────────────────────────────
     cowrie_container_name: str = "ntth_cowrie"
@@ -79,6 +91,18 @@ class Settings(BaseSettings):
 
     # ── CORS ─────────────────────────────────────────────────────
     cors_origins: list[str] = ["*"]  # Tighten in production
+
+    @field_validator("debug", mode="before")
+    @classmethod
+    def parse_debug(cls, value):
+        """Accept common non-boolean deployment flags like 'release'."""
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"release", "prod", "production", "off", "false", "0", "no"}:
+                return False
+            if normalized in {"debug", "dev", "development", "on", "true", "1", "yes"}:
+                return True
+        return value
 
 
 @lru_cache(maxsize=1)

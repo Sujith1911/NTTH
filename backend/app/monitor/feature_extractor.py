@@ -5,7 +5,21 @@ Returns a dict suitable for IDS scoring and device registry.
 from __future__ import annotations
 
 from datetime import datetime
+from ipaddress import ip_address, ip_network
 from typing import Optional
+
+from app.config import get_settings
+
+settings = get_settings()
+_IGNORED_NETWORKS = tuple(ip_network(cidr) for cidr in settings.ignored_monitor_cidrs)
+
+
+def _should_ignore(ip: str) -> bool:
+    try:
+        parsed = ip_address(ip)
+    except ValueError:
+        return True
+    return any(parsed in network for network in _IGNORED_NETWORKS)
 
 
 def extract_features(pkt) -> Optional[dict]:
@@ -22,6 +36,9 @@ def extract_features(pkt) -> Optional[dict]:
         return None
 
     ip_layer = pkt[IP]
+    if _should_ignore(ip_layer.src) or _should_ignore(ip_layer.dst):
+        return None
+
     features: dict = {
         "src_ip": ip_layer.src,
         "dst_ip": ip_layer.dst,

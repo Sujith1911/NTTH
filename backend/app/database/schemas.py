@@ -170,6 +170,17 @@ class HealthResponse(BaseModel):
     db_ok: bool
     sniffer_running: bool
     scheduler_running: bool
+    websocket_clients: int = 0
+    event_bus_backlog: int = 0
+    event_bus_subscribers: int = 0
+    realtime_mode: str = "packet_capture"
+    capture_interface: str = ""
+    capture_ip: Optional[str] = None
+    scan_subnet: str = ""
+    packet_capture_degraded: bool = False
+    packet_capture_reason: Optional[str] = None
+    last_scan: Optional[str] = None
+    discovered_devices: int = 0
 
 
 # ── Pagination ────────────────────────────────────────────────────────────────

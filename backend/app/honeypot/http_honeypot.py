@@ -77,5 +77,9 @@ async def start_http_honeypot() -> None:
         )
         server = uvicorn.Server(config)
         await server.serve()
+    except SystemExit as exc:
+        # Uvicorn raises SystemExit on bind failures; don't let that abort the
+        # main API process when the optional honeypot port is already occupied.
+        log.warning("http_honeypot.startup_skipped", error=str(exc))
     except Exception as exc:
         log.error("http_honeypot.startup_failed", error=str(exc))

@@ -8,25 +8,28 @@ from __future__ import annotations
 import asyncio
 import socket
 from datetime import datetime
+from ipaddress import ip_address, ip_network
 from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
 from app.core.event_bus import publish
 from app.core.logger import get_logger
 from app.database import crud
 from app.dependencies import get_current_user, get_db
-from app.monitor.network_scanner import get_live_stats, scan_network
+from app.monitor.network_scanner import get_live_stats, get_scan_state, scan_network
 
 log = get_logger("routes_topology")
 router = APIRouter()
-
-_scan_running = False
-_last_scan: Optional[str] = None
-
+settings = get_settings()
+_IGNORED_DISPLAY_NETWORKS = tuple(ip_network(cidr) for cidr in settings.ignored_monitor_cidrs)
 
 def _get_gateway() -> str:
+    """Prefer configured gateway IP for stable topology on Docker/Desktop."""
+    if settings.gateway_ip:
+        return settings.gateway_ip
     """Try to detect gateway IP from routing table."""
     try:
         import subprocess, sys
@@ -49,18 +52,40 @@ def _get_gateway() -> str:
 
 
 def _get_local_ip() -> str:
+    if settings.server_display_ip:
+        return settings.server_display_ip
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("8.8.8.8", 80))
         ip = s.getsockname()[0]
         s.close()
+        if ip_address(ip) in ip_network("172.16.0.0/12"):
+            return "127.0.0.1"
         return ip
     except Exception:
         return "127.0.0.1"
 
 
+def _display_local_ip(request: Request) -> str:
+    if settings.server_display_ip:
+        return settings.server_display_ip
+    host = request.url.hostname or ""
+    if host not in {"127.0.0.1", "localhost", "::1"}:
+        return host
+    return _get_local_ip()
+
+
+def _should_hide_ip(ip: str) -> bool:
+    try:
+        parsed = ip_address(ip)
+    except ValueError:
+        return True
+    return any(parsed in network for network in _IGNORED_DISPLAY_NETWORKS)
+
+
 @router.get("/topology")
 async def get_topology(
+    request: Request,
     db: AsyncSession = Depends(get_db),
     _user=Depends(get_current_user),
 ):
@@ -78,9 +103,10 @@ async def get_topology(
         log.error("topology.db_error", error=str(exc))
         raise
     stats_map = {s["ip"]: s for s in get_live_stats()}
+    scan_state = get_scan_state()
 
     gateway_ip = _get_gateway()
-    local_ip = _get_local_ip()
+    local_ip = _display_local_ip(request)
 
     # Build nodes
     nodes = []
@@ -163,6 +189,8 @@ async def get_topology(
     # Honeypot sessions from external (non-local) IPs
     known_ips = {d.ip_address for d in devices}
     for session in honeypot_sessions[:20]:
+        if _should_hide_ip(session.attacker_ip):
+            continue
         if session.attacker_ip not in known_ips:
             node_id = f"ext_{session.attacker_ip.replace('.', '_')}"
             if not any(n["id"] == node_id for n in nodes):
@@ -188,8 +216,10 @@ async def get_topology(
         "meta": {
             "local_ip": local_ip,
             "gateway_ip": gateway_ip,
-            "last_scan": _last_scan,
-            "scan_running": _scan_running,
+            "scan_subnet": settings.scan_subnet or (f"{gateway_ip}/24" if gateway_ip else ""),
+            "last_scan": scan_state["completed_at"],
+            "scan_running": scan_state["running"],
+            "devices_found_last_scan": scan_state["device_count"],
         },
     }
 
@@ -200,8 +230,7 @@ async def trigger_scan(
     _user=Depends(get_current_user),
 ):
     """Trigger a network scan in the background. Returns immediately."""
-    global _scan_running
-    if _scan_running:
+    if get_scan_state()["running"]:
         return {"status": "already_running"}
     background_tasks.add_task(_run_scan)
     return {"status": "started"}
@@ -209,23 +238,24 @@ async def trigger_scan(
 
 @router.get("/scan/status")
 async def scan_status(_user=Depends(get_current_user)):
-    return {"running": _scan_running, "last_scan": _last_scan}
+    scan_state = get_scan_state()
+    return {
+        "running": scan_state["running"],
+        "last_scan": scan_state["completed_at"],
+        "devices_found": scan_state["device_count"],
+    }
 
 
 async def _run_scan():
-    global _scan_running, _last_scan
-    _scan_running = True
     try:
         devices = await scan_network()
-        _last_scan = datetime.utcnow().isoformat()
+        completed_at = get_scan_state()["completed_at"] or datetime.utcnow().isoformat()
         # Publish topology_updated so WS clients refresh
         await publish("topology_updated", {
             "type": "topology_updated",
             "devices_found": len(devices),
-            "timestamp": _last_scan,
+            "timestamp": completed_at,
         })
         log.info("topology.scan_complete", devices=len(devices))
     except Exception as exc:
         log.error("topology.scan_error", error=str(exc))
-    finally:
-        _scan_running = False

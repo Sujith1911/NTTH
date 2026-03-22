@@ -26,6 +26,11 @@ async def _handle_enforcement_action(payload: dict) -> None:
         await event_bus.publish("report_event", payload)
         return
 
+    if not settings.firewall_enabled:
+        log.info("enforcement_agent.firewall_disabled", action=action, ip=src_ip)
+        await event_bus.publish("report_event", payload)
+        return
+
     try:
         from app.firewall.nft_manager import NFTManager
         from app.firewall.rule_tracker import is_rule_active

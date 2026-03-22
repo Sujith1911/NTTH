@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
 import '../core/auth_service.dart';
+import '../widgets/glassy_container.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -26,8 +27,11 @@ class _LoginScreenState extends State<LoginScreen>
   @override
   void initState() {
     super.initState();
-    _animCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 800));
-    _fadeAnim = CurvedAnimation(parent: _animCtrl, curve: Curves.easeOut);
+    _animCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    );
+    _fadeAnim = CurvedAnimation(parent: _animCtrl, curve: Curves.easeOutCubic);
     _animCtrl.forward();
   }
 
@@ -41,135 +45,286 @@ class _LoginScreenState extends State<LoginScreen>
 
   Future<void> _login() async {
     if (!_formKey.currentState!.validate()) return;
-    setState(() { _loading = true; _error = null; });
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     final auth = context.read<AuthService>();
     final err = await auth.login(_userCtrl.text.trim(), _passCtrl.text);
-    if (mounted) {
-      if (err != null) {
-        setState(() { _error = 'Invalid credentials'; _loading = false; });
-      } else {
-        context.go('/dashboard');
-      }
+    if (!mounted) return;
+    if (err != null) {
+      setState(() {
+        _error = 'Invalid credentials';
+        _loading = false;
+      });
+    } else {
+      context.go('/dashboard');
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final width = MediaQuery.of(context).size.width;
+    final isCompact = width < 900;
+
     return Scaffold(
       body: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFF080C18), Color(0xFF0D1B2A), Color(0xFF080C18)],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: isDark
+                ? const [Color(0xFF07111F), Color(0xFF0B1830), Color(0xFF07111F)]
+                : const [Color(0xFFF4F8FC), Color(0xFFE7F0FB), Color(0xFFF8FBFE)],
           ),
         ),
-        child: Center(
-          child: FadeTransition(
-            opacity: _fadeAnim,
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 420),
-              child: Padding(
-                padding: const EdgeInsets.all(32),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Logo & Title
-                    Container(
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: const RadialGradient(colors: [
-                          Color(0xFF00FF8840),
-                          Color(0xFF00FF8810),
-                        ]),
-                        border: Border.all(color: const Color(0xFF00FF88), width: 1.5),
-                      ),
-                      child: const Icon(Icons.shield_outlined, color: Color(0xFF00FF88), size: 48),
-                    ),
-                    const SizedBox(height: 24),
-                    Text(
-                      'NO TIME TO HACK',
-                      style: GoogleFonts.inter(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.white,
-                        letterSpacing: 2,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      'Adaptive IoT Security Platform',
-                      style: GoogleFonts.inter(fontSize: 13, color: Colors.white38),
-                    ),
-                    const SizedBox(height: 40),
-
-                    // Form
-                    Form(
-                      key: _formKey,
-                      child: Column(children: [
-                        _buildField(
-                          controller: _userCtrl,
-                          label: 'Username',
-                          icon: Icons.person_outline,
-                          validator: (v) => v!.isEmpty ? 'Required' : null,
-                        ),
-                        const SizedBox(height: 16),
-                        _buildField(
-                          controller: _passCtrl,
-                          label: 'Password',
-                          icon: Icons.lock_outline,
-                          obscure: _obscure,
-                          suffix: IconButton(
-                            icon: Icon(_obscure ? Icons.visibility_off : Icons.visibility,
-                                color: Colors.white38, size: 20),
-                            onPressed: () => setState(() => _obscure = !_obscure),
-                          ),
-                          validator: (v) => v!.isEmpty ? 'Required' : null,
-                        ),
-                        if (_error != null) ...[
-                          const SizedBox(height: 12),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                            decoration: BoxDecoration(
-                              color: Colors.red.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: Colors.red.withOpacity(0.4)),
+        child: Stack(
+          children: [
+            Positioned(
+              top: -120,
+              left: -60,
+              child: _GlowOrb(
+                size: 320,
+                color: theme.colorScheme.primary.withOpacity(isDark ? 0.16 : 0.12),
+              ),
+            ),
+            Positioned(
+              right: -90,
+              bottom: -100,
+              child: _GlowOrb(
+                size: 360,
+                color: theme.colorScheme.secondary.withOpacity(isDark ? 0.12 : 0.10),
+              ),
+            ),
+            SafeArea(
+              child: Center(
+                child: FadeTransition(
+                  opacity: _fadeAnim,
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 1180),
+                      child: Flex(
+                        direction: isCompact ? Axis.vertical : Axis.horizontal,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Expanded(
+                            flex: isCompact ? 0 : 11,
+                            child: Padding(
+                              padding: EdgeInsets.only(
+                                right: isCompact ? 0 : 24,
+                                bottom: isCompact ? 24 : 0,
+                              ),
+                              child: _buildIntroPanel(theme, isDark, isCompact),
                             ),
-                            child: Row(children: [
-                              const Icon(Icons.error_outline, color: Colors.red, size: 16),
-                              const SizedBox(width: 8),
-                              Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 13)),
-                            ]),
+                          ),
+                          Expanded(
+                            flex: 9,
+                            child: Align(
+                              alignment: Alignment.center,
+                              child: ConstrainedBox(
+                                constraints: const BoxConstraints(maxWidth: 460),
+                                child: GlassyContainer(
+                                  padding: const EdgeInsets.all(32),
+                                  blur: 20,
+                                  borderRadius: 32,
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.all(18),
+                                        decoration: BoxDecoration(
+                                          borderRadius: BorderRadius.circular(24),
+                                          color: theme.colorScheme.primary.withOpacity(
+                                            isDark ? 0.18 : 0.12,
+                                          ),
+                                        ),
+                                        child: Icon(
+                                          Icons.shield_outlined,
+                                          color: theme.colorScheme.primary,
+                                          size: 34,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 24),
+                                      Text(
+                                        'Control room access',
+                                        style: GoogleFonts.spaceGrotesk(
+                                          fontSize: 28,
+                                          fontWeight: FontWeight.w700,
+                                          color: theme.colorScheme.onSurface,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 10),
+                                      Text(
+                                        'Sign in to monitor devices, inspect live telemetry, and manage honeypot activity from one console.',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          height: 1.6,
+                                          color: theme.colorScheme.onSurface.withOpacity(0.68),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 28),
+                                      Form(
+                                        key: _formKey,
+                                        child: Column(
+                                          children: [
+                                            _buildField(
+                                              controller: _userCtrl,
+                                              label: 'Username',
+                                              icon: Icons.person_outline,
+                                              theme: theme,
+                                              validator: (v) => v!.isEmpty ? 'Required' : null,
+                                            ),
+                                            const SizedBox(height: 16),
+                                            _buildField(
+                                              controller: _passCtrl,
+                                              label: 'Password',
+                                              icon: Icons.lock_outline,
+                                              theme: theme,
+                                              obscure: _obscure,
+                                              suffix: IconButton(
+                                                icon: Icon(
+                                                  _obscure
+                                                      ? Icons.visibility_off
+                                                      : Icons.visibility,
+                                                  color: theme.colorScheme.onSurface.withOpacity(0.5),
+                                                  size: 20,
+                                                ),
+                                                onPressed: () {
+                                                  setState(() => _obscure = !_obscure);
+                                                },
+                                              ),
+                                              validator: (v) => v!.isEmpty ? 'Required' : null,
+                                            ),
+                                            if (_error != null) ...[
+                                              const SizedBox(height: 14),
+                                              Container(
+                                                width: double.infinity,
+                                                padding: const EdgeInsets.symmetric(
+                                                  horizontal: 16,
+                                                  vertical: 12,
+                                                ),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.red.withOpacity(0.1),
+                                                  borderRadius: BorderRadius.circular(16),
+                                                  border: Border.all(
+                                                    color: Colors.red.withOpacity(0.28),
+                                                  ),
+                                                ),
+                                                child: Row(
+                                                  children: [
+                                                    const Icon(
+                                                      Icons.error_outline,
+                                                      color: Colors.red,
+                                                      size: 18,
+                                                    ),
+                                                    const SizedBox(width: 10),
+                                                    Text(
+                                                      _error!,
+                                                      style: const TextStyle(
+                                                        color: Colors.red,
+                                                        fontSize: 13,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ],
+                                            const SizedBox(height: 22),
+                                            SizedBox(
+                                              width: double.infinity,
+                                              height: 56,
+                                              child: ElevatedButton(
+                                                onPressed: _loading ? null : _login,
+                                                child: _loading
+                                                    ? const SizedBox(
+                                                        width: 20,
+                                                        height: 20,
+                                                        child: CircularProgressIndicator(
+                                                          strokeWidth: 2,
+                                                        ),
+                                                      )
+                                                    : const Text('Enter Workspace'),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
                           ),
                         ],
-                        const SizedBox(height: 24),
-                        SizedBox(
-                          width: double.infinity,
-                          height: 52,
-                          child: ElevatedButton(
-                            onPressed: _loading ? null : _login,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF00FF88),
-                              foregroundColor: const Color(0xFF080C18),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                              textStyle: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 15),
-                            ),
-                            child: _loading
-                                ? const SizedBox(width: 20, height: 20,
-                                    child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF080C18)))
-                                : const Text('AUTHENTICATE'),
-                          ),
-                        ),
-                      ]),
+                      ),
                     ),
-                  ],
+                  ),
                 ),
               ),
             ),
-          ),
+          ],
         ),
       ),
+    );
+  }
+
+  Widget _buildIntroPanel(ThemeData theme, bool isDark, bool isCompact) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.primary.withOpacity(isDark ? 0.18 : 0.10),
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Text(
+            'Realtime network defense',
+            style: GoogleFonts.spaceGrotesk(
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.5,
+              color: theme.colorScheme.primary,
+            ),
+          ),
+        ),
+        const SizedBox(height: 24),
+        Text(
+          'A calmer, clearer operations view for live device telemetry.',
+          style: GoogleFonts.spaceGrotesk(
+            fontSize: isCompact ? 34 : 52,
+            height: 1.05,
+            fontWeight: FontWeight.w700,
+            color: theme.colorScheme.onSurface,
+          ),
+        ),
+        const SizedBox(height: 18),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 620),
+          child: Text(
+            'Track your active network, inspect threats, and review honeypot activity in a responsive console designed for phones, tablets, laptops, and large displays.',
+            style: TextStyle(
+              fontSize: 16,
+              height: 1.7,
+              color: theme.colorScheme.onSurface.withOpacity(0.72),
+            ),
+          ),
+        ),
+        const SizedBox(height: 28),
+        Wrap(
+          spacing: 14,
+          runSpacing: 14,
+          children: const [
+            _FeaturePill(icon: Icons.wifi_tethering, label: 'Live topology updates'),
+            _FeaturePill(icon: Icons.hub_outlined, label: 'Responsive control room'),
+            _FeaturePill(icon: Icons.bug_report_outlined, label: 'Honeypot telemetry'),
+          ],
+        ),
+      ],
     );
   }
 
@@ -177,6 +332,7 @@ class _LoginScreenState extends State<LoginScreen>
     required TextEditingController controller,
     required String label,
     required IconData icon,
+    required ThemeData theme,
     bool obscure = false,
     Widget? suffix,
     String? Function(String?)? validator,
@@ -184,26 +340,63 @@ class _LoginScreenState extends State<LoginScreen>
     return TextFormField(
       controller: controller,
       obscureText: obscure,
-      style: const TextStyle(color: Colors.white),
+      style: TextStyle(color: theme.colorScheme.onSurface),
       validator: validator,
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: const TextStyle(color: Colors.white38),
-        prefixIcon: Icon(icon, color: const Color(0xFF00FF88), size: 20),
+        labelStyle: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.54)),
+        prefixIcon: Icon(icon, color: theme.colorScheme.primary, size: 20),
         suffixIcon: suffix,
-        filled: true,
-        fillColor: const Color(0xFF111827),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Color(0xFF1F2937)),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Color(0xFF00FF88), width: 1.5),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Color(0xFF1F2937)),
+      ),
+    );
+  }
+}
+
+class _FeaturePill extends StatelessWidget {
+  final IconData icon;
+  final String label;
+
+  const _FeaturePill({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return GlassyContainer(
+      borderRadius: 999,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 18, color: theme.colorScheme.primary),
+          const SizedBox(width: 10),
+          Text(
+            label,
+            style: TextStyle(
+              color: theme.colorScheme.onSurface.withOpacity(0.76),
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GlowOrb extends StatelessWidget {
+  final double size;
+  final Color color;
+
+  const _GlowOrb({required this.size, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: RadialGradient(colors: [color, color.withOpacity(0)]),
         ),
       ),
     );
