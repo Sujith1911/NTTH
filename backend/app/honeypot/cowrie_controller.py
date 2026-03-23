@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import socket
+from typing import Optional
 
 from app.config import get_settings
 from app.core.logger import get_logger
@@ -32,8 +33,22 @@ def _probe_tcp(port: int) -> bool:
     return False
 
 
+def _probe_cowrie() -> bool:
+    return _probe_tcp(settings.cowrie_redirect_port) or _probe_tcp(2223)
+
+
+def _docker_error_detail(exc: Exception) -> str:
+    message = str(exc)
+    if "http+docker" in message:
+        return "Docker SDK transport is unavailable in this runtime; using direct service probe instead."
+    return message
+
+
 async def ensure_cowrie_running() -> bool:
     """Start Cowrie container if not running. Returns True if running."""
+    if _probe_cowrie():
+        return True
+
     try:
         import docker  # type: ignore
         client = _docker_client()
@@ -47,8 +62,12 @@ async def ensure_cowrie_running() -> bool:
             log.warning("cowrie_controller.container_not_found", name=settings.cowrie_container_name)
             return False
     except Exception as exc:
-        log.error("cowrie_controller.error", error=str(exc))
-        return _probe_tcp(settings.cowrie_redirect_port)
+        detail = _docker_error_detail(exc)
+        if _probe_cowrie():
+            log.warning("cowrie_controller.probe_fallback", error=detail)
+            return True
+        log.error("cowrie_controller.error", error=detail)
+        return False
 
 
 async def stop_cowrie() -> bool:
@@ -61,12 +80,20 @@ async def stop_cowrie() -> bool:
         log.info("cowrie_controller.stopped")
         return True
     except Exception as exc:
-        log.error("cowrie_controller.stop_error", error=str(exc))
+        log.error("cowrie_controller.stop_error", error=_docker_error_detail(exc))
         return False
 
 
 async def get_cowrie_status() -> dict:
     """Return container status info."""
+    if _probe_cowrie():
+        return {
+            "status": "running",
+            "name": settings.cowrie_container_name,
+            "image": "unknown",
+            "transport": "tcp_probe",
+        }
+
     try:
         import docker  # type: ignore
         client = _docker_client()
@@ -77,11 +104,11 @@ async def get_cowrie_status() -> dict:
             "image": container.image.tags[0] if container.image.tags else "unknown",
         }
     except Exception as exc:
-        if _probe_tcp(settings.cowrie_redirect_port):
+        if _probe_cowrie():
             return {
                 "status": "running",
                 "name": settings.cowrie_container_name,
                 "image": "unknown",
                 "transport": "tcp_probe",
             }
-        return {"status": "unavailable", "error": str(exc)}
+        return {"status": "unavailable", "error": _docker_error_detail(exc)}

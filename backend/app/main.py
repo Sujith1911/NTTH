@@ -20,8 +20,10 @@ from app.core.event_bus import start_event_bus, stop_event_bus
 from app.core.logger import get_logger, setup_logging
 from app.core.scheduler import start_scheduler, stop_scheduler
 from app.core.security import hash_password
+from app.database import crud
 from app.database.crud import create_user, get_user_by_username
 from app.database.session import AsyncSessionLocal, init_db
+from app.monitor.network_scanner import get_effective_scan_subnet
 
 # Import all agents so they can subscribe on startup
 import app.agents.threat_agent      # noqa: F401
@@ -63,6 +65,15 @@ async def lifespan(app: FastAPI):
             await create_user(db, settings.admin_username, hash_password(settings.admin_password), role="admin")
             await db.commit()
             log.info("ntth.admin_seeded", username=settings.admin_username)
+
+    # 2b. Remove stale non-local device rows left behind by older simulated/public attacker events.
+    effective_scan_subnet = get_effective_scan_subnet()
+    if effective_scan_subnet:
+        async with AsyncSessionLocal() as db:
+            removed = await crud.purge_devices_outside_subnet(db, effective_scan_subnet)
+            await db.commit()
+            if removed:
+                log.info("ntth.device_cleanup", removed=removed, subnet=effective_scan_subnet)
 
     # 3. Start event bus
     await start_event_bus()

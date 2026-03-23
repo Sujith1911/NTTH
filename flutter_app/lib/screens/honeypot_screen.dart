@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:timeago/timeago.dart' as timeago;
+import 'dart:convert';
 
 import '../core/auth_service.dart';
+import '../core/websocket_service.dart';
 import '../models/honeypot_model.dart';
 import '../widgets/app_shell_drawer.dart';
 import '../widgets/glassy_container.dart';
@@ -20,11 +22,24 @@ class _HoneypotScreenState extends State<HoneypotScreen> {
   bool _loading = true;
   Map<String, dynamic>? _cowrieStatus;
   DateTime? _lastSyncedAt;
+  VoidCallback? _wsListener;
 
   @override
   void initState() {
     super.initState();
-    _fetchAll();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _fetchAll();
+      _listenToWs();
+    });
+  }
+
+  @override
+  void dispose() {
+    final listener = _wsListener;
+    if (listener != null) {
+      context.read<WebSocketService>().removeListener(listener);
+    }
+    super.dispose();
   }
 
   Future<void> _fetchAll() async {
@@ -48,6 +63,28 @@ class _HoneypotScreenState extends State<HoneypotScreen> {
     } catch (_) {
       setState(() => _loading = false);
     }
+  }
+
+  void _listenToWs() {
+    final ws = context.read<WebSocketService>();
+    _wsListener ??= () {
+      if (!mounted || ws.events.isEmpty) return;
+      final latest = ws.events.first;
+      if (latest['type'] != 'honeypot_session') return;
+
+      final session = HoneypotModel.fromJson(latest);
+      final index =
+          _sessions.indexWhere((existing) => existing.sessionId == session.sessionId);
+      setState(() {
+        if (index >= 0) {
+          _sessions[index] = session;
+        } else {
+          _sessions = [session, ..._sessions];
+        }
+        _lastSyncedAt = DateTime.now();
+      });
+    };
+    ws.addListener(_wsListener!);
   }
 
   @override
@@ -99,7 +136,7 @@ class _HoneypotScreenState extends State<HoneypotScreen> {
                             ),
                             const SizedBox(height: 8),
                             Text(
-                              'Track attacker sessions, credential attempts, and command activity captured by the honeypot services.',
+                              'Track diverted attacker sessions, attempted credentials, approximate source intel, and captured commands.',
                               style: TextStyle(
                                 color: theme.colorScheme.onSurface
                                     .withOpacity(0.65),
@@ -246,7 +283,7 @@ class _HoneypotScreenState extends State<HoneypotScreen> {
                               ),
                             ),
                             subtitle: Text(
-                              '${session.country ?? "Unknown"} - ${timeago.format(session.startedAt)}',
+                              '${_sourceDescriptor(session)} - ${timeago.format(session.startedAt)}',
                               style: TextStyle(
                                   color: theme.colorScheme.onSurface
                                       .withOpacity(0.6),
@@ -286,13 +323,17 @@ class _HoneypotScreenState extends State<HoneypotScreen> {
                                       _infoRow('Password',
                                           session.passwordTried!, theme),
                                     if (session.commandsRun != null)
-                                      _infoRow('Commands', session.commandsRun!,
+                                      _infoRow('Commands', _formatCommands(session.commandsRun!),
                                           theme),
                                     if (session.durationSeconds != null)
                                       _infoRow(
                                           'Duration',
                                           '${session.durationSeconds!.toStringAsFixed(1)}s',
                                           theme),
+                                    if (session.org != null)
+                                      _infoRow('Network', session.org!, theme),
+                                    if (session.asn != null)
+                                      _infoRow('ASN', session.asn!, theme),
                                     _infoRow(
                                       'Status',
                                       session.endedAt == null
@@ -372,5 +413,50 @@ class _HoneypotScreenState extends State<HoneypotScreen> {
         ],
       ),
     );
+  }
+
+  String _formatCommands(String raw) {
+    final trimmed = raw.trim();
+    try {
+      final decoded = jsonDecode(trimmed);
+      if (decoded is Map<String, dynamic>) {
+        return decoded.entries
+            .map((entry) => '${entry.key}: ${entry.value}')
+            .join('\n');
+      }
+      if (decoded is List) {
+        final items = decoded
+            .map((entry) => entry.toString().trim())
+            .where((entry) => entry.isNotEmpty)
+            .toList();
+        if (items.isNotEmpty) {
+          return items.join('\n');
+        }
+      }
+    } catch (_) {}
+    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+      final cleaned = trimmed
+          .replaceAll('[', '')
+          .replaceAll(']', '')
+          .replaceAll('"', '')
+          .split(',')
+          .map((part) => part.trim())
+          .where((part) => part.isNotEmpty)
+          .join('\n');
+      if (cleaned.isNotEmpty) {
+        return cleaned;
+      }
+    }
+    return raw;
+  }
+
+  String _sourceDescriptor(HoneypotModel session) {
+    if (session.locationSummary != null && session.locationSummary!.isNotEmpty) {
+      return session.locationSummary!;
+    }
+    if (session.attackerIp.startsWith('172.19.')) {
+      return 'Docker NAT masked source';
+    }
+    return '${session.country ?? "Unknown"} - ${session.org ?? "Unknown network"}';
   }
 }

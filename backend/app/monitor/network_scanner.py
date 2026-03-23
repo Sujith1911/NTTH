@@ -149,6 +149,24 @@ def _get_local_network() -> list[str]:
     return [str(host) for host in network.hosts()]
 
 
+def get_effective_scan_subnet() -> Optional[str]:
+    network = _choose_scan_network()
+    return str(network) if network else None
+
+
+def is_managed_asset_ip(ip: str) -> bool:
+    try:
+        parsed = ipaddress.ip_address(ip)
+    except ValueError:
+        return False
+
+    network = _choose_scan_network()
+    if network is not None:
+        return parsed in network
+
+    return parsed.is_private
+
+
 async def _resolve_hostname(ip: str) -> Optional[str]:
     try:
         loop = asyncio.get_event_loop()
@@ -241,6 +259,7 @@ def get_scan_state() -> dict[str, Optional[str] | int | bool]:
         "started_at": _last_scan_started_at,
         "completed_at": _last_scan_completed_at,
         "device_count": _last_scan_device_count,
+        "subnet": get_effective_scan_subnet(),
     }
 
 

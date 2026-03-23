@@ -8,33 +8,32 @@ from app.core import event_bus
 from app.core.logger import get_logger
 from app.database.session import AsyncSessionLocal
 from app.database import crud
+from app.monitor.network_scanner import is_managed_asset_ip
 
 log = get_logger("reporting_agent")
 
 
 async def _handle_report_event(payload: dict) -> None:
     try:
+        incident_context = payload.get("incident_context", {})
+        victim_ip = (
+            incident_context.get("victim_ip")
+            or payload.get("dst_ip")
+            or payload.get("src_ip")
+        )
+        managed_asset_ip = (
+            victim_ip if isinstance(victim_ip, str) and is_managed_asset_ip(victim_ip) else None
+        )
         async with AsyncSessionLocal() as db:
-            # Ensure device exists
-            device, created = await crud.get_or_create_device(db, payload.get("src_ip", "unknown"))
-
-            # Upsert any enriched metadata from scanner/sniffer
-            if any(payload.get(k) for k in ("mac_address", "hostname", "vendor")):
-                device, _ = await crud.upsert_device_details(
-                    db,
-                    payload.get("src_ip", ""),
-                    mac_address=payload.get("mac_address"),
-                    hostname=payload.get("hostname"),
-                    vendor=payload.get("vendor"),
-                )
-
-            # Update device risk score
-            await crud.update_device_risk(db, device.id, payload.get("risk_score", 0.0))
+            device = None
+            if managed_asset_ip:
+                device, _ = await crud.upsert_device_details(db, managed_asset_ip)
+                await crud.update_device_risk(db, device.id, payload.get("risk_score", 0.0))
 
             # Create threat event
             event = await crud.create_threat_event(
                 db,
-                device_id=device.id,
+                device_id=device.id if device else None,
                 src_ip=payload.get("src_ip", ""),
                 dst_ip=payload.get("dst_ip"),
                 dst_port=payload.get("dst_port"),
@@ -50,6 +49,7 @@ async def _handle_report_event(payload: dict) -> None:
                 org=payload.get("org"),
                 latitude=payload.get("latitude"),
                 longitude=payload.get("longitude"),
+                notes=payload.get("incident_notes"),
             )
             await db.commit()
 
@@ -78,16 +78,42 @@ async def _handle_report_event(payload: dict) -> None:
             "lon": event.longitude,
             "detected_at": event.detected_at.isoformat() if event.detected_at else None,
             "acknowledged": event.acknowledged,
+            "source_tag": incident_context.get("source_tag"),
+            "victim_ip": incident_context.get("victim_ip"),
+            "response_mode": incident_context.get("response_mode"),
+            "location_accuracy": incident_context.get("location_accuracy"),
+            "location_summary": incident_context.get("location_summary"),
+            "network_origin": incident_context.get("network_origin"),
+            "target_hidden": incident_context.get("target_hidden"),
+            "quarantine_target": incident_context.get("quarantine_target"),
+            "honeypot_port": incident_context.get("honeypot_port"),
+            "notes": event.notes,
         })
 
         # Real-time device risk update for Devices screen
         await broadcast({
             "type": "device_updated",
-            "ip": payload.get("src_ip"),
+            "ip": managed_asset_ip,
             "risk_score": payload.get("risk_score", 0.0),
             "country": payload.get("country"),
             "city": payload.get("city"),
             "action": payload.get("action"),
+        })
+
+        await broadcast({
+            "type": "incident_response",
+            "src_ip": payload.get("src_ip"),
+            "victim_ip": incident_context.get("victim_ip"),
+            "threat_type": payload.get("threat_type"),
+            "risk_score": payload.get("risk_score", 0.0),
+            "action": payload.get("action"),
+            "source_tag": incident_context.get("source_tag"),
+            "response_mode": incident_context.get("response_mode"),
+            "network_origin": incident_context.get("network_origin"),
+            "location_summary": incident_context.get("location_summary"),
+            "target_hidden": incident_context.get("target_hidden"),
+            "honeypot_port": incident_context.get("honeypot_port"),
+            "timestamp": payload.get("timestamp"),
         })
 
     except Exception as exc:

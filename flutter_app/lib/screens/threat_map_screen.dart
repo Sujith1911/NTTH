@@ -159,7 +159,7 @@ class _ThreatMapScreenState extends State<ThreatMapScreen> {
                             const SizedBox(height: 6),
                             Text(
                               ws.connected
-                                  ? 'Incoming threat events are appended live and geolocated when enrichment is available.'
+                                  ? 'Incoming threat events are appended live with response mode, victim context, and approximate source enrichment when available.'
                                   : 'Realtime is offline. The map still shows stored threat history from the backend.',
                               style: TextStyle(
                                 color: theme.colorScheme.onSurface
@@ -218,10 +218,9 @@ class _ThreatMapScreenState extends State<ThreatMapScreen> {
                                       ? Colors.orange
                                       : theme.colorScheme.primary;
                               final locationParts = [
-                                threat.country ?? 'Unknown',
-                                if (threat.city != null &&
-                                    threat.city!.isNotEmpty)
-                                  threat.city!,
+                                threat.srcIp.startsWith('172.19.')
+                                    ? 'Source masked by Docker NAT'
+                                    : (threat.locationSummary ?? threat.country ?? 'Unknown'),
                                 timeago.format(threat.detectedAt),
                               ];
                               return ListTile(
@@ -241,7 +240,15 @@ class _ThreatMapScreenState extends State<ThreatMapScreen> {
                                       fontSize: 13),
                                 ),
                                 subtitle: Text(
-                                  locationParts.join(' - '),
+                                  [
+                                    if (threat.victimIp != null)
+                                      'Victim ${threat.victimIp}',
+                                    if (threat.responseMode != null)
+                                      'Response ${threat.responseMode}',
+                                    if (threat.networkOrigin != null)
+                                      threat.networkOrigin!,
+                                    ...locationParts,
+                                  ].join(' - '),
                                   style: TextStyle(
                                       color: theme.colorScheme.onSurface
                                           .withOpacity(0.6),
@@ -257,7 +264,7 @@ class _ThreatMapScreenState extends State<ThreatMapScreen> {
                                         color: color.withOpacity(0.5)),
                                   ),
                                   child: Text(
-                                    '${(threat.riskScore * 100).toInt()}%',
+                                    'Risk ${(threat.riskScore * 100).toInt()}%',
                                     style: TextStyle(
                                       color: color,
                                       fontSize: 11,

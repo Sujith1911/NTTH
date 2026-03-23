@@ -18,6 +18,27 @@ log = get_logger("cowrie_watcher")
 settings = get_settings()
 
 
+def _normalize_timestamp(raw: str | None) -> datetime:
+    if not raw:
+        return datetime.utcnow()
+    try:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return datetime.utcnow()
+    if parsed.tzinfo is not None:
+        return parsed.astimezone().replace(tzinfo=None)
+    return parsed
+
+
+def _normalize_duration(value) -> float | None:
+    if value in (None, ""):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 async def watch_cowrie_log() -> None:
     """Tail the Cowrie JSON log file and process new events."""
     log_path = settings.cowrie_log_path
@@ -79,12 +100,9 @@ async def _close_cowrie_session(event: dict) -> None:
         raw_ts = event.get("timestamp", "")
         ended_at: datetime | None = None
         if raw_ts:
-            try:
-                ended_at = datetime.fromisoformat(raw_ts)
-            except ValueError:
-                ended_at = datetime.utcnow()
+            ended_at = _normalize_timestamp(raw_ts)
 
-        duration = event.get("duration")
+        duration = _normalize_duration(event.get("duration"))
 
         async with AsyncSessionLocal() as db:
             await db.execute(

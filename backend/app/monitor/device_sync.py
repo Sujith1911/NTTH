@@ -10,6 +10,7 @@ from app.database import crud
 from app.database.models import DeviceStat
 from app.database.session import AsyncSessionLocal
 from app.monitor import device_registry
+from app.monitor.network_scanner import is_managed_asset_ip
 
 log = get_logger("device_sync")
 
@@ -26,6 +27,8 @@ async def sync_device_registry() -> None:
 
     async with AsyncSessionLocal() as db:
         for ip in ips:
+            if not is_managed_asset_ip(ip):
+                continue
             state = device_registry.get_state(ip)
             if not state:
                 continue

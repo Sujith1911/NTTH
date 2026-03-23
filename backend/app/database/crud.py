@@ -4,10 +4,11 @@ These are thin data-access functions — business logic stays in agents/routes.
 """
 from __future__ import annotations
 
+import json
 from datetime import datetime, timedelta
 from typing import Optional, Sequence
 
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models import (
@@ -87,6 +88,11 @@ async def list_devices(db: AsyncSession, page: int = 1, page_size: int = 50) -> 
     q = select(Device).offset((page - 1) * page_size).limit(page_size).order_by(Device.last_seen.desc())
     rows = (await db.execute(q)).scalars().all()
     return total, rows
+
+
+async def get_device_by_ip(db: AsyncSession, ip_address: str) -> Optional[Device]:
+    result = await db.execute(select(Device).where(Device.ip_address == ip_address))
+    return result.scalar_one_or_none()
 
 
 async def get_device(db: AsyncSession, device_id: str) -> Optional[Device]:
@@ -178,6 +184,69 @@ async def create_honeypot_session(db: AsyncSession, **kwargs) -> HoneypotSession
     return session
 
 
+async def upsert_honeypot_session(
+    db: AsyncSession,
+    *,
+    session_id: str,
+    attacker_ip: str,
+    honeypot_type: str,
+    started_at: datetime,
+    attacker_port: Optional[int] = None,
+    username_tried: Optional[str] = None,
+    password_tried: Optional[str] = None,
+    commands_run: Optional[str] = None,
+    duration_seconds: Optional[float] = None,
+    ended_at: Optional[datetime] = None,
+    **geo,
+) -> HoneypotSession:
+    result = await db.execute(select(HoneypotSession).where(HoneypotSession.session_id == session_id))
+    session = result.scalar_one_or_none()
+    if not session:
+        session = HoneypotSession(
+            session_id=session_id,
+            attacker_ip=attacker_ip,
+            honeypot_type=honeypot_type,
+            started_at=started_at,
+        )
+        db.add(session)
+
+    session.attacker_ip = attacker_ip
+    session.honeypot_type = honeypot_type
+    session.started_at = min(session.started_at, started_at) if session.started_at else started_at
+    session.attacker_port = attacker_port or session.attacker_port
+    session.username_tried = username_tried or session.username_tried
+    session.password_tried = password_tried or session.password_tried
+    session.duration_seconds = duration_seconds or session.duration_seconds
+    session.ended_at = ended_at or session.ended_at
+
+    if commands_run:
+        try:
+            existing = json.loads(session.commands_run) if session.commands_run else []
+        except Exception:
+            existing = [session.commands_run] if session.commands_run else []
+        try:
+            incoming = json.loads(commands_run)
+        except Exception:
+            incoming = [commands_run]
+        if not isinstance(existing, list):
+            existing = [existing]
+        if not isinstance(incoming, list):
+            incoming = [incoming]
+        merged = existing + [item for item in incoming if item not in existing]
+        session.commands_run = json.dumps(merged)
+    elif commands_run is not None and not session.commands_run:
+        session.commands_run = commands_run
+
+    for field in ("country", "city", "asn", "org", "latitude", "longitude"):
+        value = geo.get(field)
+        if value is not None:
+            setattr(session, field, value)
+
+    await db.flush()
+    await db.refresh(session)
+    return session
+
+
 async def list_honeypot_sessions(db: AsyncSession, page: int = 1, page_size: int = 50) -> tuple[int, Sequence[HoneypotSession]]:
     count_q = select(func.count()).select_from(HoneypotSession)
     total = (await db.execute(count_q)).scalar_one()
@@ -188,6 +257,11 @@ async def list_honeypot_sessions(db: AsyncSession, page: int = 1, page_size: int
 
 async def get_honeypot_session(db: AsyncSession, session_id: str) -> Optional[HoneypotSession]:
     result = await db.execute(select(HoneypotSession).where(HoneypotSession.id == session_id))
+    return result.scalar_one_or_none()
+
+
+async def get_honeypot_session_by_key(db: AsyncSession, session_id: str) -> Optional[HoneypotSession]:
+    result = await db.execute(select(HoneypotSession).where(HoneypotSession.session_id == session_id))
     return result.scalar_one_or_none()
 
 
@@ -213,6 +287,16 @@ async def deactivate_firewall_rule(db: AsyncSession, rule_id: str) -> Optional[F
         rule.is_active = False
         rule.removed_at = datetime.utcnow()
     return rule
+
+
+async def deactivate_all_firewall_rules(db: AsyncSession) -> int:
+    result = await db.execute(select(FirewallRule).where(FirewallRule.is_active == True))  # noqa: E712
+    rules = result.scalars().all()
+    now = datetime.utcnow()
+    for rule in rules:
+        rule.is_active = False
+        rule.removed_at = now
+    return len(rules)
 
 
 async def get_expired_firewall_rules(db: AsyncSession) -> Sequence[FirewallRule]:
@@ -344,3 +428,69 @@ async def get_threat_stats(db: AsyncSession) -> dict:
         "by_type": [{"threat_type": r[0], "count": r[1]} for r in type_rows],
         "by_action": [{"action_taken": r[0], "count": r[1]} for r in action_rows],
     }
+
+
+async def get_containment_summary(db: AsyncSession) -> dict:
+    """Return attempted responder actions alongside currently enforced rules."""
+    attempted_rows = (
+        await db.execute(
+            select(ThreatEvent.action_taken, func.count().label("count"))
+            .where(ThreatEvent.action_taken.is_not(None))
+            .group_by(ThreatEvent.action_taken)
+        )
+    ).all()
+    active_rows = (
+        await db.execute(
+            select(FirewallRule.rule_type, func.count().label("count"))
+            .where(FirewallRule.is_active == True)  # noqa: E712
+            .group_by(FirewallRule.rule_type)
+        )
+    ).all()
+
+    attempted = {row[0]: row[1] for row in attempted_rows if row[0]}
+    active = {row[0]: row[1] for row in active_rows if row[0]}
+    return {
+        "attempted": {
+            "block": attempted.get("block", 0),
+            "honeypot": attempted.get("honeypot", 0),
+            "rate_limit": attempted.get("rate_limit", 0),
+            "log": attempted.get("log", 0),
+        },
+        "active": {
+            "block": active.get("block", 0),
+            "redirect": active.get("redirect", 0),
+            "rate_limit": active.get("rate_limit", 0),
+        },
+        "attempted_total": sum(attempted.values()),
+        "active_total": sum(active.values()),
+    }
+
+
+async def purge_devices_outside_subnet(db: AsyncSession, subnet: str) -> int:
+    from ipaddress import ip_address, ip_network
+
+    try:
+        network = ip_network(subnet, strict=False)
+    except ValueError:
+        return 0
+
+    result = await db.execute(select(Device.id, Device.ip_address))
+    stale_ids: list[str] = []
+    for device_id, ip in result.all():
+        try:
+            if ip_address(ip) not in network:
+                stale_ids.append(device_id)
+        except ValueError:
+            stale_ids.append(device_id)
+
+    if not stale_ids:
+        return 0
+
+    await db.execute(
+        update(ThreatEvent)
+        .where(ThreatEvent.device_id.in_(stale_ids))
+        .values(device_id=None)
+    )
+    await db.execute(delete(DeviceStat).where(DeviceStat.device_id.in_(stale_ids)))
+    await db.execute(delete(Device).where(Device.id.in_(stale_ids)))
+    return len(stale_ids)

@@ -36,19 +36,21 @@ services:
       GEOIP_ASN_DB_PATH: /app/geoip/GeoLite2-ASN.mmdb
       NETWORK_INTERFACE: ${NETWORK_INTERFACE:-eth0}
       ENVIRONMENT: development
-      FIREWALL_ENABLED: "false"
+      FIREWALL_ENABLED: ${FIREWALL_ENABLED:-true}
       EVENT_BUS_QUEUE_SIZE: 5000
       SERVER_DISPLAY_IP: ${SERVER_DISPLAY_IP:-}
       GATEWAY_IP: ${GATEWAY_IP:-192.168.1.1}
       SCAN_SUBNET: ${SCAN_SUBNET:-}
+      COWRIE_LOG_PATH: /cowrie_logs/cowrie.json
     volumes:
       - ./geoip:/app/geoip:ro
       - ./logs:/app/logs
-      - ./cowrie/logs:/cowrie/var/log/cowrie:ro
+      - ./cowrie/logs:/cowrie_logs:ro
       - /var/run/docker.sock:/var/run/docker.sock # Docker control for Cowrie
     ports:
       - "8000:8000"
       - "8888:8888"
+      - "80:8888"
     cap_add:
       - NET_ADMIN
       - NET_RAW
@@ -62,9 +64,10 @@ services:
     environment:
       - COWRIE_HOSTNAME=server01
     volumes:
-      - ./cowrie/logs:/cowrie/var/log/cowrie
-      - ./cowrie/cowrie.cfg:/cowrie/etc/cowrie.cfg:ro
+      - ./cowrie/logs:/cowrie/cowrie-git/var/log/cowrie
+      - ./cowrie/cowrie.cfg:/cowrie/cowrie-git/etc/cowrie.cfg:ro
     ports:
+      - "22:2222"
       - "2222:2222" # SSH honeypot port
       - "2223:2223" # Telnet honeypot port
 

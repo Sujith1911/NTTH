@@ -3,7 +3,6 @@ Enhanced packet sniffer:
 - Works on Windows with Npcap installed
 - Auto-detects network interface
 - Updates the in-memory live stats registry per packet
-- Falls back to dummy event emitter if Scapy unavailable
 """
 from __future__ import annotations
 

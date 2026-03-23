@@ -4,6 +4,8 @@ Subscribes to 'enforcement_action'.
 """
 from __future__ import annotations
 
+import asyncio
+
 from app.config import get_settings
 from app.core import event_bus
 from app.core.logger import get_logger
@@ -17,18 +19,28 @@ async def _handle_enforcement_action(payload: dict) -> None:
     src_ip = payload.get("src_ip", "")
     dst_port = payload.get("dst_port")
     protocol = payload.get("protocol", "tcp")
+    incident_context = payload.get("incident_context", {})
 
     if action == "allow":
         return
 
-    # Log action: skip firewall enforcement but still report
+    await event_bus.publish("report_event", payload)
+
     if action == "log":
-        await event_bus.publish("report_event", payload)
         return
+
+    asyncio.create_task(_apply_enforcement(payload), name=f"enforce_{src_ip}_{action}")
+
+
+async def _apply_enforcement(payload: dict) -> None:
+    action = payload.get("action")
+    src_ip = payload.get("src_ip", "")
+    dst_port = payload.get("dst_port")
+    protocol = payload.get("protocol", "tcp")
+    incident_context = payload.get("incident_context", {})
 
     if not settings.firewall_enabled:
         log.info("enforcement_agent.firewall_disabled", action=action, ip=src_ip)
-        await event_bus.publish("report_event", payload)
         return
 
     try:
@@ -39,34 +51,41 @@ async def _handle_enforcement_action(payload: dict) -> None:
 
         if action == "rate_limit":
             if not await is_rule_active(src_ip, "rate_limit"):
-                await nft.add_rate_limit(src_ip)
+                await nft.add_rate_limit(
+                    src_ip,
+                    reason=incident_context.get("response_summary") or "Automatic responder throttled a suspicious source.",
+                )
                 log.info("enforcement_agent.rate_limited", ip=src_ip)
 
         elif action == "honeypot":
             if not await is_rule_active(src_ip, "redirect"):
+                honeypot_port = incident_context.get("honeypot_port") or settings.cowrie_redirect_port
                 await nft.add_redirect(
                     src_ip,
-                    src_port=dst_port or 22,
-                    dst_port=settings.cowrie_redirect_port,
+                    src_port=dst_port or 80,
+                    dst_port=honeypot_port,
+                    reason=incident_context.get("response_summary") or "Automatic responder diverted a hostile source to the honeypot.",
                 )
-                # Start Cowrie if needed
-                try:
-                    from app.honeypot.cowrie_controller import ensure_cowrie_running
-                    await ensure_cowrie_running()
-                except Exception as exc:
-                    log.warning("enforcement_agent.cowrie_start_failed", error=str(exc))
+                if honeypot_port == settings.cowrie_redirect_port:
+                    try:
+                        from app.honeypot.cowrie_controller import ensure_cowrie_running
+                        await asyncio.wait_for(ensure_cowrie_running(), timeout=2)
+                    except asyncio.TimeoutError:
+                        log.warning("enforcement_agent.cowrie_start_timeout", ip=src_ip)
+                    except Exception as exc:
+                        log.warning("enforcement_agent.cowrie_start_failed", error=str(exc))
                 log.info("enforcement_agent.redirected_to_honeypot", ip=src_ip)
 
         elif action == "block":
             if not await is_rule_active(src_ip, "block"):
-                await nft.add_block(src_ip)
+                await nft.add_block(
+                    src_ip,
+                    reason=incident_context.get("response_summary") or "Automatic responder blocked a high-risk source.",
+                )
                 log.warning("enforcement_agent.blocked", ip=src_ip, risk_score=payload.get("risk_score"))
 
     except Exception as exc:
         log.error("enforcement_agent.error", action=action, ip=src_ip, error=str(exc))
-
-    # Forward to reporting agent regardless of firewall state
-    await event_bus.publish("report_event", payload)
 
 
 event_bus.subscribe("enforcement_action", _handle_enforcement_action)

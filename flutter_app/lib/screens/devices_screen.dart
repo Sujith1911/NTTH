@@ -178,7 +178,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
     return Scaffold(
       drawer: const AppShellDrawer(),
       appBar: AppBar(
-        title: Text('Devices ($_total total)'),
+        title: Text('Protected Devices ($_total total)'),
         actions: [
           IconButton(
             icon: const Icon(Icons.radar_outlined),
@@ -218,7 +218,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  'Device posture',
+                                  'Protected asset inventory',
                                   style: GoogleFonts.spaceGrotesk(
                                     fontSize: 24,
                                     fontWeight: FontWeight.w700,
@@ -228,8 +228,8 @@ class _DevicesScreenState extends State<DevicesScreen> {
                                 const SizedBox(height: 8),
                                 Text(
                                   ws.connected
-                                      ? 'Live updates are flowing. Device risk changes will appear here as threats are scored.'
-                                      : 'Realtime is offline right now. Pull to refresh or reconnect from the dashboard/settings.',
+                                      ? 'Live updates are flowing. Risk on attacked devices will update here as incidents are persisted.'
+                                      : 'Realtime is offline right now. Pull to refresh or reconnect from the dashboard or settings.',
                                   style: TextStyle(
                                     color: theme.colorScheme.onSurface
                                         .withOpacity(0.65),
@@ -267,13 +267,13 @@ class _DevicesScreenState extends State<DevicesScreen> {
                                 color: theme.iconTheme.color?.withOpacity(0.3),
                                 size: 64),
                             const SizedBox(height: 12),
-                            Text('No devices discovered yet',
+                            Text('No protected devices discovered yet',
                                 style: TextStyle(
                                     color: theme.colorScheme.onSurface
                                         .withOpacity(0.5))),
                             const SizedBox(height: 4),
                             Text(
-                                'Run a network scan to populate devices in realtime',
+                                'Run a network scan to build the live asset inventory',
                                 style: TextStyle(
                                     color: theme.colorScheme.onSurface
                                         .withOpacity(0.3),

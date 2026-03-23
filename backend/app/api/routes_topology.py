@@ -66,13 +66,19 @@ def _get_local_ip() -> str:
         return "127.0.0.1"
 
 
-def _display_local_ip(request: Request) -> str:
+def _display_local_ip(request: Request, devices) -> str:
     if settings.server_display_ip:
         return settings.server_display_ip
     host = request.url.hostname or ""
     if host not in {"127.0.0.1", "localhost", "::1"}:
         return host
-    return _get_local_ip()
+    detected = _get_local_ip()
+    if detected != "127.0.0.1":
+        return detected
+    trusted = next((device.ip_address for device in devices if getattr(device, "is_trusted", False)), None)
+    if trusted:
+        return trusted
+    return detected
 
 
 def _should_hide_ip(ip: str) -> bool:
@@ -106,7 +112,7 @@ async def get_topology(
     scan_state = get_scan_state()
 
     gateway_ip = _get_gateway()
-    local_ip = _display_local_ip(request)
+    local_ip = _display_local_ip(request, devices)
 
     # Build nodes
     nodes = []

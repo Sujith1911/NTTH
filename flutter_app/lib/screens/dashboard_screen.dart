@@ -20,6 +20,9 @@ class _DashboardScreenState extends State<DashboardScreen>
     with SingleTickerProviderStateMixin {
   Map<String, dynamic>? _stats;
   Map<String, dynamic>? _topology;
+  Map<String, dynamic>? _health;
+  Map<String, dynamic>? _firewallStatus;
+  List<Map<String, dynamic>> _agents = [];
   VoidCallback? _wsListener;
   late final AnimationController _controller;
   late final Animation<double> _fade;
@@ -54,6 +57,9 @@ class _DashboardScreenState extends State<DashboardScreen>
       _attachWsListener();
       _loadStats();
       _loadTopology();
+      _loadHealth();
+      _loadAgents();
+      _loadFirewallStatus();
       _controller.forward();
     });
   }
@@ -84,10 +90,14 @@ class _DashboardScreenState extends State<DashboardScreen>
       final latest = ws.events.first;
       final type = latest['type']?.toString();
       if (type == 'threat' ||
+          type == 'incident_response' ||
+          type == 'honeypot_session' ||
           type == 'topology_updated' ||
           type == 'device_seen' ||
           type == 'device_updated') {
         _loadStats();
+        _loadHealth();
+        _loadFirewallStatus();
       }
       if (type == 'topology_updated' ||
           type == 'device_seen' ||
@@ -114,6 +124,39 @@ class _DashboardScreenState extends State<DashboardScreen>
       final resp = await api.get('/network/topology');
       if (mounted) {
         setState(() => _topology = resp.data as Map<String, dynamic>);
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _loadHealth() async {
+    try {
+      final api = context.read<AuthService>().api;
+      final resp = await api.get('/system/health');
+      if (mounted) {
+        setState(() => _health = resp.data as Map<String, dynamic>);
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _loadAgents() async {
+    try {
+      final api = context.read<AuthService>().api;
+      final resp = await api.get('/system/agents');
+      if (mounted) {
+        setState(() {
+          _agents = ((resp.data as Map<String, dynamic>)['items'] as List)
+              .cast<Map<String, dynamic>>();
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _loadFirewallStatus() async {
+    try {
+      final api = context.read<AuthService>().api;
+      final resp = await api.get('/firewall/status');
+      if (mounted) {
+        setState(() => _firewallStatus = resp.data as Map<String, dynamic>);
       }
     } catch (_) {}
   }
@@ -209,10 +252,21 @@ class _DashboardScreenState extends State<DashboardScreen>
     final nodes = (_topology?['nodes'] as List? ?? []);
     final deviceCount = nodes.where((n) => n['type'] == 'device').length;
     final attackerCount = nodes.where((n) => n['type'] == 'attacker').length;
-    final honeypotCount = _toInt(_stats?['total_honeypot_sessions']);
     final threatCount = _toInt(_stats?['total_threats']);
     final highRisk = _toInt(_stats?['high_risk_threats']);
     final ruleCount = _toInt(_stats?['active_firewall_rules']);
+    final containment =
+        _firewallStatus?['containment'] as Map<String, dynamic>?;
+    final attempted = containment?['attempted'] as Map<String, dynamic>?;
+    final attemptedContainment = _toInt(containment?['attempted_total']) -
+        _toInt(attempted?['log']);
+    final redirectAttempts = _toInt(attempted?['honeypot']);
+    final firewallMode =
+        _health?['firewall_mode']?.toString().replaceAll('_', ' ') ?? 'unknown';
+    final agentsActive =
+        '${_health?['security_agents_active'] ?? 0}/${_health?['security_agents_total'] ?? 0}';
+    final honeypotReady = _health?['honeypot_ready'] == true;
+    final detectionMode = _health?['realtime_mode']?.toString() ?? 'unknown';
     final gatewayIp =
         (_topology?['meta'] as Map<String, dynamic>?)?['gateway_ip']
                 ?.toString() ??
@@ -230,6 +284,14 @@ class _DashboardScreenState extends State<DashboardScreen>
       children: [
         _buildHeroSection(theme, deviceCount, attackerCount, gatewayIp),
         const SizedBox(height: 22),
+          _buildOperationalSummary(
+            theme,
+            firewallMode: firewallMode,
+            agentsActive: agentsActive,
+            attemptedContainment: attemptedContainment,
+            ws: ws,
+          ),
+        const SizedBox(height: 22),
         GridView.count(
           crossAxisCount: columns,
           shrinkWrap: true,
@@ -243,28 +305,40 @@ class _DashboardScreenState extends State<DashboardScreen>
                   : 1.5,
           children: [
             RiskCard(
-              title: 'Threat events',
+              title: 'Live incidents',
               value: '$threatCount',
               icon: Icons.warning_amber_outlined,
               color: const Color(0xFFD14343),
+              statusLabel: 'INCIDENTS',
+              detail: 'Persisted incidents detected against your environment.',
             ),
             RiskCard(
-              title: 'High risk alerts',
+              title: 'Critical responses',
               value: '$highRisk',
               icon: Icons.priority_high_outlined,
               color: const Color(0xFFF59E0B),
+              statusLabel: 'PRIORITY',
+              detail: 'Persisted incidents severe enough to trigger containment.',
             ),
             RiskCard(
-              title: 'Protected devices',
+              title: 'Protected assets',
               value: '$deviceCount',
               icon: Icons.devices_outlined,
               color: const Color(0xFF0F6CBD),
+              statusLabel: detectionMode == 'scan_fallback' ? 'SCANNED' : 'LIVE',
+              detail: detectionMode == 'scan_fallback'
+                  ? 'Asset inventory built from scheduled and manual scans.'
+                  : 'Asset inventory updated from live packet capture.',
             ),
             RiskCard(
-              title: 'Honeypot sessions',
-              value: '$honeypotCount',
+              title: 'Honeypot redirects',
+              value: '$redirectAttempts',
               icon: Icons.bug_report_outlined,
               color: const Color(0xFF0F9D7A),
+              statusLabel: honeypotReady ? 'READY' : 'CHECK',
+              detail: honeypotReady
+                  ? 'How many times hostile traffic was diverted into deception services.'
+                  : 'Deception service needs attention before it can receive redirected traffic.',
             ),
           ],
         ),
@@ -291,6 +365,50 @@ class _DashboardScreenState extends State<DashboardScreen>
           ],
         ),
       ],
+    );
+  }
+
+  Widget _buildOperationalSummary(
+    ThemeData theme, {
+    required String firewallMode,
+    required String agentsActive,
+    required int attemptedContainment,
+    required WebSocketService ws,
+  }) {
+    final chips = [
+      'Firewall: $firewallMode',
+      'Containment attempts: $attemptedContainment',
+      'Security agents: $agentsActive active',
+      'Live feed: ${ws.connected ? 'connected' : 'offline'}',
+      'Detection: ${_health?['realtime_mode'] ?? 'unknown'}',
+      'Honeypot: ${_health?['honeypot_ready'] == true ? 'ready' : 'needs attention'}',
+    ];
+    return GlassyContainer(
+      borderRadius: 24,
+      padding: const EdgeInsets.all(18),
+      child: Wrap(
+        spacing: 12,
+        runSpacing: 12,
+        children: chips
+            .map(
+              (chip) => Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  chip,
+                  style: TextStyle(
+                    color: theme.colorScheme.onSurface.withOpacity(0.74),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            )
+            .toList(),
+      ),
     );
   }
 
@@ -327,7 +445,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                         borderRadius: BorderRadius.circular(999),
                       ),
                       child: Text(
-                        'Operations overview',
+                        'Live operations',
                         style: GoogleFonts.spaceGrotesk(
                           color: theme.colorScheme.primary,
                           fontWeight: FontWeight.w700,
@@ -337,7 +455,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                     ),
                     const SizedBox(height: 18),
                     Text(
-                      'See your live network posture without the noise.',
+                      'Understand attacks, protected assets, and response in one place.',
                       style: GoogleFonts.spaceGrotesk(
                         fontSize: compact ? 28 : 36,
                         fontWeight: FontWeight.w700,
@@ -347,7 +465,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                     ),
                     const SizedBox(height: 14),
                     Text(
-                      'Gateway $gatewayIp is the anchor for this view. Realtime events, scans, and honeypot sessions are surfaced here as soon as the backend publishes them.',
+                      'Gateway $gatewayIp anchors this view. Only persisted backend events, live scans, and active honeypot activity are shown here.',
                       style: TextStyle(
                         fontSize: 14,
                         height: 1.7,
@@ -359,6 +477,11 @@ class _DashboardScreenState extends State<DashboardScreen>
                       spacing: 12,
                       runSpacing: 12,
                       children: [
+                        _ActionChip(
+                          icon: Icons.monitor_heart_outlined,
+                          label: 'Open system health',
+                          onTap: () => context.go('/system'),
+                        ),
                         _ActionChip(
                           icon: Icons.hub_outlined,
                           label: 'Open topology',
@@ -393,7 +516,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                       ),
                       const SizedBox(height: 12),
                       _MiniStat(
-                        title: 'Active threat nodes',
+                        title: 'Tracked attackers',
                         value: '$attackerCount',
                         icon: Icons.gpp_maybe_outlined,
                       ),
@@ -418,7 +541,7 @@ class _DashboardScreenState extends State<DashboardScreen>
           Row(
             children: [
               Text(
-                'Live activity',
+                'Realtime analysis',
                 style: GoogleFonts.spaceGrotesk(
                   fontSize: 22,
                   fontWeight: FontWeight.w700,
@@ -427,7 +550,7 @@ class _DashboardScreenState extends State<DashboardScreen>
               ),
               const Spacer(),
               Text(
-                '${events.length} recent events',
+                '${events.length} persisted events',
                 style: TextStyle(
                   color: theme.colorScheme.onSurface.withOpacity(0.58),
                   fontWeight: FontWeight.w600,
@@ -469,9 +592,18 @@ class _DashboardScreenState extends State<DashboardScreen>
     final statusLine = _realtimeStatusText(ws);
     final items = [
       ('Gateway', gatewayIp, Icons.router_outlined),
-      ('Tracked devices', '$deviceCount', Icons.devices_outlined),
-      ('Threat nodes', '$attackerCount', Icons.warning_amber_outlined),
-      ('Firewall rules', '$ruleCount', Icons.security_outlined),
+      ('Visible devices', '$deviceCount', Icons.devices_outlined),
+      ('Tracked attackers', '$attackerCount', Icons.warning_amber_outlined),
+        (
+          'Firewall',
+          '${_health?['firewall_mode'] ?? 'unknown'} ($ruleCount active rules)',
+          Icons.security_outlined
+        ),
+      (
+        'Agents',
+        '${_health?['security_agents_active'] ?? _agents.length}/${_health?['security_agents_total'] ?? _agents.length}',
+        Icons.psychology_outlined
+      ),
     ];
 
     return GlassyContainer(
@@ -483,7 +615,7 @@ class _DashboardScreenState extends State<DashboardScreen>
           Row(
             children: [
               Text(
-                'System posture',
+                'Response posture',
                 style: GoogleFonts.spaceGrotesk(
                   fontSize: 22,
                   fontWeight: FontWeight.w700,
@@ -748,6 +880,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                   onPressed: () {
                     _loadStats();
                     _loadTopology();
+                    _loadHealth();
                   },
                   icon: Icon(
                     Icons.refresh,
@@ -949,10 +1082,26 @@ class _EventRow extends StatelessWidget {
     final risk = (event['risk_score'] as num?)?.toDouble() ?? 0;
     final title = type == 'topology_updated'
         ? 'Topology refreshed'
-        : '${event['src_ip'] ?? 'Unknown'} ${event['threat_type'] ?? 'activity'}';
+        : type == 'honeypot_session'
+            ? 'Honeypot session ${event['attacker_ip'] ?? 'unknown'}'
+            : type == 'incident_response'
+                ? 'Responder engaged ${event['src_ip'] ?? 'unknown'}'
+            : '${event['src_ip'] ?? 'Unknown'} ${event['threat_type'] ?? 'activity'}';
     final subtitle = type == 'topology_updated'
         ? '${event['devices_found'] ?? 0} devices found in latest scan'
-        : '${event['action_taken'] ?? event['action'] ?? 'logged'}';
+        : type == 'honeypot_session'
+            ? '${event['honeypot_type'] ?? 'honeypot'} captured an interactive attacker session'
+            : type == 'incident_response'
+                ? [
+                    'Action ${event['action'] ?? 'responded'}',
+                    if (event['victim_ip'] != null) 'victim ${event['victim_ip']}',
+                    if (event['location_summary'] != null) event['location_summary'],
+                  ].join(' - ')
+            : [
+                'Action ${event['action_taken'] ?? event['action'] ?? 'logged'}',
+                if (event['victim_ip'] != null) 'victim ${event['victim_ip']}',
+                if (event['location_summary'] != null) event['location_summary'],
+              ].join(' - ');
 
     final Color dotColor;
     if (type == 'topology_updated') {

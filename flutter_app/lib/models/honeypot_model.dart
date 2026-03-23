@@ -9,8 +9,12 @@ class HoneypotModel {
   final double? durationSeconds;
   final String? country;
   final String? city;
+  final String? asn;
+  final String? org;
   final double? latitude;
   final double? longitude;
+  final String? locationAccuracy;
+  final String? locationSummary;
   final DateTime startedAt;
   final DateTime? endedAt;
 
@@ -25,8 +29,12 @@ class HoneypotModel {
     this.durationSeconds,
     this.country,
     this.city,
+    this.asn,
+    this.org,
     this.latitude,
     this.longitude,
+    this.locationAccuracy,
+    this.locationSummary,
     required this.startedAt,
     this.endedAt,
   });
@@ -42,8 +50,12 @@ class HoneypotModel {
         durationSeconds: j['duration_seconds'] != null ? (j['duration_seconds'] as num).toDouble() : null,
         country: j['country'],
         city: j['city'],
+        asn: j['asn'],
+        org: j['org'],
         latitude: j['latitude'] != null ? (j['latitude'] as num).toDouble() : null,
         longitude: j['longitude'] != null ? (j['longitude'] as num).toDouble() : null,
+        locationAccuracy: j['location_accuracy'],
+        locationSummary: j['location_summary'],
         startedAt: DateTime.parse(j['started_at']),
         endedAt: j['ended_at'] != null ? DateTime.parse(j['ended_at']) : null,
       );

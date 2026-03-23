@@ -8,6 +8,8 @@ class RiskCard extends StatelessWidget {
   final String value;
   final IconData icon;
   final Color color;
+  final String? detail;
+  final String statusLabel;
 
   const RiskCard({
     super.key,
@@ -15,6 +17,8 @@ class RiskCard extends StatelessWidget {
     required this.value,
     required this.icon,
     required this.color,
+    this.detail,
+    this.statusLabel = 'LIVE',
   });
 
   @override
@@ -48,7 +52,7 @@ class RiskCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(999),
                 ),
                 child: Text(
-                  'LIVE',
+                  statusLabel,
                   style: GoogleFonts.spaceGrotesk(
                     fontSize: 10,
                     fontWeight: FontWeight.w700,
@@ -78,6 +82,17 @@ class RiskCard extends StatelessWidget {
               fontWeight: FontWeight.w600,
             ),
           ),
+          if (detail != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              detail!,
+              style: TextStyle(
+                color: theme.colorScheme.onSurface.withOpacity(0.52),
+                fontSize: 12,
+                height: 1.45,
+              ),
+            ),
+          ],
         ],
       ),
     );

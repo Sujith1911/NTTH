@@ -56,17 +56,17 @@ class Settings(BaseSettings):
     geoip_asn_db_path: str = "./geoip/GeoLite2-ASN.mmdb"
 
     # ── IDS / Risk thresholds ─────────────────────────────────────
-    risk_log_threshold: float = 0.4
-    risk_rate_limit_threshold: float = 0.7
-    risk_honeypot_threshold: float = 0.85
+    risk_log_threshold: float = 0.2
+    risk_rate_limit_threshold: float = 0.35
+    risk_honeypot_threshold: float = 0.45
     risk_block_threshold: float = 0.95
 
     # ── Rule engine ───────────────────────────────────────────────
     port_scan_window_seconds: int = 10
-    port_scan_unique_ports: int = 15
-    syn_flood_per_second: int = 200
+    port_scan_unique_ports: int = 8
+    syn_flood_per_second: int = 80
     brute_force_window_seconds: int = 60
-    brute_force_attempts: int = 10
+    brute_force_attempts: int = 5
 
     # ── Firewall ──────────────────────────────────────────────────
     nft_table: str = "inet ntth_filter"
@@ -76,10 +76,11 @@ class Settings(BaseSettings):
     cowrie_redirect_port: int = 2222
 
     event_bus_queue_size: int = 5000
+    enable_simulation_routes: bool = False
 
     # ── Honeypot ─────────────────────────────────────────────────
     cowrie_container_name: str = "ntth_cowrie"
-    cowrie_log_path: str = "/cowrie/var/log/cowrie/cowrie.json"
+    cowrie_log_path: str = "/cowrie_logs/cowrie.json"
     http_honeypot_port: int = 8888
     http_honeypot_host: str = "0.0.0.0"
 

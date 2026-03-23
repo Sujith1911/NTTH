@@ -98,6 +98,15 @@ class ThreatEventRead(OrmBase):
     acknowledged: bool
     acknowledged_by: Optional[str] = None
     notes: Optional[str] = None
+    source_tag: Optional[str] = None
+    victim_ip: Optional[str] = None
+    response_mode: Optional[str] = None
+    location_accuracy: Optional[str] = None
+    location_summary: Optional[str] = None
+    network_origin: Optional[str] = None
+    target_hidden: bool = False
+    quarantine_target: bool = False
+    honeypot_port: Optional[int] = None
 
 
 class ThreatAcknowledge(BaseModel):
@@ -181,6 +190,12 @@ class HealthResponse(BaseModel):
     packet_capture_reason: Optional[str] = None
     last_scan: Optional[str] = None
     discovered_devices: int = 0
+    firewall_enabled: bool = False
+    firewall_mode: str = "disabled"
+    firewall_reason: Optional[str] = None
+    honeypot_ready: bool = False
+    security_agents_active: int = 0
+    security_agents_total: int = 0
 
 
 # ── Pagination ────────────────────────────────────────────────────────────────
