@@ -6,7 +6,6 @@ from __future__ import annotations
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import (
     create_access_token,
@@ -29,7 +28,7 @@ router = APIRouter()
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
+async def login(payload: LoginRequest, db=Depends(get_db)):
     user = await crud.get_user_by_username(db, payload.username)
     if not user or not verify_password(payload.password, user.hashed_password):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
@@ -43,7 +42,7 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/refresh", response_model=TokenResponse)
-async def refresh(body: RefreshTokenRequest, db: AsyncSession = Depends(get_db)):
+async def refresh(body: RefreshTokenRequest, db=Depends(get_db)):
     """Accept refresh_token in the request body (not query param) for security."""
     payload = verify_token(body.refresh_token)
     if not payload or payload.get("type") != "refresh":
@@ -67,7 +66,7 @@ async def get_me(current_user=Depends(get_current_user)):
 @router.post("/register", response_model=UserRead, status_code=status.HTTP_201_CREATED)
 async def register(
     payload: UserCreate,
-    db: AsyncSession = Depends(get_db),
+    db=Depends(get_db),
     _admin=Depends(require_admin),
 ):
     existing = await crud.get_user_by_username(db, payload.username)
@@ -79,7 +78,7 @@ async def register(
 
 @router.get("/users", response_model=list[UserRead])
 async def list_users(
-    db: AsyncSession = Depends(get_db),
+    db=Depends(get_db),
     _admin=Depends(require_admin),
 ):
     """Admin-only: list all registered users."""
@@ -90,7 +89,7 @@ async def list_users(
 @router.delete("/users/{username}", status_code=status.HTTP_204_NO_CONTENT)
 async def deactivate_user(
     username: str,
-    db: AsyncSession = Depends(get_db),
+    db=Depends(get_db),
     admin=Depends(require_admin),
 ):
     """Admin-only: soft-delete (deactivate) a user account."""

@@ -8,7 +8,6 @@ import shutil
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.database import crud
@@ -45,7 +44,7 @@ def _firewall_runtime_status() -> dict:
 
 @router.get("/status")
 async def firewall_status(
-    db: AsyncSession = Depends(get_db),
+    db=Depends(get_db),
     _user=Depends(get_current_user),
 ):
     active_rules = await crud.list_active_firewall_rules(db)
@@ -67,7 +66,7 @@ async def firewall_status(
 
 @router.get("/rules", response_model=list[FirewallRuleRead])
 async def list_rules(
-    db: AsyncSession = Depends(get_db),
+    db=Depends(get_db),
     _user=Depends(get_current_user),
 ):
     """List currently active firewall rules."""
@@ -79,7 +78,7 @@ async def list_rules(
 async def list_rules_history(
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
-    db: AsyncSession = Depends(get_db),
+    db=Depends(get_db),
     _user=Depends(get_current_user),
 ):
     """Paginated history of ALL firewall rules (active and expired)."""
@@ -93,7 +92,7 @@ async def list_rules_history(
 @router.post("/rules", response_model=FirewallRuleRead, status_code=status.HTTP_201_CREATED)
 async def add_rule(
     payload: FirewallRuleCreate,
-    db: AsyncSession = Depends(get_db),
+    db=Depends(get_db),
     admin=Depends(require_admin),
 ):
     if not settings.firewall_enabled:
@@ -123,6 +122,20 @@ async def add_rule(
                 created_by=admin.username,
                 reason=payload.reason,
             )
+        elif payload.rule_type == "redirect":
+            if payload.target_port is None:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="redirect rules require target_port to specify the original attacked port",
+                )
+            handle = await nft.add_redirect(
+                payload.target_ip,
+                src_port=payload.target_port,
+                dst_port=settings.cowrie_redirect_port,
+                persist=False,
+                created_by=admin.username,
+                reason=payload.reason,
+            )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"nftables error: {exc}")
 
@@ -134,7 +147,16 @@ async def add_rule(
         db,
         rule_type=payload.rule_type,
         target_ip=payload.target_ip,
-        target_port=payload.target_port,
+        target_port=(
+            settings.cowrie_redirect_port
+            if payload.rule_type == "redirect"
+            else payload.target_port
+        ),
+        match_dst_port=(
+            payload.target_port
+            if payload.rule_type == "redirect"
+            else None
+        ),
         protocol=payload.protocol,
         nft_handle=handle,
         created_by=admin.username,
@@ -147,7 +169,7 @@ async def add_rule(
 @router.delete("/rules/{rule_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_rule(
     rule_id: str,
-    db: AsyncSession = Depends(get_db),
+    db=Depends(get_db),
     _admin=Depends(require_admin),
 ):
     if not settings.firewall_enabled:
