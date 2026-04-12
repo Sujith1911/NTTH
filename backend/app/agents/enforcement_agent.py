@@ -35,6 +35,7 @@ async def _handle_enforcement_action(payload: dict) -> None:
 async def _apply_enforcement(payload: dict) -> None:
     action = payload.get("action")
     src_ip = payload.get("src_ip", "")
+    dst_ip = payload.get("dst_ip")
     dst_port = payload.get("dst_port")
     protocol = payload.get("protocol", "tcp")
     incident_context = payload.get("incident_context", {})
@@ -58,15 +59,34 @@ async def _apply_enforcement(payload: dict) -> None:
                 log.info("enforcement_agent.rate_limited", ip=src_ip)
 
         elif action == "honeypot":
-            if not await is_rule_active(src_ip, "redirect"):
+            if not await is_rule_active(
+                src_ip,
+                "redirect",
+                match_dst_ip=dst_ip,
+                match_dst_port=dst_port,
+            ):
                 honeypot_port = incident_context.get("honeypot_port") or settings.cowrie_redirect_port
-                await nft.add_redirect(
+                handle = await nft.add_redirect(
                     src_ip,
                     src_port=dst_port or 80,
                     dst_port=honeypot_port,
+                    dst_ip=dst_ip,
                     reason=incident_context.get("response_summary") or "Automatic responder diverted a hostile source to the honeypot.",
                 )
-                if honeypot_port == settings.cowrie_redirect_port:
+                if handle:
+                    try:
+                        from app.honeypot.session_logger import register_redirect_context
+                        register_redirect_context(
+                            attacker_ip=src_ip,
+                            observed_attacker_ip=src_ip,
+                            victim_ip=dst_ip,
+                            victim_port=dst_port,
+                            honeypot_type="ssh" if honeypot_port == settings.cowrie_redirect_port else "http",
+                            honeypot_port=honeypot_port,
+                        )
+                    except Exception as exc:
+                        log.debug("enforcement_agent.redirect_context_failed", error=str(exc))
+                if handle and honeypot_port == settings.cowrie_redirect_port:
                     try:
                         from app.honeypot.cowrie_controller import ensure_cowrie_running
                         await asyncio.wait_for(ensure_cowrie_running(), timeout=2)
@@ -74,7 +94,8 @@ async def _apply_enforcement(payload: dict) -> None:
                         log.warning("enforcement_agent.cowrie_start_timeout", ip=src_ip)
                     except Exception as exc:
                         log.warning("enforcement_agent.cowrie_start_failed", error=str(exc))
-                log.info("enforcement_agent.redirected_to_honeypot", ip=src_ip)
+                if handle:
+                    log.info("enforcement_agent.redirected_to_honeypot", ip=src_ip, victim_ip=dst_ip, victim_port=dst_port)
 
         elif action == "block":
             if not await is_rule_active(src_ip, "block"):

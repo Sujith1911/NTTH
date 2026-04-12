@@ -3,6 +3,8 @@ class FirewallRuleModel {
   final String ruleType;
   final String targetIp;
   final int? targetPort;
+  final String? matchDstIp;
+  final int? matchDstPort;
   final String? protocol;
   final String? nftHandle;
   final bool isActive;
@@ -16,6 +18,8 @@ class FirewallRuleModel {
     required this.ruleType,
     required this.targetIp,
     this.targetPort,
+    this.matchDstIp,
+    this.matchDstPort,
     this.protocol,
     this.nftHandle,
     required this.isActive,
@@ -30,6 +34,8 @@ class FirewallRuleModel {
         ruleType: j['rule_type'],
         targetIp: j['target_ip'],
         targetPort: j['target_port'],
+        matchDstIp: j['match_dst_ip'],
+        matchDstPort: j['match_dst_port'],
         protocol: j['protocol'],
         nftHandle: j['nft_handle'],
         isActive: j['is_active'] ?? true,

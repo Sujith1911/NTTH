@@ -153,16 +153,15 @@ class NFTManager:
         src_port: int,
         dst_port: int,
         *,
+        dst_ip: Optional[str] = None,
         persist: bool = True,
         created_by: str = "system",
         reason: Optional[str] = None,
     ) -> Optional[str]:
         """Redirect src_ip TCP traffic from src_port to dst_port (honeypot)."""
         await self.ensure_infra()
-        rule = (
-            f"ip saddr {src_ip} tcp dport {src_port} "
-            f"redirect to :{dst_port}"
-        )
+        match_dst = f"ip daddr {dst_ip} " if dst_ip else ""
+        rule = f"ip saddr {src_ip} {match_dst}tcp dport {src_port} redirect to :{dst_port}"
         rc, _, stderr = await _run_nft(
             "add",
             "rule",
@@ -182,6 +181,8 @@ class NFTManager:
                     "redirect",
                     f"nat:{handle}",
                     target_port=dst_port,
+                    match_dst_ip=dst_ip,
+                    match_dst_port=src_port,
                     created_by=created_by,
                     reason=reason,
                 )

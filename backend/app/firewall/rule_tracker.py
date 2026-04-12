@@ -19,6 +19,8 @@ async def track_rule(
     rule_type: str,
     nft_handle: Optional[str] = None,
     target_port: Optional[int] = None,
+    match_dst_ip: Optional[str] = None,
+    match_dst_port: Optional[int] = None,
     ttl_seconds: Optional[int] = None,
     created_by: str = "system",
     reason: Optional[str] = None,
@@ -33,6 +35,8 @@ async def track_rule(
             rule_type=rule_type,
             target_ip=target_ip,
             target_port=target_port,
+            match_dst_ip=match_dst_ip,
+            match_dst_port=match_dst_port,
             nft_handle=nft_handle,
             is_active=True,
             created_by=created_by,
@@ -42,7 +46,22 @@ async def track_rule(
         await db.commit()
 
 
-async def is_rule_active(target_ip: str, rule_type: str) -> bool:
-    """Return True if an active rule of this type already exists for the IP."""
+async def is_rule_active(
+    target_ip: str,
+    rule_type: str,
+    *,
+    match_dst_ip: Optional[str] = None,
+    match_dst_port: Optional[int] = None,
+) -> bool:
+    """Return True if an active rule of this type already exists for the same flow."""
     async with AsyncSessionLocal() as db:
-        return await rule_exists_for_ip(db, target_ip, rule_type)
+        if match_dst_ip is None and match_dst_port is None:
+            return await rule_exists_for_ip(db, target_ip, rule_type)
+        from app.database.crud import rule_exists
+        return await rule_exists(
+            db,
+            target_ip=target_ip,
+            rule_type=rule_type,
+            match_dst_ip=match_dst_ip,
+            match_dst_port=match_dst_port,
+        )

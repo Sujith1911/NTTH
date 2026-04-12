@@ -9,6 +9,7 @@ import asyncio
 import json
 import os
 from datetime import datetime
+from typing import TextIO
 
 from app.config import get_settings
 from app.core.logger import get_logger
@@ -54,23 +55,44 @@ async def watch_cowrie_log() -> None:
             log.warning("cowrie_watcher.timeout", path=log_path)
             return
 
-    log.info("cowrie_watcher.started", path=log_path)
+    file_handle: TextIO | None = None
+    current_inode: tuple[int, int] | None = None
 
-    with open(log_path, "r", encoding="utf-8") as f:
-        # Seek to end so we only catch new events
-        f.seek(0, 2)
-        while True:
-            line = f.readline()
+    while True:
+        try:
+            stat = os.stat(log_path)
+            inode = (stat.st_dev, stat.st_ino)
+            if file_handle is None or current_inode != inode:
+                if file_handle is not None:
+                    file_handle.close()
+                    log.info("cowrie_watcher.reopened", path=log_path)
+                file_handle = open(log_path, "r", encoding="utf-8")
+                current_inode = inode
+                file_handle.seek(0, os.SEEK_END)
+                log.info("cowrie_watcher.started", path=log_path)
+
+            line = file_handle.readline()
             if not line:
+                try:
+                    latest_size = os.path.getsize(log_path)
+                except OSError:
+                    latest_size = None
+                if latest_size is not None and file_handle.tell() > latest_size:
+                    file_handle.close()
+                    file_handle = None
+                    current_inode = None
+                    log.info("cowrie_watcher.reset_detected", path=log_path)
+                    continue
                 await asyncio.sleep(0.5)
                 continue
+
             line = line.strip()
             if not line:
                 continue
+
             try:
                 event = json.loads(line)
                 event_id = event.get("eventid", "")
-                # Process relevant events
                 if event_id in (
                     "cowrie.login.failed",
                     "cowrie.login.success",
@@ -78,12 +100,18 @@ async def watch_cowrie_log() -> None:
                 ):
                     await log_cowrie_session(event)
                 elif event_id == "cowrie.session.closed":
-                    # Update the ended_at timestamp for an existing session
                     await _close_cowrie_session(event)
             except json.JSONDecodeError:
-                pass
+                log.debug("cowrie_watcher.json_decode_skipped")
             except Exception as exc:
                 log.error("cowrie_watcher.error", error=str(exc))
+        except FileNotFoundError:
+            file_handle = None
+            current_inode = None
+            await asyncio.sleep(1)
+        except Exception as exc:
+            log.error("cowrie_watcher.loop_error", error=str(exc))
+            await asyncio.sleep(1)
 
 
 async def _close_cowrie_session(event: dict) -> None:

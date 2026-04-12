@@ -109,12 +109,17 @@ class HoneypotSession(Base):
     id = Column(String(36), primary_key=True, default=_uuid)
     session_id = Column(String(64), unique=True, nullable=False, index=True)  # Cowrie session ID
     attacker_ip = Column(String(45), nullable=False, index=True)
+    observed_attacker_ip = Column(String(45), nullable=True)
     attacker_port = Column(Integer, nullable=True)
+    victim_ip = Column(String(45), nullable=True, index=True)
+    victim_port = Column(Integer, nullable=True)
     honeypot_type = Column(String(16), nullable=False)  # "ssh" | "http"
     username_tried = Column(String(128), nullable=True)
     password_tried = Column(String(256), nullable=True)
     commands_run = Column(Text, nullable=True)  # JSON list
     duration_seconds = Column(Float, nullable=True)
+    source_masked = Column(Boolean, default=False, nullable=False)
+    source_mask_reason = Column(Text, nullable=True)
     # GeoIP
     country = Column(String(64), nullable=True)
     city = Column(String(64), nullable=True)
@@ -136,6 +141,8 @@ class FirewallRule(Base):
     rule_type = Column(String(32), nullable=False)  # rate_limit | block | redirect | drop
     target_ip = Column(String(45), nullable=False, index=True)
     target_port = Column(Integer, nullable=True)
+    match_dst_ip = Column(String(45), nullable=True, index=True)
+    match_dst_port = Column(Integer, nullable=True)
     protocol = Column(String(8), nullable=True)
     nft_handle = Column(String(64), nullable=True)  # nftables internal handle for deletion
     is_active = Column(Boolean, default=True, nullable=False)

@@ -42,6 +42,7 @@ services:
       GATEWAY_IP: ${GATEWAY_IP:-192.168.1.1}
       SCAN_SUBNET: ${SCAN_SUBNET:-}
       COWRIE_LOG_PATH: /cowrie_logs/cowrie.json
+      COWRIE_REDIRECT_PORT: ${COWRIE_REDIRECT_PORT:-30022}
     volumes:
       - ./geoip:/app/geoip:ro
       - ./logs:/app/logs
@@ -67,9 +68,7 @@ services:
       - ./cowrie/logs:/cowrie/cowrie-git/var/log/cowrie
       - ./cowrie/cowrie.cfg:/cowrie/cowrie-git/etc/cowrie.cfg:ro
     ports:
-      - "22:2222"
-      - "2222:2222" # SSH honeypot port
-      - "2223:2223" # Telnet honeypot port
+      - "30022:2222" # SSH honeypot port
 
 volumes:
   postgres_data:

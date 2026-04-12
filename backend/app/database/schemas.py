@@ -119,12 +119,17 @@ class HoneypotSessionRead(OrmBase):
     id: str
     session_id: str
     attacker_ip: str
+    observed_attacker_ip: Optional[str] = None
     attacker_port: Optional[int] = None
+    victim_ip: Optional[str] = None
+    victim_port: Optional[int] = None
     honeypot_type: str
     username_tried: Optional[str] = None
     password_tried: Optional[str] = None
     commands_run: Optional[str] = None
     duration_seconds: Optional[float] = None
+    source_masked: bool = False
+    source_mask_reason: Optional[str] = None
     country: Optional[str] = None
     city: Optional[str] = None
     asn: Optional[str] = None
@@ -151,6 +156,8 @@ class FirewallRuleRead(OrmBase):
     rule_type: str
     target_ip: str
     target_port: Optional[int] = None
+    match_dst_ip: Optional[str] = None
+    match_dst_port: Optional[int] = None
     protocol: Optional[str] = None
     nft_handle: Optional[str] = None
     is_active: bool

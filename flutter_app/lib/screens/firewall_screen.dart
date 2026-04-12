@@ -20,6 +20,7 @@ class _FirewallScreenState extends State<FirewallScreen> {
   Map<String, dynamic>? _status;
   bool _loading = true;
   String? _error;
+  String _query = '';
   DateTime? _lastSyncedAt;
 
   @override
@@ -133,6 +134,21 @@ class _FirewallScreenState extends State<FirewallScreen> {
     };
   }
 
+  List<FirewallRuleModel> get _filteredRules {
+    if (_query.trim().isEmpty) return _rules;
+    final q = _query.trim().toLowerCase();
+    return _rules.where((rule) {
+      return [
+        rule.targetIp,
+        rule.matchDstIp,
+        rule.ruleType,
+        rule.reason,
+        rule.protocol,
+        rule.createdBy,
+      ].whereType<String>().any((value) => value.toLowerCase().contains(q));
+    }).toList();
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -234,6 +250,24 @@ class _FirewallScreenState extends State<FirewallScreen> {
                         ),
                       ),
                       const SizedBox(height: 12),
+                      TextField(
+                        onChanged: (value) => setState(() => _query = value),
+                        style: TextStyle(color: theme.colorScheme.onSurface),
+                        decoration: InputDecoration(
+                          hintText: 'Filter by attacker IP, victim IP, rule type, or reason',
+                          hintStyle: TextStyle(
+                            color: theme.colorScheme.onSurface.withOpacity(0.45),
+                          ),
+                          prefixIcon: const Icon(Icons.search),
+                          suffixIcon: _query.isEmpty
+                              ? null
+                              : IconButton(
+                                  icon: const Icon(Icons.close),
+                                  onPressed: () => setState(() => _query = ''),
+                                ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
                       GlassyContainer(
                         borderRadius: 22,
                         padding: const EdgeInsets.all(16),
@@ -294,7 +328,7 @@ class _FirewallScreenState extends State<FirewallScreen> {
                         ),
                       ),
                       const SizedBox(height: 16),
-                      if (_rules.isEmpty)
+                      if (_filteredRules.isEmpty)
                         Padding(
                           padding: const EdgeInsets.only(top: 48),
                           child: Center(
@@ -329,12 +363,12 @@ class _FirewallScreenState extends State<FirewallScreen> {
                           ),
                         )
                       else
-                        ...List.generate(_rules.length, (i) {
-                          final rule = _rules[i];
+                        ...List.generate(_filteredRules.length, (i) {
+                          final rule = _filteredRules[i];
                           final color = _ruleColor(rule.ruleType);
                           return Padding(
                             padding: EdgeInsets.only(
-                                bottom: i == _rules.length - 1 ? 0 : 8),
+                                bottom: i == _filteredRules.length - 1 ? 0 : 8),
                             child: GlassyContainer(
                               padding: const EdgeInsets.all(16),
                               borderRadius: 18,
@@ -367,7 +401,7 @@ class _FirewallScreenState extends State<FirewallScreen> {
                                           CrossAxisAlignment.start,
                                       children: [
                                         Text(
-                                          rule.targetIp,
+                                          _ruleHeadline(rule),
                                           style: TextStyle(
                                             color: theme.colorScheme.onSurface,
                                             fontWeight: FontWeight.w700,
@@ -390,11 +424,25 @@ class _FirewallScreenState extends State<FirewallScreen> {
                                           runSpacing: 8,
                                           children: [
                                             _metaChip(theme,
+                                                'Attacker ${rule.targetIp}'),
+                                            if (rule.matchDstIp != null)
+                                              _metaChip(
+                                                theme,
+                                                rule.matchDstPort != null
+                                                    ? 'Victim ${rule.matchDstIp}:${rule.matchDstPort}'
+                                                    : 'Victim ${rule.matchDstIp}',
+                                              ),
+                                            if (rule.ruleType == 'redirect' &&
+                                                rule.targetPort != null)
+                                              _metaChip(theme,
+                                                  'Honeypot ${rule.targetPort}'),
+                                            _metaChip(theme,
                                                 'Created ${timeago.format(rule.createdAt)}'),
                                             if (rule.protocol != null)
                                               _metaChip(theme,
                                                   rule.protocol!.toUpperCase()),
-                                            if (rule.targetPort != null)
+                                            if (rule.targetPort != null &&
+                                                rule.ruleType != 'redirect')
                                               _metaChip(theme,
                                                   'Port ${rule.targetPort}'),
                                             if (rule.expiresAt != null)
@@ -473,6 +521,20 @@ class _FirewallScreenState extends State<FirewallScreen> {
         ],
       ),
     );
+  }
+
+  String _ruleHeadline(FirewallRuleModel rule) {
+    if (rule.ruleType == 'redirect') {
+      final victim = rule.matchDstIp ?? 'unknown victim';
+      final port = rule.matchDstPort != null ? ':${rule.matchDstPort}' : '';
+      final target =
+          rule.targetPort != null ? 'honeypot:${rule.targetPort}' : 'honeypot';
+      return '${rule.targetIp} -> $victim$port -> $target';
+    }
+    if (rule.targetPort != null) {
+      return '${rule.targetIp}:${rule.targetPort}';
+    }
+    return rule.targetIp;
   }
 
   Widget _summaryPill(ThemeData theme, String label, String value,

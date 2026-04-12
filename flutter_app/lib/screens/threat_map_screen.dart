@@ -22,6 +22,7 @@ class _ThreatMapScreenState extends State<ThreatMapScreen> {
   List<ThreatModel> _mappable = [];
   bool _loading = true;
   String? _filter;
+  String _query = '';
   VoidCallback? _wsListener;
   DateTime? _lastSyncedAt;
 
@@ -95,14 +96,29 @@ class _ThreatMapScreenState extends State<ThreatMapScreen> {
   }
 
   List<ThreatModel> get _filtered {
-    if (_filter == null) return _mappable;
-    return _mappable.where((t) {
+    final visible = _threats.where((t) {
       if (_filter == 'high') return t.riskScore > 0.85;
       if (_filter == 'medium') {
         return t.riskScore > 0.5 && t.riskScore <= 0.85;
       }
-      return t.riskScore <= 0.5;
+      if (_filter == 'low') return t.riskScore <= 0.5;
+      return true;
+    }).where((t) {
+      if (_query.trim().isEmpty) return true;
+      final q = _query.trim().toLowerCase();
+      return [
+        t.srcIp,
+        t.victimIp,
+        t.dstIp,
+        t.threatType,
+        t.actionTaken,
+        t.responseMode,
+        t.networkOrigin,
+        t.locationSummary,
+        t.org,
+      ].whereType<String>().any((value) => value.toLowerCase().contains(q));
     }).toList();
+    return visible;
   }
 
   @override
@@ -110,6 +126,8 @@ class _ThreatMapScreenState extends State<ThreatMapScreen> {
     final theme = Theme.of(context);
     final ws = context.watch<WebSocketService>();
     final highRisk = _threats.where((threat) => threat.riskScore > 0.85).length;
+    final filteredMappable =
+        _filtered.where((t) => t.latitude != null && t.longitude != null).toList();
     return Scaffold(
       drawer: const AppShellDrawer(),
       appBar: AppBar(
@@ -174,6 +192,7 @@ class _ThreatMapScreenState extends State<ThreatMapScreen> {
                           runSpacing: 10,
                           children: [
                             _summaryPill(theme, 'Total', '${_threats.length}'),
+                            _summaryPill(theme, 'Visible', '${_filtered.length}'),
                             _summaryPill(theme, 'High risk', '$highRisk',
                                 danger: highRisk > 0),
                             _summaryPill(
@@ -189,16 +208,36 @@ class _ThreatMapScreenState extends State<ThreatMapScreen> {
                     ),
                   ),
                 ),
-                Expanded(flex: 3, child: AttackMapWidget(threats: _filtered)),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                  child: TextField(
+                    onChanged: (value) => setState(() => _query = value),
+                    style: TextStyle(color: theme.colorScheme.onSurface),
+                    decoration: InputDecoration(
+                      hintText: 'Filter by attacker IP, victim IP, device, action, or threat type',
+                      hintStyle: TextStyle(
+                        color: theme.colorScheme.onSurface.withOpacity(0.45),
+                      ),
+                      prefixIcon: const Icon(Icons.search),
+                      suffixIcon: _query.isEmpty
+                          ? null
+                          : IconButton(
+                              icon: const Icon(Icons.close),
+                              onPressed: () => setState(() => _query = ''),
+                            ),
+                    ),
+                  ),
+                ),
+                Expanded(flex: 3, child: AttackMapWidget(threats: filteredMappable)),
                 GlassyContainer(
                   borderRadius: 0,
                   margin: EdgeInsets.zero,
                   child: SizedBox(
-                    height: 180,
-                    child: _threats.isEmpty
+                    height: 280,
+                    child: _filtered.isEmpty
                         ? Center(
                             child: Text(
-                              'No threats recorded yet',
+                              'No threats match the current filter',
                               style: TextStyle(
                                   color: theme.colorScheme.onSurface
                                       .withOpacity(0.5)),
@@ -207,70 +246,119 @@ class _ThreatMapScreenState extends State<ThreatMapScreen> {
                         : ListView.separated(
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 16, vertical: 8),
-                            itemCount: _threats.length,
+                            itemCount: _filtered.length,
                             separatorBuilder: (_, __) => Divider(
                                 color: theme.dividerColor.withOpacity(0.1)),
                             itemBuilder: (_, i) {
-                              final threat = _threats[i];
+                              final threat = _filtered[i];
                               final color = threat.riskScore > 0.85
                                   ? Colors.red
                                   : threat.riskScore > 0.5
                                       ? Colors.orange
                                       : theme.colorScheme.primary;
-                              final locationParts = [
-                                threat.srcIp.startsWith('172.19.')
-                                    ? 'Source masked by Docker NAT'
-                                    : (threat.locationSummary ?? threat.country ?? 'Unknown'),
-                                timeago.format(threat.detectedAt),
-                              ];
-                              return ListTile(
-                                dense: true,
-                                leading: Container(
-                                  width: 8,
-                                  height: 8,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    color: color,
+                              return Container(
+                                margin: const EdgeInsets.symmetric(vertical: 4),
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: theme.colorScheme.surface.withOpacity(0.18),
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(
+                                    color: color.withOpacity(0.25),
                                   ),
                                 ),
-                                title: Text(
-                                  '${threat.srcIp} - ${threat.threatType}',
-                                  style: TextStyle(
-                                      color: theme.colorScheme.onSurface,
-                                      fontSize: 13),
-                                ),
-                                subtitle: Text(
-                                  [
-                                    if (threat.victimIp != null)
-                                      'Victim ${threat.victimIp}',
-                                    if (threat.responseMode != null)
-                                      'Response ${threat.responseMode}',
-                                    if (threat.networkOrigin != null)
-                                      threat.networkOrigin!,
-                                    ...locationParts,
-                                  ].join(' - '),
-                                  style: TextStyle(
-                                      color: theme.colorScheme.onSurface
-                                          .withOpacity(0.6),
-                                      fontSize: 11),
-                                ),
-                                trailing: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 8, vertical: 3),
-                                  decoration: BoxDecoration(
-                                    color: color.withOpacity(0.15),
-                                    borderRadius: BorderRadius.circular(6),
-                                    border: Border.all(
-                                        color: color.withOpacity(0.5)),
-                                  ),
-                                  child: Text(
-                                    'Risk ${(threat.riskScore * 100).toInt()}%',
-                                    style: TextStyle(
-                                      color: color,
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w700,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Container(
+                                          width: 10,
+                                          height: 10,
+                                          margin: const EdgeInsets.only(top: 5),
+                                          decoration: BoxDecoration(
+                                            shape: BoxShape.circle,
+                                            color: color,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 10),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                threat.srcIp,
+                                                style: TextStyle(
+                                                  color: theme.colorScheme.onSurface,
+                                                  fontSize: 14,
+                                                  fontWeight: FontWeight.w700,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 4),
+                                              Text(
+                                                _threatHeadline(threat),
+                                                style: TextStyle(
+                                                  color: theme.colorScheme.onSurface
+                                                      .withOpacity(0.72),
+                                                  fontSize: 12,
+                                                  height: 1.4,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 8, vertical: 3),
+                                          decoration: BoxDecoration(
+                                            color: color.withOpacity(0.15),
+                                            borderRadius: BorderRadius.circular(6),
+                                            border: Border.all(
+                                                color: color.withOpacity(0.5)),
+                                          ),
+                                          child: Text(
+                                            'Risk ${(threat.riskScore * 100).toInt()}%',
+                                            style: TextStyle(
+                                              color: color,
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
                                     ),
-                                  ),
+                                    const SizedBox(height: 10),
+                                    Wrap(
+                                      spacing: 8,
+                                      runSpacing: 8,
+                                      children: [
+                                        _detailChip(
+                                            theme, 'Type', threat.threatType),
+                                        _detailChip(
+                                            theme,
+                                            'Victim',
+                                            threat.victimIp ??
+                                                threat.dstIp ??
+                                                'Unknown'),
+                                        _detailChip(
+                                            theme,
+                                            'Action',
+                                            threat.actionTaken ??
+                                                threat.responseMode ??
+                                                'Logged'),
+                                        if (threat.dstPort != null)
+                                          _detailChip(theme, 'Port',
+                                              '${threat.dstPort}'),
+                                        if (threat.networkOrigin != null)
+                                          _detailChip(theme, 'Origin',
+                                              threat.networkOrigin!),
+                                        _detailChip(theme, 'Seen',
+                                            timeago.format(threat.detectedAt)),
+                                      ],
+                                    ),
+                                  ],
                                 ),
                               );
                             },
@@ -279,6 +367,40 @@ class _ThreatMapScreenState extends State<ThreatMapScreen> {
                 ),
               ],
             ),
+    );
+  }
+
+  String _threatHeadline(ThreatModel threat) {
+    final victim = threat.victimIp ?? threat.dstIp ?? 'unknown device';
+    final action = threat.actionTaken ?? threat.responseMode ?? 'logged';
+    final source = threat.srcIp.startsWith('172.19.')
+        ? 'Source currently masked by Docker NAT'
+        : (threat.locationSummary ?? threat.country ?? 'Location unresolved');
+    return 'Targeted $victim via $action. $source.';
+  }
+
+  Widget _detailChip(ThemeData theme, String label, String value) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primary.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: RichText(
+        text: TextSpan(
+          style: TextStyle(
+            color: theme.colorScheme.onSurface.withOpacity(0.8),
+            fontSize: 11,
+          ),
+          children: [
+            TextSpan(
+              text: '$label: ',
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+            TextSpan(text: value),
+          ],
+        ),
+      ),
     );
   }
 

@@ -189,14 +189,19 @@ async def upsert_honeypot_session(
     *,
     session_id: str,
     attacker_ip: str,
+    observed_attacker_ip: Optional[str] = None,
     honeypot_type: str,
     started_at: datetime,
     attacker_port: Optional[int] = None,
+    victim_ip: Optional[str] = None,
+    victim_port: Optional[int] = None,
     username_tried: Optional[str] = None,
     password_tried: Optional[str] = None,
     commands_run: Optional[str] = None,
     duration_seconds: Optional[float] = None,
     ended_at: Optional[datetime] = None,
+    source_masked: bool = False,
+    source_mask_reason: Optional[str] = None,
     **geo,
 ) -> HoneypotSession:
     result = await db.execute(select(HoneypotSession).where(HoneypotSession.session_id == session_id))
@@ -205,19 +210,25 @@ async def upsert_honeypot_session(
         session = HoneypotSession(
             session_id=session_id,
             attacker_ip=attacker_ip,
+            observed_attacker_ip=observed_attacker_ip,
             honeypot_type=honeypot_type,
             started_at=started_at,
         )
         db.add(session)
 
     session.attacker_ip = attacker_ip
+    session.observed_attacker_ip = observed_attacker_ip or session.observed_attacker_ip
     session.honeypot_type = honeypot_type
     session.started_at = min(session.started_at, started_at) if session.started_at else started_at
     session.attacker_port = attacker_port or session.attacker_port
+    session.victim_ip = victim_ip or session.victim_ip
+    session.victim_port = victim_port or session.victim_port
     session.username_tried = username_tried or session.username_tried
     session.password_tried = password_tried or session.password_tried
     session.duration_seconds = duration_seconds or session.duration_seconds
     session.ended_at = ended_at or session.ended_at
+    session.source_masked = source_masked or session.source_masked
+    session.source_mask_reason = source_mask_reason or session.source_mask_reason
 
     if commands_run:
         try:
@@ -319,6 +330,27 @@ async def rule_exists_for_ip(db: AsyncSession, target_ip: str, rule_type: str) -
             FirewallRule.is_active == True,  # noqa: E712
         )
     )
+    return result.scalar_one_or_none() is not None
+
+
+async def rule_exists(
+    db: AsyncSession,
+    *,
+    target_ip: str,
+    rule_type: str,
+    match_dst_ip: Optional[str] = None,
+    match_dst_port: Optional[int] = None,
+) -> bool:
+    query = select(FirewallRule).where(
+        FirewallRule.target_ip == target_ip,
+        FirewallRule.rule_type == rule_type,
+        FirewallRule.is_active == True,  # noqa: E712
+    )
+    if match_dst_ip is not None:
+        query = query.where(FirewallRule.match_dst_ip == match_dst_ip)
+    if match_dst_port is not None:
+        query = query.where(FirewallRule.match_dst_port == match_dst_port)
+    result = await db.execute(query)
     return result.scalar_one_or_none() is not None
 
 

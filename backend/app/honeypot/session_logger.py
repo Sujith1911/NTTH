@@ -8,6 +8,7 @@ import ipaddress
 import json
 import uuid
 from datetime import datetime
+from typing import Any
 
 from app.core.logger import get_logger
 from app.core.event_bus import publish
@@ -18,6 +19,8 @@ from app.config import get_settings
 
 log = get_logger("session_logger")
 settings = get_settings()
+_REDIRECT_CONTEXT_TTL_SECONDS = 900
+_recent_redirect_contexts: list[dict[str, Any]] = []
 
 
 def _normalize_timestamp(raw: str | None, fallback: datetime | None = None) -> datetime:
@@ -74,47 +77,149 @@ def _describe_source(attacker_ip: str, geo: dict) -> tuple[dict, str, str]:
     return normalized, "approximate", "Approximate: unresolved"
 
 
+def register_redirect_context(
+    *,
+    attacker_ip: str,
+    observed_attacker_ip: str,
+    victim_ip: str | None,
+    victim_port: int | None,
+    honeypot_type: str,
+    honeypot_port: int | None,
+) -> None:
+    now = datetime.utcnow()
+    _recent_redirect_contexts.append({
+        "attacker_ip": attacker_ip,
+        "observed_attacker_ip": observed_attacker_ip,
+        "victim_ip": victim_ip,
+        "victim_port": victim_port,
+        "honeypot_type": honeypot_type,
+        "honeypot_port": honeypot_port,
+        "created_at": now,
+    })
+    cutoff = now.timestamp() - _REDIRECT_CONTEXT_TTL_SECONDS
+    _recent_redirect_contexts[:] = [
+        item for item in _recent_redirect_contexts
+        if item["created_at"].timestamp() >= cutoff
+    ]
+
+
+def _resolve_redirect_context(
+    *,
+    observed_attacker_ip: str,
+    honeypot_type: str,
+    started_at: datetime,
+) -> tuple[str, str | None, int | None, bool, str | None]:
+    cutoff = started_at.timestamp() - _REDIRECT_CONTEXT_TTL_SECONDS
+    candidates = [
+        item for item in _recent_redirect_contexts
+        if item["honeypot_type"] == honeypot_type
+        and item["created_at"].timestamp() >= cutoff
+    ]
+    if not candidates:
+        return observed_attacker_ip, None, None, False, None
+
+    exact = [item for item in candidates if item["attacker_ip"] == observed_attacker_ip]
+    if exact:
+        chosen = exact[-1]
+        return (
+            chosen["attacker_ip"],
+            chosen["victim_ip"],
+            chosen["victim_port"],
+            False,
+            None,
+        )
+
+    if observed_attacker_ip.startswith("172.19."):
+        distinct_attackers = {item["attacker_ip"] for item in candidates}
+        if len(distinct_attackers) == 1:
+            chosen = candidates[-1]
+            return (
+                chosen["attacker_ip"],
+                chosen["victim_ip"],
+                chosen["victim_port"],
+                True,
+                f"Docker/NAT exposed {observed_attacker_ip} to Cowrie; original attacker IP was correlated from the redirect rule.",
+            )
+        return (
+            observed_attacker_ip,
+            None,
+            None,
+            True,
+            f"Docker/NAT exposed {observed_attacker_ip} to Cowrie and multiple recent redirect candidates exist, so the original attacker could not be resolved safely.",
+        )
+
+    return observed_attacker_ip, None, None, False, None
+
+
 async def log_http_session(data: dict) -> None:
     """Persist an HTTP honeypot hit as a HoneypotSession."""
+    started_at = datetime.utcnow()
+    observed_attacker_ip = data.get("attacker_ip", "unknown")
+    attacker_ip, victim_ip, victim_port, source_masked, source_mask_reason = _resolve_redirect_context(
+        observed_attacker_ip=observed_attacker_ip,
+        honeypot_type="http",
+        started_at=started_at,
+    )
     await _save_session(
         honeypot_type="http",
-        attacker_ip=data.get("attacker_ip", "unknown"),
+        attacker_ip=attacker_ip,
+        observed_attacker_ip=observed_attacker_ip,
         attacker_port=data.get("attacker_port"),
         session_id=str(uuid.uuid4()),
-        started_at=datetime.utcnow(),
+        started_at=started_at,
+        victim_ip=victim_ip,
+        victim_port=victim_port,
         commands_run=json.dumps({
             "method": data.get("method"),
             "path": data.get("path"),
             "body": data.get("body", ""),
         }),
+        source_masked=source_masked,
+        source_mask_reason=source_mask_reason,
     )
 
 
 async def log_cowrie_session(cowrie_event: dict) -> None:
     """Parse a Cowrie JSON log entry and persist as a HoneypotSession."""
-    attacker_ip = cowrie_event.get("src_ip", "unknown")
+    started_at = _normalize_timestamp(cowrie_event.get("timestamp"))
+    observed_attacker_ip = cowrie_event.get("src_ip", "unknown")
+    attacker_ip, victim_ip, victim_port, source_masked, source_mask_reason = _resolve_redirect_context(
+        observed_attacker_ip=observed_attacker_ip,
+        honeypot_type="ssh",
+        started_at=started_at,
+    )
     await _save_session(
         honeypot_type="ssh",
         attacker_ip=attacker_ip,
+        observed_attacker_ip=observed_attacker_ip,
         session_id=cowrie_event.get("session", str(uuid.uuid4())),
-        started_at=_normalize_timestamp(cowrie_event.get("timestamp")),
+        started_at=started_at,
         username_tried=cowrie_event.get("username"),
         password_tried=cowrie_event.get("password"),
         commands_run=json.dumps(cowrie_event.get("input", [])),
         duration_seconds=_normalize_duration(cowrie_event.get("duration")),
+        victim_ip=victim_ip,
+        victim_port=victim_port,
+        source_masked=source_masked,
+        source_mask_reason=source_mask_reason,
     )
 
 
 async def _save_session(
     honeypot_type: str,
     attacker_ip: str,
+    observed_attacker_ip: str,
     session_id: str,
     started_at: datetime,
     attacker_port: int | None = None,
+    victim_ip: str | None = None,
+    victim_port: int | None = None,
     username_tried: str | None = None,
     password_tried: str | None = None,
     commands_run: str | None = None,
     duration_seconds: float | None = None,
+    source_masked: bool = False,
+    source_mask_reason: str | None = None,
 ) -> None:
     # GeoIP lookup
     geo = {}
@@ -133,13 +238,18 @@ async def _save_session(
                 db,
                 session_id=session_id,
                 attacker_ip=attacker_ip,
+                observed_attacker_ip=observed_attacker_ip,
                 attacker_port=attacker_port,
+                victim_ip=victim_ip,
+                victim_port=victim_port,
                 honeypot_type=honeypot_type,
                 username_tried=username_tried,
                 password_tried=password_tried,
                 commands_run=commands_run,
                 duration_seconds=duration_seconds,
                 started_at=started_at,
+                source_masked=source_masked,
+                source_mask_reason=source_mask_reason,
                 **geo,
             )
             created = existing is None
@@ -147,8 +257,8 @@ async def _save_session(
         if created:
             await publish("report_event", {
                 "src_ip": attacker_ip,
-                "dst_ip": settings.server_display_ip or None,
-                "dst_port": settings.cowrie_redirect_port if honeypot_type == "ssh" else settings.http_honeypot_port,
+                "dst_ip": victim_ip or settings.server_display_ip or None,
+                "dst_port": victim_port or (22 if honeypot_type == "ssh" else 80),
                 "protocol": "tcp",
                 "threat_type": f"honeypot_{honeypot_type}",
                 "risk_score": 0.98,
@@ -164,7 +274,7 @@ async def _save_session(
                 "timestamp": session.started_at.isoformat() if session.started_at else started_at.isoformat(),
                 "incident_context": {
                     "source_tag": f"attacker::{attacker_ip.replace('.', '-')}",
-                    "victim_ip": settings.server_display_ip or None,
+                    "victim_ip": victim_ip or settings.server_display_ip or None,
                     "network_origin": "honeypot_direct",
                     "location_accuracy": location_accuracy,
                     "location_summary": location_summary,
@@ -177,7 +287,7 @@ async def _save_session(
                 },
                 "incident_notes": json.dumps({
                     "source_tag": f"attacker::{attacker_ip.replace('.', '-')}",
-                    "victim_ip": settings.server_display_ip or None,
+                    "victim_ip": victim_ip or settings.server_display_ip or None,
                     "network_origin": "honeypot_direct",
                     "location_accuracy": location_accuracy,
                     "location_summary": location_summary,
@@ -194,12 +304,17 @@ async def _save_session(
             "id": session.id,
             "session_id": session.session_id,
             "attacker_ip": session.attacker_ip,
+            "observed_attacker_ip": session.observed_attacker_ip,
             "attacker_port": session.attacker_port,
+            "victim_ip": session.victim_ip,
+            "victim_port": session.victim_port,
             "honeypot_type": session.honeypot_type,
             "username_tried": session.username_tried,
             "password_tried": session.password_tried,
             "commands_run": session.commands_run,
             "duration_seconds": session.duration_seconds,
+            "source_masked": session.source_masked,
+            "source_mask_reason": session.source_mask_reason,
             "country": session.country,
             "city": session.city,
             "asn": session.asn,

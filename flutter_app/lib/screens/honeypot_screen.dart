@@ -283,7 +283,9 @@ class _HoneypotScreenState extends State<HoneypotScreen> {
                               ),
                             ),
                             subtitle: Text(
-                              '${_sourceDescriptor(session)} - ${timeago.format(session.startedAt)}',
+                              session.endedAt == null
+                                  ? '${_sourceDescriptor(session)} - active now'
+                                  : '${_sourceDescriptor(session)} - ${timeago.format(session.startedAt)}',
                               style: TextStyle(
                                   color: theme.colorScheme.onSurface
                                       .withOpacity(0.6),
@@ -322,6 +324,17 @@ class _HoneypotScreenState extends State<HoneypotScreen> {
                                     if (session.passwordTried != null)
                                       _infoRow('Password',
                                           session.passwordTried!, theme),
+                                    if (session.victimIp != null)
+                                      _infoRow(
+                                          'Attacked IP',
+                                          session.victimPort != null
+                                              ? '${session.victimIp}:${session.victimPort}'
+                                              : session.victimIp!,
+                                          theme),
+                                    if (session.sourceMasked &&
+                                        session.observedAttackerIp != null)
+                                      _infoRow('Observed IP',
+                                          session.observedAttackerIp!, theme),
                                     if (session.commandsRun != null)
                                       _infoRow('Commands', _formatCommands(session.commandsRun!),
                                           theme),
@@ -334,6 +347,10 @@ class _HoneypotScreenState extends State<HoneypotScreen> {
                                       _infoRow('Network', session.org!, theme),
                                     if (session.asn != null)
                                       _infoRow('ASN', session.asn!, theme),
+                                    if (session.sourceMasked &&
+                                        session.sourceMaskReason != null)
+                                      _infoRow('Source note',
+                                          session.sourceMaskReason!, theme),
                                     _infoRow(
                                       'Status',
                                       session.endedAt == null
@@ -451,6 +468,9 @@ class _HoneypotScreenState extends State<HoneypotScreen> {
   }
 
   String _sourceDescriptor(HoneypotModel session) {
+    if (session.sourceMasked && session.victimIp != null) {
+      return 'Correlated attacker for ${session.victimIp}';
+    }
     if (session.locationSummary != null && session.locationSummary!.isNotEmpty) {
       return session.locationSummary!;
     }
