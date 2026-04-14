@@ -38,7 +38,7 @@ flutter_app/.flutter-plugins-dependencies
 flutter_app/.packages
 flutter_app/.pub-cache/
 flutter_app/.pub/
-flutter_app/pubspec.lock
+# flutter_app/pubspec.lock  ← TRACKED: needed for reproducible builds on Ubuntu
 
 # IDE
 .vscode/
