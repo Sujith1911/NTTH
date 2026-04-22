@@ -17,6 +17,23 @@ log = get_logger("decision_agent")
 settings = get_settings()
 _CLOUD_HINTS = ("amazon", "aws", "google", "azure", "digitalocean", "linode", "ovh", "vultr", "oracle")
 _RECENT_DECISIONS: dict[tuple[str, str, str], float] = {}
+_DECISION_MAX_ENTRIES = 1_000   # Prune when dict exceeds this size
+_DECISION_TTL_SECONDS = 60.0   # Evict entries older than this
+
+
+def _prune_recent_decisions() -> None:
+    """Evict stale entries when the dedup dict grows too large."""
+    if len(_RECENT_DECISIONS) <= _DECISION_MAX_ENTRIES:
+        return
+    now = time.monotonic()
+    stale_keys = [
+        k for k, ts in _RECENT_DECISIONS.items()
+        if now - ts > _DECISION_TTL_SECONDS
+    ]
+    for k in stale_keys:
+        del _RECENT_DECISIONS[k]
+    if stale_keys:
+        log.info("decision_agent.pruned_dedup", removed=len(stale_keys), remaining=len(_RECENT_DECISIONS))
 
 
 def _network_origin(payload: dict) -> str:
@@ -62,6 +79,9 @@ def _choose_response_action(payload: dict, base_action: str) -> tuple[str, str, 
 async def _handle_threat_detected(payload: dict) -> None:
     src_ip = payload.get("src_ip", "")
     risk_score = payload.get("risk_score", 0.0)
+
+    # Periodically prune stale dedup entries
+    _prune_recent_decisions()
 
     # Never act on gateway IP
     if src_ip == settings.gateway_ip:

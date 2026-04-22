@@ -1,34 +1,69 @@
 """
 Rule-based IDS engine.
 Detects: port scanning, SYN flood, brute force.
-Uses sliding windows per source IP stored in-memory.
+Uses bounded sliding windows per source IP stored in-memory.
 Returns a rule_score in [0.0, 1.0].
+
+Memory safety:
+  - Each deque has a maxlen cap so individual IPs can't cause OOM.
+  - _prune_stale_keys() removes IPs with no activity in 5 minutes
+    once total tracked IPs exceed _MAX_TRACKED_IPS.
 """
 from __future__ import annotations
 
 import time
 from collections import defaultdict, deque
-from typing import Deque
 
 from app.core.logger import get_logger
 from app.ids.threshold_config import THRESHOLDS
 
 log = get_logger("rule_engine")
 
+# ── Memory safety constants ──────────────────────────────────────────────────
+_PORT_WINDOW_MAXLEN = 500       # Max entries per IP for port scan tracking
+_SYN_WINDOW_MAXLEN = 200        # Max entries per IP for SYN flood tracking
+_BRUTE_WINDOW_MAXLEN = 200      # Max entries per IP for brute force tracking
+_MAX_TRACKED_IPS = 5_000        # Trigger stale-key pruning above this
+_STALE_SECONDS = 300            # 5 min — remove keys idle longer than this
+_last_prune_time: float = 0.0
+
 # Sliding windows: ip → deque of (timestamp, value)
-_port_windows: dict[str, Deque[tuple[float, int]]] = defaultdict(deque)
-_syn_windows: dict[str, Deque[float]] = defaultdict(deque)
-_brute_windows: dict[str, Deque[float]] = defaultdict(deque)
+# Each deque has a maxlen to prevent unbounded growth per-IP
+_port_windows: dict[str, deque[tuple[float, int]]] = defaultdict(
+    lambda: deque(maxlen=_PORT_WINDOW_MAXLEN)
+)
+_syn_windows: dict[str, deque[float]] = defaultdict(
+    lambda: deque(maxlen=_SYN_WINDOW_MAXLEN)
+)
+_brute_windows: dict[str, deque[float]] = defaultdict(
+    lambda: deque(maxlen=_BRUTE_WINDOW_MAXLEN)
+)
 
 # Brute-force auth ports
 _AUTH_PORTS = {22, 23, 3389, 5900, 21, 3306, 5432, 1521}
 
 
-def _prune(window: deque, window_seconds: float) -> None:
-    """Remove entries older than window_seconds."""
-    cutoff = time.monotonic() - window_seconds
-    while window and window[0][0] < cutoff if isinstance(window[0], tuple) else window[0] < cutoff:
-        window.popleft()
+def _prune_stale_keys() -> None:
+    """Remove IPs with no recent activity to cap total memory usage."""
+    global _last_prune_time
+    now = time.monotonic()
+    # Only prune every 30 seconds and when we exceed the threshold
+    total_keys = len(_port_windows) + len(_syn_windows) + len(_brute_windows)
+    if total_keys < _MAX_TRACKED_IPS or (now - _last_prune_time) < 30:
+        return
+    _last_prune_time = now
+    cutoff = now - _STALE_SECONDS
+    pruned = 0
+    for store in (_port_windows, _syn_windows, _brute_windows):
+        stale = [
+            ip for ip, dq in store.items()
+            if not dq or (dq[-1][0] if isinstance(dq[-1], tuple) else dq[-1]) < cutoff
+        ]
+        for ip in stale:
+            del store[ip]
+            pruned += 1
+    if pruned:
+        log.info("rule_engine.pruned_stale_keys", count=pruned)
 
 
 # ── Detectors ────────────────────────────────────────────────────────────────
@@ -92,6 +127,9 @@ def evaluate(features: dict) -> dict:
     Evaluate a feature dict against all rules.
     Returns {rule_score, threat_type, details}.
     """
+    # Periodically prune stale IP keys to prevent memory growth
+    _prune_stale_keys()
+
     src_ip = features.get("src_ip", "")
     dst_port = features.get("dst_port")
     is_syn = features.get("is_syn", False)

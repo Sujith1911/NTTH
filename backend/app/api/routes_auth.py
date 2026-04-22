@@ -3,9 +3,11 @@ Auth routes: login, token refresh, user management (admin), and /me.
 """
 from __future__ import annotations
 
+import time
+from collections import defaultdict, deque
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from app.core.security import (
     create_access_token,
@@ -26,11 +28,38 @@ from app.dependencies import get_current_user, get_db, require_admin
 
 router = APIRouter()
 
+# ── Login rate limiter (in-memory, per-IP) ────────────────────────────────────
+_LOGIN_ATTEMPTS: dict[str, deque] = defaultdict(lambda: deque(maxlen=10))
+_MAX_ATTEMPTS = 5       # Max failed attempts before lockout
+_WINDOW_SECONDS = 300   # 5-minute window
+
+
+def _check_rate_limit(client_ip: str) -> None:
+    """Raise 429 if too many failed login attempts from this IP."""
+    now = time.monotonic()
+    window = _LOGIN_ATTEMPTS[client_ip]
+    # Prune old entries
+    cutoff = now - _WINDOW_SECONDS
+    while window and window[0] < cutoff:
+        window.popleft()
+    if len(window) >= _MAX_ATTEMPTS:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Too many login attempts. Try again in {_WINDOW_SECONDS // 60} minutes.",
+        )
+
+
+def _record_failed_attempt(client_ip: str) -> None:
+    _LOGIN_ATTEMPTS[client_ip].append(time.monotonic())
+
 
 @router.post("/login", response_model=TokenResponse)
-async def login(payload: LoginRequest, db=Depends(get_db)):
+async def login(payload: LoginRequest, request: Request, db=Depends(get_db)):
+    client_ip = request.client.host if request.client else "unknown"
+    _check_rate_limit(client_ip)
     user = await crud.get_user_by_username(db, payload.username)
     if not user or not verify_password(payload.password, user.hashed_password):
+        _record_failed_attempt(client_ip)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account inactive")
