@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>NTTH — Section 1: Detailed Comparison with Existing Research</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,wght@0,300;0,400;0,600;1,400&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: 'Source Serif 4', Georgia, serif;
+  color: #1c1c1c;
+  line-height: 1.8;
+  background: #fafaf8;
+  padding: 56px 72px;
+  max-width: 960px;
+  margin: 0 auto;
+}
+h1 {
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 22px;
+  font-weight: 600;
+  color: #1a2b4a;
+  margin-bottom: 6px;
+  border-bottom: 2px solid #c5cdd9;
+  padding-bottom: 10px;
+  letter-spacing: 0.01em;
+}
+h2 {
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 17px;
+  font-weight: 600;
+  color: #1a2b4a;
+  margin: 36px 0 10px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid #dde3ea;
+}
+h3 {
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  color: #2c3e50;
+  margin: 20px 0 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+p {
+  margin: 10px 0;
+  font-size: 14px;
+  text-align: justify;
+  color: #2a2a2a;
+}
+ul {
+  margin: 8px 0 8px 22px;
+  font-size: 14px;
+  color: #2a2a2a;
+}
+li { margin: 5px 0; }
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 14px 0;
+  font-size: 12.5px;
+  font-family: 'IBM Plex Sans', sans-serif;
+}
+th {
+  background: #2c3e50;
+  color: #fff;
+  padding: 7px 10px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 12px;
+}
+td {
+  padding: 7px 10px;
+  border-bottom: 1px solid #e4e8ed;
+  vertical-align: top;
+  color: #2a2a2a;
+}
+tr:nth-child(even) { background: #f4f6f8; }
+a { color: #2c6fad; text-decoration: none; }
+a:hover { text-decoration: underline; }
+.note {
+  background: #edf3fb;
+  border-left: 3px solid #5b8fc9;
+  padding: 10px 14px;
+  margin: 14px 0;
+  font-size: 11.5px;
+  border-radius: 0 4px 4px 0;
+  font-family: 'IBM Plex Sans', sans-serif;
+}
+.gap {
+  background: #fdf8ed;
+  border-left: 3px solid #c9954a;
+  padding: 10px 14px;
+  margin: 14px 0;
+  font-size: 11.5px;
+  border-radius: 0 4px 4px 0;
+  font-family: 'IBM Plex Sans', sans-serif;
+}
+.warn {
+  background: #fdf0ef;
+  border-left: 3px solid #c0392b;
+  padding: 10px 14px;
+  margin: 14px 0;
+  font-size: 11.5px;
+  border-radius: 0 4px 4px 0;
+  font-family: 'IBM Plex Sans', sans-serif;
+}
+.paper-meta {
+  background: #f2f4f7;
+  border: 1px solid #d8dde4;
+  border-radius: 4px;
+  padding: 14px 18px;
+  margin: 12px 0;
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 13px;
+}
+.paper-meta table { margin: 0; font-size: 13px; }
+.paper-meta th { display: none; }
+.paper-meta td { padding: 4px 8px; border: none; background: transparent; }
+.paper-meta td:first-child { font-weight: 600; color: #3a3a3a; width: 110px; }
+.section-break { page-break-before: always; margin-top: 50px; }
+.footnote { font-size: 11.5px; color: #666; font-style: italic; margin-top: 8px; font-family: 'IBM Plex Sans', sans-serif; }
+.doc-footer { text-align: center; margin-top: 48px; font-size: 12px; color: #999; font-family: 'IBM Plex Sans', sans-serif; border-top: 1px solid #e0e4e9; padding-top: 16px; }
+</style>
+</head>
+<body>
+
+<h1>Section 1: Detailed Comparison with Existing Research</h1>
+
+<p>This section goes through each relevant existing system one by one and compares it with what we have built. For each one, we describe what it does, where it falls short for our purposes, and what our project does differently. We've included direct links to the original papers so anyone can check these claims.</p>
+
+<p>We compare against eight systems total, split into two groups. Sections 1.1 through 1.5 cover four well-known, widely used tools: Snort, Suricata, Fail2Ban, and OSSEC/Wazuh. Sections 1.6 through 1.11 look at four more recent research systems — AARF, AETHER, LLM Agent Honeypot, and CyberBattleSim/CAGE — which try to do some form of automated or reactive defense and are closer to what we're attempting.</p>
+
+<!-- ==================== PAPER 1: SNORT ==================== -->
+<h2>1.1 — Snort (Signature-Based Network IDS)</h2>
+
+<div class="paper-meta">
+  <table>
+    <tr><td>Title</td><td>Snort — Lightweight Intrusion Detection for Networks</td></tr>
+    <tr><td>Author</td><td>Martin Roesch</td></tr>
+    <tr><td>Published</td><td>USENIX LISA '99, pp. 229–238, 1999</td></tr>
+    <tr><td>Link</td><td><a href="https://www.usenix.org/legacy/publications/library/proceedings/lisa99/full_papers/roesch/roesch.pdf" target="_blank">https://www.usenix.org/legacy/publications/library/proceedings/lisa99/full_papers/roesch/roesch.pdf</a></td></tr>
+    <tr><td>Citations</td><td>6,000+ (among the most cited IDS papers)</td></tr>
+  </table>
+</div>
+
+<h3>What Snort Does</h3>
+<p>Snort is the original open-source network intrusion detection system. It captures packets from a network interface and matches their content against a database of known attack signatures — currently 30,000+ community rules. When a signature matches, Snort writes an alert to a log file. Snort 3.x introduced multi-threaded packet processing, but the core model remains the same: capture, match, alert.</p>
+
+<h3>What Snort Does Not Do</h3>
+<ul>
+  <li><strong>No automated enforcement.</strong> Snort generates alert log entries. It does not add firewall rules, redirect traffic, or isolate devices. A human operator must read the alert, interpret it, and manually configure a firewall. Research by Alahmadi et al. (USENIX Security 2022) found that analysts investigate only 4–8% of generated alerts.</li>
+  <li><strong>No ML anomaly detection.</strong> Snort relies entirely on pre-written signatures. If an attack does not match a known signature, Snort will not detect it. Zero-day attacks and behavioral anomalies are invisible to it.</li>
+  <li><strong>No honeypot integration.</strong> Snort has no mechanism to redirect suspicious traffic to deception services and cannot capture attacker commands or credentials.</li>
+  <li><strong>No wireless monitoring.</strong> Snort processes wired packet captures only.</li>
+  <li><strong>No real-time dashboard.</strong> Snort outputs text-based alerts; visualization requires separate tools such as Barnyard2 or Snorby.</li>
+</ul>
+
+<h3>How NTTH Differs</h3>
+<p>The table below shows the main differences between Snort and our current implementation.</p>
+
+<table>
+  <tr><th>Capability</th><th>Snort</th><th>NTTH (Ours)</th></tr>
+  <tr><td>Detection method</td><td>Signature matching only</td><td>Signature rules + Isolation Forest ML (hybrid, weighted 0.6/0.4)</td></tr>
+  <tr><td>Response to threat</td><td>Write alert to log file</td><td>Autonomous: rate-limit, redirect to honeypot, or block via nftables</td></tr>
+  <tr><td>Response latency</td><td>N/A (no response)</td><td>Designed for sub-second (~127ms target, pending formal measurement)</td></tr>
+  <tr><td>Honeypot</td><td>Not available</td><td>Flow-aware NAT redirect to Cowrie SSH + HTTP honeypot</td></tr>
+  <tr><td>Attacker intelligence</td><td>Alert text only</td><td>Captured commands, credentials, session duration, GeoIP</td></tr>
+  <tr><td>Dashboard</td><td>Text logs (requires external tools)</td><td>Flutter cross-platform app with WebSocket live updates</td></tr>
+  <tr><td>ML scoring</td><td>None</td><td>Isolation Forest trained on baseline traffic</td></tr>
+</table>
+
+<div class="gap">
+  <strong>The gap we're trying to address:</strong> Snort can detect threats, but then a human has to actually do something about it. According to the IBM X-Force Threat Intelligence Index (2024), that manual response takes 15–30 minutes on average. Our system tries to close that gap by automating the whole detect→decide→enforce loop. Whether we actually hit the ~127ms latency target is something we still need to confirm through proper experiments.
+</div>
+
+<!-- ==================== PAPER 2: SURICATA ==================== -->
+<div class="section-break"></div>
+<h2>1.2 — Suricata (Multi-Threaded IDS/IPS)</h2>
+
+<div class="paper-meta">
+  <table>
+    <tr><td>Title</td><td>Suricata: Open Source IDS/IPS/NSM Engine</td></tr>
+    <tr><td>Author</td><td>Open Information Security Foundation (OISF)</td></tr>
+    <tr><td>Published</td><td>Ongoing open-source project, active since 2009</td></tr>
+    <tr><td>Link</td><td><a href="https://suricata.io" target="_blank">https://suricata.io</a></td></tr>
+    <tr><td>Docs</td><td><a href="https://docs.suricata.io/en/latest/" target="_blank">https://docs.suricata.io/en/latest/</a></td></tr>
+  </table>
+</div>
+
+<h3>What Suricata Does</h3>
+<p>Suricata extends the Snort model with multi-threaded packet processing, protocol-aware detection, and rich JSON output via EVE logs. It can operate in IPS (inline) mode where it drops packets matching rules, but this mode requires a specific network topology (inline bridge) and only performs binary drop/pass decisions. Suricata is widely regarded as the modern successor to Snort for high-throughput environments.</p>
+
+<h3>What Suricata Does Not Do</h3>
+<ul>
+  <li><strong>No graduated response.</strong> Suricata's IPS mode can only drop or pass a packet — it cannot rate-limit, redirect to a honeypot, or apply different actions based on risk level. The decision is binary.</li>
+  <li><strong>No ML anomaly component.</strong> Like Snort, Suricata relies on signatures. Some research has added ML classifiers on top of Suricata's EVE output, but these are external additions, not part of Suricata itself.</li>
+  <li><strong>No honeypot integration.</strong> Suricata cannot redirect traffic to deception services.</li>
+  <li><strong>No attacker intelligence capture.</strong> Suricata does not record attacker commands or credentials.</li>
+  <li><strong>Lower false positive rates (1.8%) but at the cost of missing novel attacks.</strong> Suricata's extensive signature database is highly precise for known patterns but does not detect zero-day or behavioral anomalies.</li>
+</ul>
+
+<h3>How NTTH Differs</h3>
+<table>
+  <tr><th>Capability</th><th>Suricata</th><th>NTTH (Ours)</th></tr>
+  <tr><td>Packet processing</td><td>Multi-threaded, high throughput</td><td>Single-threaded async (sufficient for home/small LAN)</td></tr>
+  <tr><td>Detection</td><td>Signatures only (30,000+ rules)</td><td>3 rule detectors + Isolation Forest anomaly scoring</td></tr>
+  <tr><td>IPS capability</td><td>Binary drop/pass (inline mode)</td><td>5-tier graduated: allow → log → rate-limit → honeypot → block</td></tr>
+  <tr><td>Honeypot redirection</td><td>Not available</td><td>Per-flow NAT redirect to Cowrie/HTTP honeypot</td></tr>
+  <tr><td>Response latency</td><td>Inline drop is fast, but no further action</td><td>Full pipeline: detect → score → decide → enforce (~127ms target)</td></tr>
+  <tr><td>Dashboard</td><td>EveBox (separate tool)</td><td>Built-in Flutter app with WebSocket</td></tr>
+  <tr><td>Target environment</td><td>Enterprise/high-throughput networks</td><td>Residential IoT / small networks on commodity hardware</td></tr>
+</table>
+
+<div class="note">
+  <strong>To be fair:</strong> Suricata has lower false positive rates than what we expect from our system (1.8% vs. our estimated ~1.8%) thanks to its large, well-maintained signature database. Our slightly higher FP rate is a tradeoff we made on purpose — the ML anomaly detector trades some precision for broader coverage of attacks that signatures wouldn't catch. Whether this tradeoff actually works as intended is something we still need to validate with proper experiments.
+</div>
+
+<!-- ==================== PAPER 3: FAIL2BAN ==================== -->
+<div class="section-break"></div>
+<h2>1.3 — Fail2Ban (Log-Based Auto-Blocker)</h2>
+
+<div class="paper-meta">
+  <table>
+    <tr><td>Title</td><td>Fail2Ban — Ban hosts that cause multiple authentication errors</td></tr>
+    <tr><td>Type</td><td>Open-source log-monitoring and auto-ban tool</td></tr>
+    <tr><td>Published</td><td>Active since 2004, continuously maintained</td></tr>
+    <tr><td>Link</td><td><a href="https://github.com/fail2ban/fail2ban" target="_blank">https://github.com/fail2ban/fail2ban</a></td></tr>
+    <tr><td>Docs</td><td><a href="https://www.fail2ban.org/wiki/index.php/Main_Page" target="_blank">https://www.fail2ban.org/wiki/index.php/Main_Page</a></td></tr>
+  </table>
+</div>
+
+<h3>What Fail2Ban Does</h3>
+<p>Fail2Ban monitors service log files (e.g., <code>/var/log/auth.log</code>, <code>/var/log/apache2/error.log</code>) using regex patterns. When it detects repeated failed login attempts from the same IP, it automatically adds an iptables/nftables ban rule for that IP for a configurable duration. It is lightweight and effective at stopping brute-force SSH attacks.</p>
+
+<div class="warn">
+  <strong>Why this comparison matters:</strong> This is probably the question we'll get asked the most — "Why not just use Fail2Ban?" It's a fair question. The answer isn't that Fail2Ban is bad; it's that Fail2Ban solves a different, narrower problem than what we're trying to do.
+</div>
+
+<h3>What Fail2Ban Does Not Do</h3>
+<ul>
+  <li><strong>Log-based, not packet-based.</strong> Fail2Ban reads log files after a service has already processed the connection. It cannot detect port scans — no log entry is created for a SYN probe to a closed port. It cannot detect SYN floods, which happen at the network layer, below application logs. It can only react to events that produce log output.</li>
+  <li><strong>No ML component.</strong> Fail2Ban uses regex pattern matching. It cannot learn normal traffic baselines or detect behavioral anomalies.</li>
+  <li><strong>Binary response only.</strong> Fail2Ban either bans the IP entirely or does nothing. There is no graduated response — no rate-limiting, no honeypot redirection, no risk scoring.</li>
+  <li><strong>No attacker intelligence.</strong> Fail2Ban blocks the IP and moves on. It does not redirect attackers to deception services or capture commands and credentials.</li>
+  <li><strong>No response latency measurement.</strong> Fail2Ban's response time depends on log file write latency, regex evaluation, and iptables execution — this is not measured or reported in any publication.</li>
+  <li><strong>Single-service focus.</strong> Each Fail2Ban "jail" monitors one log file for one service. It does not correlate activity across services or provide a unified risk score.</li>
+</ul>
+
+<h3>Feature-by-Feature Comparison</h3>
+<table>
+  <tr><th>Aspect</th><th>Fail2Ban</th><th>NTTH (Ours)</th></tr>
+  <tr><td>Detection input</td><td>Log files (post-event, after service processes the connection)</td><td>Raw packets (real-time, before any service sees the traffic)</td></tr>
+  <tr><td>Detection scope</td><td>Only attacks that create log entries (brute force, auth failures)</td><td>All network-level attacks: port scans, SYN floods, brute force, HTTP probes</td></tr>
+  <tr><td>Detection method</td><td>Regex pattern matching on log text</td><td>Rule-based sliding windows + Isolation Forest ML</td></tr>
+  <tr><td>Risk scoring</td><td>None — binary match/no-match</td><td>Continuous 0.0–1.0 hybrid score (0.6×rule + 0.4×ML)</td></tr>
+  <tr><td>Response type</td><td>Ban IP completely (iptables DROP)</td><td>5-tier: allow → log → rate-limit → honeypot redirect → block</td></tr>
+  <tr><td>Honeypot redirection</td><td>Not available</td><td>Flow-aware NAT to Cowrie SSH or HTTP honeypot</td></tr>
+  <tr><td>Intelligence gathering</td><td>None (just blocks)</td><td>Captures commands, credentials, session duration via honeypot</td></tr>
+  <tr><td>Flow selectivity</td><td>Bans all traffic from source IP</td><td>Can redirect only the malicious flow while allowing other traffic</td></tr>
+  <tr><td>ML capability</td><td>None</td><td>Isolation Forest anomaly detection</td></tr>
+  <tr><td>Dashboard</td><td>None (CLI tool)</td><td>Flutter cross-platform app with live WebSocket updates</td></tr>
+  <tr><td>Wireless monitoring</td><td>None</td><td>Planned: AR9271 WiFi probe/deauth detection</td></tr>
+</table>
+
+<div class="gap">
+  <strong>The short version:</strong> Fail2Ban reads log files and bans IPs after failed logins. Our system works at the packet level and catches things — like port scans and SYN floods — that never create log entries at all. On top of that, we redirect attackers to honeypots to see what they do, instead of just blocking them and moving on.
+</div>
+
+<!-- ==================== PAPER 4: OSSEC/WAZUH ==================== -->
+<div class="section-break"></div>
+<h2>1.4 — OSSEC / Wazuh (Host-Based IDS)</h2>
+
+<div class="paper-meta">
+  <table>
+    <tr><td>Title</td><td>OSSEC — Open Source Host-based Intrusion Detection System</td></tr>
+    <tr><td>Type</td><td>Host-based IDS (HIDS) with active response</td></tr>
+    <tr><td>Published</td><td>Active since 2004; Wazuh is the modern maintained fork</td></tr>
+    <tr><td>OSSEC Link</td><td><a href="https://www.ossec.net/" target="_blank">https://www.ossec.net/</a></td></tr>
+    <tr><td>Wazuh Link</td><td><a href="https://wazuh.com/" target="_blank">https://wazuh.com/</a></td></tr>
+    <tr><td>Wazuh Docs</td><td><a href="https://documentation.wazuh.com/current/index.html" target="_blank">https://documentation.wazuh.com/current/index.html</a></td></tr>
+  </table>
+</div>
+
+<h3>What OSSEC/Wazuh Does</h3>
+<p>OSSEC is a host-based intrusion detection system that monitors individual hosts rather than network traffic. It performs log analysis, file integrity monitoring (FIM), rootkit detection, and policy compliance checking. Wazuh, its modern fork, adds an API, Elastic Stack integration, and centralized management. OSSEC includes an "active response" feature that can execute scripts — for example, adding an iptables rule — when threats are detected.</p>
+
+<h3>What OSSEC/Wazuh Does Not Do</h3>
+<ul>
+  <li><strong>Host-based, not network-based.</strong> OSSEC monitors files, logs, and system calls on individual machines. It does not capture network packets or analyze traffic patterns across the network. A port scan against the network would not be detected unless a service logs the connection attempt.</li>
+  <li><strong>Active response is script-based with higher latency.</strong> OSSEC's active response executes shell scripts, which typically take 1–10 seconds — considerably slower than kernel-level nftables rule application.</li>
+  <li><strong>No ML anomaly detection.</strong> OSSEC uses predefined decoder rules and log correlation. It does not incorporate machine learning models.</li>
+  <li><strong>No honeypot integration.</strong> OSSEC cannot redirect traffic to deception services.</li>
+  <li><strong>No per-flow traffic control.</strong> OSSEC's active response blocks or unbans IPs but cannot selectively redirect specific flows.</li>
+  <li><strong>Different attack surface.</strong> OSSEC detects host-level compromise (file changes, rootkits). NTTH detects network-level attacks (scans, floods, brute force) before they reach the host.</li>
+</ul>
+
+<h3>How NTTH Differs</h3>
+<table>
+  <tr><th>Aspect</th><th>OSSEC / Wazuh</th><th>NTTH (Ours)</th></tr>
+  <tr><td>Monitoring type</td><td>Host-based (files, logs, syscalls)</td><td>Network-based (raw packets on the wire)</td></tr>
+  <tr><td>Detection focus</td><td>Host compromise, file changes, rootkits</td><td>Network attacks: port scans, SYN floods, brute force</td></tr>
+  <tr><td>Detection timing</td><td>Post-compromise (detects after changes happen)</td><td>Pre-compromise (detects attack traffic in transit)</td></tr>
+  <tr><td>Response mechanism</td><td>Shell script execution (1–10 second latency)</td><td>nftables kernel rules (~127ms target latency)</td></tr>
+  <tr><td>ML anomaly scoring</td><td>None</td><td>Isolation Forest trained on baseline traffic</td></tr>
+  <tr><td>Honeypot</td><td>Not available</td><td>Flow-aware NAT redirect to Cowrie + HTTP honeypot</td></tr>
+  <tr><td>Architecture</td><td>Agent/manager (agent on each host)</td><td>Gateway-level (monitors entire network from one point)</td></tr>
+  <tr><td>Deployment model</td><td>Requires agent installed on every monitored host</td><td>Single gateway captures all network traffic — no per-device install</td></tr>
+</table>
+
+<div class="note">
+  <strong>These aren't really competitors:</strong> OSSEC/Wazuh and our system look at different things. OSSEC watches what happens inside a host — file changes, rootkits, system calls. We watch what happens on the network before traffic ever reaches a host. In a proper security setup you'd probably want both. What we add is the network-level automated response piece, which OSSEC doesn't do.
+</div>
+
+<!-- ==================== SUMMARY TABLE FOR PART A ==================== -->
+<div class="section-break"></div>
+<h2>1.5 — Summary: NTTH vs. Established Tools</h2>
+
+<p>The table below consolidates the comparisons from sections 1.1 through 1.4, providing an overview of capability coverage across all four established tools and the current NTTH prototype.</p>
+
+<table>
+  <tr>
+    <th>Capability</th>
+    <th>Snort</th>
+    <th>Suricata</th>
+    <th>Fail2Ban</th>
+    <th>OSSEC</th>
+    <th>NTTH (Ours)</th>
+  </tr>
+  <tr><td>Packet-level detection</td><td>Yes</td><td>Yes</td><td>No</td><td>No</td><td>Yes</td></tr>
+  <tr><td>ML anomaly detection</td><td>No</td><td>No</td><td>No</td><td>No</td><td>Yes (Isolation Forest)</td></tr>
+  <tr><td>Automated enforcement</td><td>No</td><td>IPS drop only</td><td>Yes (IP ban)</td><td>Yes (script)</td><td>Yes (nftables)</td></tr>
+  <tr><td>Graduated response</td><td>No</td><td>No</td><td>No</td><td>No</td><td>5-tier</td></tr>
+  <tr><td>Honeypot integration</td><td>No</td><td>No</td><td>No</td><td>No</td><td>Yes</td></tr>
+  <tr><td>Flow-aware redirect</td><td>No</td><td>No</td><td>No</td><td>No</td><td>Yes</td></tr>
+  <tr><td>Attacker command capture</td><td>No</td><td>No</td><td>No</td><td>No</td><td>Yes</td></tr>
+  <tr><td>Risk scoring</td><td>No</td><td>No</td><td>No</td><td>Rule-based</td><td>Hybrid (0.6/0.4)</td></tr>
+  <tr><td>Real-time dashboard</td><td>Logs only</td><td>EveBox (separate)</td><td>CLI only</td><td>Kibana (separate)</td><td>Flutter + WebSocket</td></tr>
+  <tr><td>Commodity hardware</td><td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
+</table>
+
+<div class="gap">
+  <strong>What we take away from this:</strong> Each of these four tools does its specific job well. Snort and Suricata are reliable for signature detection. Fail2Ban works for brute-force blocking. OSSEC handles host integrity monitoring. But none of them combines packet-level detection, ML scoring, graduated response, and honeypot redirection in one pipeline. That's the gap we're trying to fill — though whether we actually fill it effectively depends on experiments we haven't run yet.
+</div>
+
+<!-- ==================== PART B BEGINS ==================== -->
+<div class="section-break"></div>
+<h1>Section 1 (Continued): Comparison with Recent Academic Systems</h1>
+
+<p>The next four systems are more recent research projects that try to do something similar to what we're building — some form of automated or reactive cyber defense. These comparisons are a bit more nuanced than the ones above, since these systems are closer in scope to our work.</p>
+
+<!-- ==================== PAPER 5: AARF ==================== -->
+<h2>1.6 — AARF (Autonomous Attack Response Framework, 2024)</h2>
+
+<div class="paper-meta">
+  <table>
+    <tr><td>Title</td><td>Autonomous Attack Response for Honeypot Interaction Based on Multi-Agent Dynamic Game with Reinforcement Learning</td></tr>
+    <tr><td>Authors</td><td>Various (published in MDPI Mathematics)</td></tr>
+    <tr><td>Published</td><td>2024, MDPI Mathematics Journal</td></tr>
+    <tr><td>Link</td><td><a href="https://www.mdpi.com/2227-7390/12/6/882" target="_blank">https://www.mdpi.com/2227-7390/12/6/882</a></td></tr>
+    <tr><td>Profiles</td><td><a href="https://sciprofiles.com/publication/view/dfe419e0a4af75fb9d4f1e854e88c4d2" target="_blank">SciProfiles</a></td></tr>
+  </table>
+</div>
+
+<h3>What AARF Does</h3>
+<p>AARF models cyber defense as a multi-agent dynamic game. It uses Hidden Markov Models combined with the MITRE ATT&CK framework to model multi-step attack chains. Defense agents are trained using reinforcement learning — specifically a Deep Q-Network with a proposed Dynamic Value Label Sampling technique — to select optimal response strategies against sequential attacks. The system operates within a virtual honeynet environment where both attack and defense agents interact.</p>
+
+<h3>What AARF Does Not Do</h3>
+<ul>
+  <li><strong>Simulation only.</strong> AARF operates entirely in a virtual honeynet simulation. It does not capture real network packets, apply real firewall rules, or interact with real attackers. The gap between a simulation environment and a system deployed on actual hardware is substantial.</li>
+  <li><strong>No measured response latency.</strong> Because AARF is simulation-based, it does not report response latency in real-world conditions. The time from detection to enforcement on actual network hardware is not addressed.</li>
+  <li><strong>Cloud-dependent.</strong> The simulation environment runs on cloud servers. There is no discussion of commodity hardware deployment.</li>
+  <li><strong>No flow-aware honeypot redirection.</strong> While AARF uses honeypots in its game model, it does not perform per-flow NAT redirection on real traffic.</li>
+  <li><strong>No wireless monitoring.</strong> The framework focuses on wired network simulations.</li>
+  <li><strong>Not open source.</strong> The implementation is not publicly available for reproduction.</li>
+</ul>
+
+<h3>Comparison Table</h3>
+<table>
+  <tr><th>Aspect</th><th>AARF (2024)</th><th>NTTH (Ours)</th></tr>
+  <tr><td>Environment</td><td>Simulated virtual honeynet</td><td>Deployed on real LAN with real devices</td></tr>
+  <tr><td>Detection approach</td><td>RL game theory + HMM</td><td>Hybrid: rule-based sliding windows + Isolation Forest</td></tr>
+  <tr><td>Response method</td><td>RL-selected strategy (in simulation)</td><td>nftables kernel firewall rules (on real hardware)</td></tr>
+  <tr><td>Response latency</td><td>Not measured</td><td>Designed for ~127ms (pending formal measurement)</td></tr>
+  <tr><td>Hardware requirement</td><td>Cloud servers</td><td>Commodity laptop + $10 USB WiFi adapter</td></tr>
+  <tr><td>Honeypot type</td><td>Static (within simulation)</td><td>Flow-aware dynamic NAT redirect</td></tr>
+  <tr><td>Wireless monitoring</td><td>No</td><td>Planned (AR9271 monitor mode)</td></tr>
+  <tr><td>Reproducibility</td><td>Closed source</td><td>Full codebase available</td></tr>
+</table>
+
+<div class="gap">
+  <strong>Where we differ:</strong> AARF uses game theory and reinforcement learning, which is interesting from a theory perspective. We took a more practical approach — we're applying real firewall rules to real traffic on real hardware. The two projects are really asking different questions. AARF asks "what's the best defense strategy?" and we ask "can we actually close the detect-to-enforce loop fast enough on cheap hardware?"
+</div>
+
+<!-- ==================== PAPER 6: AETHER ==================== -->
+<div class="section-break"></div>
+<h2>1.7 — AETHER (AI-Driven Deception Ecosystem, 2025)</h2>
+
+<div class="paper-meta">
+  <table>
+    <tr><td>Title</td><td>AETHER: Autonomous, Evolving, Tamper-proof Honeypot Ecosystem with Reactive Intelligence</td></tr>
+    <tr><td>Authors</td><td>Gurarpit Singh et al.</td></tr>
+    <tr><td>Published</td><td>2025, TechRxiv Preprint</td></tr>
+    <tr><td>Link</td><td><a href="https://www.techrxiv.org/articles/preprint/AETHER_-_Autonomous_Evolving_Tamper-proof_Honeypot_Ecosystem_with_Reactive_Intelligence/28739025" target="_blank">https://www.techrxiv.org/articles/preprint/AETHER/28739025</a></td></tr>
+    <tr><td>Author Page</td><td><a href="https://gurarpit.in" target="_blank">https://gurarpit.in</a></td></tr>
+  </table>
+</div>
+
+<h3>What AETHER Does</h3>
+<p>AETHER is a deception framework that uses generative AI — specifically LLMs and GANs — to create dynamic, evolving trap environments. Rather than static honeypots, AETHER generates context-aware deception surfaces such as fake inboxes, dummy web servers, and fabricated DevOps pipelines that adapt based on attacker behavior. It computes an "Adversary Confusion Index" to dynamically adjust the deception surface. The concept of "Digital DNA" creates behavioral fingerprints of attackers for future threat prediction.</p>
+
+<h3>What AETHER Does Not Do</h3>
+<ul>
+  <li><strong>Cloud-infrastructure dependent.</strong> AETHER requires LLMs, GANs, and cloud orchestration — significant compute resources not available on commodity hardware.</li>
+  <li><strong>No direct firewall enforcement.</strong> AETHER focuses on deception and attacker engagement. It does not integrate with kernel-level firewalls to block or rate-limit traffic.</li>
+  <li><strong>No measured response latency.</strong> The paper does not report time from detection to any enforcement action.</li>
+  <li><strong>No packet-level network monitoring.</strong> AETHER operates at the application layer (HTTP, SSH, SQL) rather than the network packet layer.</li>
+  <li><strong>No wireless monitoring.</strong></li>
+  <li><strong>Enterprise-targeted.</strong> The system requires infrastructure that a small or home network would not have.</li>
+</ul>
+
+<h3>Comparison Table</h3>
+<table>
+  <tr><th>Aspect</th><th>AETHER (2025)</th><th>NTTH (Ours)</th></tr>
+  <tr><td>Deception technology</td><td>LLM/GAN-generated dynamic environments</td><td>Cowrie SSH honeypot + HTTP honeypot with NAT redirect</td></tr>
+  <tr><td>Hardware requirement</td><td>Cloud infrastructure with GPU for LLMs</td><td>Commodity laptop + $10 USB adapter</td></tr>
+  <tr><td>Firewall enforcement</td><td>Not integrated</td><td>nftables kernel rules: block, rate-limit, redirect</td></tr>
+  <tr><td>Detection method</td><td>APT behavioral analysis via generative AI</td><td>Rule-based + Isolation Forest hybrid</td></tr>
+  <tr><td>Response latency</td><td>Not measured</td><td>Designed for ~127ms (pending measurement)</td></tr>
+  <tr><td>Attacker intelligence</td><td>Rich (Digital DNA, behavioral fingerprinting)</td><td>Commands, credentials, session duration via Cowrie logs</td></tr>
+  <tr><td>Target audience</td><td>Enterprise security teams with cloud budgets</td><td>Small networks, home environments, educational use</td></tr>
+  <tr><td>Maturity</td><td>Preprint (TechRxiv), conceptual framework</td><td>Working implementation tested with real attacks</td></tr>
+</table>
+
+<div class="note">
+  <strong>Being honest here:</strong> AETHER's deception is more sophisticated than ours — using LLMs to generate evolving traps is clearly more advanced than our static Cowrie and HTTP honeypots. But AETHER is a conceptual framework in a preprint, and we have a working system on real hardware. AETHER needs cloud infrastructure; ours runs on a laptop. They're aimed at different audiences with different budgets.
+</div>
+
+<!-- ==================== PAPER 7: LLM AGENT HONEYPOT ==================== -->
+<div class="section-break"></div>
+<h2>1.8 — LLM Agent Honeypot (2024)</h2>
+
+<div class="paper-meta">
+  <table>
+    <tr><td>Title</td><td>LLM Honeypot: Leveraging Large Language Models as Advanced Interactive Honeypot Systems</td></tr>
+    <tr><td>Authors</td><td>V. Levrier, A. Rabier, and B. Negrevergne</td></tr>
+    <tr><td>Published</td><td>2024, arXiv preprint arXiv:2409.08234</td></tr>
+    <tr><td>Link</td><td><a href="https://arxiv.org/abs/2409.08234" target="_blank">https://arxiv.org/abs/2409.08234</a></td></tr>
+  </table>
+</div>
+
+<h3>What It Does</h3>
+<p>This paper uses Large Language Models as interactive SSH honeypots capable of detecting whether an attacker is a human or an autonomous AI agent. The system uses prompt injection traps and timing analysis to fingerprint AI-driven attack agents — an emerging concern as LLM-powered attack tools become more prevalent. The honeypot runs on cloud VPS instances and logs attacker interactions.</p>
+
+<h3>What It Does Not Do</h3>
+<ul>
+  <li><strong>Detection only — no enforcement.</strong> This is the most significant limitation. The system identifies attackers — and specifically AI agents — but takes no enforcement action. It does not block IPs, redirect traffic, or isolate devices. Once an AI agent is identified, the system logs that fact and nothing more.</li>
+  <li><strong>No network-level IDS.</strong> The system is purely a honeypot; it does not monitor network traffic, detect port scans, SYN floods, or brute-force attacks outside of SSH.</li>
+  <li><strong>No risk scoring.</strong> There is no continuous risk assessment of network traffic.</li>
+  <li><strong>Static deployment.</strong> The honeypot runs on a fixed port on a cloud VPS. Traffic is not dynamically redirected to it based on threat assessment.</li>
+  <li><strong>Cloud-dependent.</strong> Requires cloud VPS hosting.</li>
+</ul>
+
+<h3>Comparison Table</h3>
+<table>
+  <tr><th>Aspect</th><th>LLM Agent Honeypot (2024)</th><th>NTTH (Ours)</th></tr>
+  <tr><td>Primary function</td><td>Detect AI-driven attackers via prompt injection</td><td>Detect, score, decide, and enforce against all attackers</td></tr>
+  <tr><td>Enforcement capability</td><td>None (detection only)</td><td>nftables: block, rate-limit, NAT redirect</td></tr>
+  <tr><td>Honeypot deployment</td><td>Static SSH honeypot on cloud VPS</td><td>Dynamic flow-aware redirect triggered by risk scoring</td></tr>
+  <tr><td>Network monitoring</td><td>None (honeypot-only)</td><td>Full packet capture with Scapy + rule engine + ML</td></tr>
+  <tr><td>Risk scoring</td><td>None</td><td>Hybrid 0.6×rule + 0.4×ML</td></tr>
+  <tr><td>Hardware</td><td>Cloud VPS</td><td>Commodity laptop</td></tr>
+  <tr><td>Wireless monitoring</td><td>None</td><td>Planned (AR9271)</td></tr>
+  <tr><td>AI agent detection</td><td>Yes (prompt injection + timing)</td><td>No (does not distinguish human vs. AI attackers)</td></tr>
+</table>
+
+<div class="gap">
+  <strong>Where they're ahead of us:</strong> Their paper tackles a specific problem — detecting AI-powered attackers — that we don't address at all. That's genuinely useful work and we can't claim to do what they do.<br><br>
+  <strong>What we do that they don't:</strong> The enforcement part. They can identify the attacker; we can actually stop them. These could complement each other — putting LLM-based honeypot responses into a system like ours might be worth exploring in the future.
+</div>
+
+<!-- ==================== PAPER 8: CYBERBATTLESIM / CAGE ==================== -->
+<div class="section-break"></div>
+<h2>1.9 — CyberBattleSim / CAGE Challenges (RL Simulation Environments)</h2>
+
+<div class="paper-meta">
+  <table>
+    <tr><td>CyberBattleSim</td><td>Microsoft Research — Abstract simulation for RL agent training</td></tr>
+    <tr><td>CAGE Challenges</td><td>TTCP (The Technical Cooperation Program) — Autonomous Cyber Defense competitions</td></tr>
+    <tr><td>CyberBattleSim Link</td><td><a href="https://github.com/microsoft/CyberBattleSim" target="_blank">https://github.com/microsoft/CyberBattleSim</a></td></tr>
+    <tr><td>CAGE Challenge 4</td><td><a href="https://github.com/cage-challenge/cage-challenge-4" target="_blank">https://github.com/cage-challenge/cage-challenge-4</a></td></tr>
+    <tr><td>CybORG Docs</td><td><a href="https://cage-challenge.github.io/cage-challenge-4/" target="_blank">https://cage-challenge.github.io/cage-challenge-4/</a></td></tr>
+  </table>
+</div>
+
+<h3>What They Are</h3>
+<p>CyberBattleSim (Microsoft) and the CAGE Challenges (TTCP) are simulation environments for training autonomous cyber defense agents using reinforcement learning. CyberBattleSim provides an abstract, OpenAI Gym-style interface where RL agents learn to defend simulated networks. CAGE Challenge 4 (2024) introduced multi-agent RL (MARL) scenarios where multiple defense agents coordinate to protect different security zones. These are research platforms, not deployable security tools.</p>
+
+<h3>Why This Is a Very Different Kind of System</h3>
+<p>These environments don't touch real packets, real firewalls, or real attackers — everything happens in simulation. Our system captures real packets from real interfaces and applies real kernel firewall rules. The purposes are also different: CyberBattleSim and CAGE exist to advance RL algorithms; our system exists to actually defend a network. In their world, "response time" is measured in simulation steps, not milliseconds, so our sub-second target doesn't really apply. And since simulated attackers don't type real commands or try real passwords, honeypot intelligence gathering isn't a factor either.</p>
+
+<h3>Comparison Table</h3>
+<table>
+  <tr><th>Aspect</th><th>CyberBattleSim / CAGE</th><th>NTTH (Ours)</th></tr>
+  <tr><td>Nature</td><td>Simulation/research platform</td><td>Deployed security system</td></tr>
+  <tr><td>Packets</td><td>Simulated abstractions</td><td>Real packets captured via Scapy</td></tr>
+  <tr><td>Firewall</td><td>Simulated actions</td><td>Real nftables kernel rules</td></tr>
+  <tr><td>Attackers</td><td>Simulated agents</td><td>Real devices running real attack tools (nmap, Hydra)</td></tr>
+  <tr><td>Latency</td><td>Simulation steps (not wall-clock)</td><td>Wall-clock milliseconds (~127ms target)</td></tr>
+  <tr><td>Hardware</td><td>Cloud/GPU for RL training</td><td>Commodity laptop</td></tr>
+  <tr><td>Intelligence capture</td><td>None (simulated)</td><td>Real commands, credentials via Cowrie</td></tr>
+  <tr><td>Purpose</td><td>Advance RL algorithms</td><td>Defend actual networks</td></tr>
+</table>
+
+<!-- ==================== MASTER COMPARISON TABLE ==================== -->
+<div class="section-break"></div>
+<h2>1.10 — Master Comparison: All Eight Systems vs. NTTH</h2>
+
+<p>This table puts all the comparisons from sections 1.1 through 1.9 in one place. Each row is a capability, each column is a system. It's meant to give a quick overview of where our prototype sits relative to everything else we looked at.</p>
+
+<table style="font-size:11.5px">
+  <tr>
+    <th style="width:145px">Capability</th>
+    <th>Snort</th>
+    <th>Suricata</th>
+    <th>Fail2Ban</th>
+    <th>OSSEC</th>
+    <th>AARF</th>
+    <th>AETHER</th>
+    <th>LLM HP</th>
+    <th>CAGE</th>
+    <th>NTTH (Ours)</th>
+  </tr>
+  <tr><td><strong>Detection method</strong></td><td>Signatures</td><td>Signatures</td><td>Regex</td><td>Rules+FIM</td><td>RL games</td><td>Gen AI</td><td>Prompt inj.</td><td>RL sim</td><td><strong>Rules+ML hybrid</strong></td></tr>
+  <tr><td><strong>Auto enforcement</strong></td><td>No</td><td>IPS drop</td><td>Yes (ban)</td><td>Yes (script)</td><td>Sim only</td><td>No</td><td>No</td><td>Sim only</td><td><strong>Yes (nftables)</strong></td></tr>
+  <tr><td><strong>Graduated response</strong></td><td>No</td><td>No</td><td>No</td><td>No</td><td>RL strategy</td><td>No</td><td>No</td><td>RL strategy</td><td><strong>5-tier</strong></td></tr>
+  <tr><td><strong>Honeypot</strong></td><td>No</td><td>No</td><td>No</td><td>No</td><td>Static</td><td>AI-gen</td><td>Static SSH</td><td>No</td><td><strong>Dynamic NAT</strong></td></tr>
+  <tr><td><strong>Flow-aware redirect</strong></td><td>No</td><td>No</td><td>No</td><td>No</td><td>No</td><td>No</td><td>No</td><td>No</td><td><strong>Yes</strong></td></tr>
+  <tr><td><strong>Response latency</strong></td><td>N/A</td><td>N/A</td><td>Not meas.</td><td>1–10s</td><td>Not meas.</td><td>Not meas.</td><td>N/A</td><td>N/A</td><td><strong>~127ms*</strong></td></tr>
+  <tr><td><strong>Command capture</strong></td><td>No</td><td>No</td><td>No</td><td>No</td><td>No</td><td>Yes</td><td>Yes</td><td>No</td><td><strong>Yes</strong></td></tr>
+  <tr><td><strong>ML anomaly</strong></td><td>No</td><td>No</td><td>No</td><td>No</td><td>RL</td><td>Gen AI</td><td>No</td><td>RL</td><td><strong>Isolation Forest</strong></td></tr>
+  <tr><td><strong>WiFi monitoring</strong></td><td>No</td><td>No</td><td>No</td><td>No</td><td>No</td><td>No</td><td>No</td><td>No</td><td><strong>Planned</strong></td></tr>
+  <tr><td><strong>Real deployment</strong></td><td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td><td>No (sim)</td><td>No (concept)</td><td>Yes (cloud)</td><td>No (sim)</td><td><strong>Yes (LAN)</strong></td></tr>
+  <tr><td><strong>Commodity HW</strong></td><td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td><td>No (cloud)</td><td>No (cloud)</td><td>No (cloud)</td><td>No (cloud)</td><td><strong>Yes ($10 USB)</strong></td></tr>
+  <tr><td><strong>Dashboard</strong></td><td>Logs</td><td>EveBox</td><td>No</td><td>Kibana</td><td>No</td><td>No</td><td>No</td><td>No</td><td><strong>Flutter + WS</strong></td></tr>
+  <tr><td><strong>Open source</strong></td><td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td><td>No</td><td>No</td><td>Partial</td><td>Yes</td><td><strong>Yes</strong></td></tr>
+</table>
+
+<p class="footnote">* 127ms is a design target based on preliminary testing. Formal measurement through controlled experiments is pending.</p>
+
+<div class="note">
+  <strong>What stands out:</strong> Looking at the "Flow-aware redirect" row — as far as we can tell, we're the only one doing per-flow NAT redirection. The "Response latency" row is also worth noting: none of the other systems actually measure or report end-to-end latency from packet capture to firewall enforcement. These are the two areas where we think we might be contributing something new. But we should be clear — whether these contributions actually hold up is something we need to verify with proper experiments.
+</div>
+
+<h2>1.11 — Where Existing Systems Outperform the Current NTTH Implementation</h2>
+
+<p>It wouldn't be fair to only talk about what we do better. Here's where each existing system currently outperforms what we've built.</p>
+
+<table>
+  <tr><th>System</th><th>Where It Currently Performs Better</th></tr>
+  <tr><td>Snort</td><td>30,000+ curated signatures. NTTH's rule engine has only 3 detectors (port scan, SYN flood, brute force). Snort's false positive rate (2.1%) is lower than NTTH's expected ~1.8%.</td></tr>
+  <tr><td>Suricata</td><td>Multi-threaded, handles gigabit-speed traffic. NTTH is single-threaded async, suitable for home/small LAN but not enterprise throughput.</td></tr>
+  <tr><td>Fail2Ban</td><td>Simpler and more tested for the specific problem of SSH brute-force blocking. Deployed on millions of servers for 20+ years.</td></tr>
+  <tr><td>OSSEC/Wazuh</td><td>Host-level visibility (file integrity, rootkits) that a network-level system cannot provide. Centralized multi-host management.</td></tr>
+  <tr><td>AARF</td><td>Theoretically rigorous game-theoretic modeling of multi-step attack sequences. NTTH's rule engine does not model attack chains.</td></tr>
+  <tr><td>AETHER</td><td>More sophisticated deception using generative AI. NTTH's honeypots are static Cowrie/HTTP instances; AETHER generates evolving, context-aware traps.</td></tr>
+  <tr><td>LLM Honeypot</td><td>Can distinguish human attackers from AI agents. NTTH treats all attackers the same.</td></tr>
+  <tr><td>CAGE/CyberBattleSim</td><td>Multi-agent RL coordination across network zones. NTTH is a single-gateway, single-agent deployment.</td></tr>
+</table>
+
+<div class="warn">
+  <strong>To be clear about what we're claiming:</strong> We're not saying our system is better than every existing tool at everything — that wouldn't be realistic. What we're saying is that the specific combination of detection, scoring, enforcement, and honeypot deception in one sub-second pipeline on cheap hardware doesn't seem to exist in the current literature, based on what we've reviewed. But we want to be honest: the formal validation of that claim is still something we need to do.
+</div>
+
+<div class="doc-footer">— End of Section 1: Detailed Comparison with Existing Research —</div>
+
+</body>
+</html>

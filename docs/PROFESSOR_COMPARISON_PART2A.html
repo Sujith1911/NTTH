@@ -1,0 +1,257 @@
+<html>
+<head>
+<meta charset="UTF-8">
+<title>NTTH — Research Comparison (Part 2A)</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Inter',sans-serif;color:#1a1a2e;line-height:1.7;background:#fff;padding:40px 60px;max-width:1000px;margin:0 auto}
+h1{font-size:26px;color:#0f3460;margin-bottom:6px;border-bottom:3px solid #0f3460;padding-bottom:8px}
+h2{font-size:20px;color:#16213e;margin:28px 0 10px;border-left:4px solid #e94560;padding-left:12px}
+h3{font-size:16px;color:#0f3460;margin:18px 0 8px}
+h4{font-size:14px;color:#333;margin:12px 0 6px}
+p{margin:8px 0;font-size:13.5px;text-align:justify}
+table{width:100%;border-collapse:collapse;margin:12px 0;font-size:12.5px}
+th{background:#0f3460;color:#fff;padding:7px 10px;text-align:left;font-weight:600}
+td{padding:6px 10px;border-bottom:1px solid #e0e0e0;vertical-align:top}
+tr:nth-child(even){background:#f8f9fa}
+a{color:#2980b9;text-decoration:none}
+a:hover{text-decoration:underline}
+.note{background:#eef4ff;border-left:4px solid #3498db;padding:10px 14px;margin:12px 0;font-size:13px;border-radius:0 6px 6px 0}
+.gap{background:#fff8e1;border-left:4px solid #f39c12;padding:10px 14px;margin:12px 0;font-size:13px;border-radius:0 6px 6px 0}
+.warn{background:#fdecea;border-left:4px solid #e74c3c;padding:10px 14px;margin:12px 0;font-size:13px;border-radius:0 6px 6px 0}
+.badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;color:#fff}
+.yes{background:#27ae60}.no{background:#e74c3c}.partial{background:#f39c12}
+.section-break{page-break-before:always}
+.paper-box{background:#f4f6f9;border:1px solid #dce1e8;border-radius:8px;padding:16px 20px;margin:14px 0}
+.paper-box h3{margin-top:0;color:#0f3460}
+ul{margin:6px 0 6px 20px;font-size:13.5px}
+li{margin:3px 0}
+</style>
+</head>
+<body>
+
+<h1>Section 3: Detailed Comparison with Existing Research (Part A)</h1>
+<p>This section presents a paper-by-paper comparison between our implementation and the most relevant published systems. For each system, we describe what it does, where it falls short relative to our goals, and what our project adds. We include direct links to the original papers so the reader can verify any claim independently.</p>
+
+<p>We compare against eight existing systems, grouped into two categories. This document (Part A) covers the four established, widely deployed tools: Snort, Suricata, Fail2Ban, and OSSEC/Wazuh. Part B covers the four recent research systems: AARF, AETHER, LLM Agent Honeypot, and CyberBattleSim/CAGE.</p>
+
+<!-- ==================== PAPER 1: SNORT ==================== -->
+<div class="section-break"></div>
+<h2>3.1 — Snort (Signature-Based Network IDS)</h2>
+
+<div class="paper-box">
+<h3>Paper Details</h3>
+<table>
+<tr><td style="width:120px"><strong>Title</strong></td><td>Snort — Lightweight Intrusion Detection for Networks</td></tr>
+<tr><td><strong>Author</strong></td><td>Martin Roesch</td></tr>
+<tr><td><strong>Published</strong></td><td>USENIX LISA '99, pp. 229–238, 1999</td></tr>
+<tr><td><strong>Link</strong></td><td><a href="https://www.usenix.org/legacy/publications/library/proceedings/lisa99/full_papers/roesch/roesch.pdf" target="_blank">https://www.usenix.org/legacy/publications/library/proceedings/lisa99/full_papers/roesch/roesch.pdf</a></td></tr>
+<tr><td><strong>Citations</strong></td><td>6,000+ (one of the most cited IDS papers)</td></tr>
+</table>
+</div>
+
+<h3>What Snort Does</h3>
+<p>Snort is the original open-source network intrusion detection system. It captures packets from a network interface and matches their content against a database of known attack signatures (currently 30,000+ community rules). When a signature matches, Snort writes an alert to a log file. Snort 3.x introduced multi-threaded packet processing, but the core model remains the same: capture, match, alert.</p>
+
+<h3>What Snort Does Not Do</h3>
+<ul>
+<li><strong>No automated enforcement.</strong> Snort generates alert log entries. It does not add firewall rules, redirect traffic, or isolate devices. A human operator must read the alert, interpret it, and manually configure a firewall. Research by Alahmadi et al. (USENIX Security 2022) found that analysts investigate only 4–8% of generated alerts.</li>
+<li><strong>No ML anomaly detection.</strong> Snort relies entirely on pre-written signatures. If an attack does not match a known signature, Snort will not detect it. Zero-day attacks and behavioral anomalies are invisible.</li>
+<li><strong>No honeypot integration.</strong> Snort has no mechanism to redirect suspicious traffic to deception services. It cannot capture attacker commands or credentials.</li>
+<li><strong>No wireless monitoring.</strong> Snort processes wired packet captures only.</li>
+<li><strong>No real-time dashboard.</strong> Snort outputs text-based alerts. Visualization requires separate tools (Barnyard2, Snorby, etc.).</li>
+</ul>
+
+<h3>How NTTH Differs</h3>
+<table>
+<tr><th>Capability</th><th>Snort</th><th>NTTH</th></tr>
+<tr><td>Detection method</td><td>Signature matching only</td><td>Signature rules + Isolation Forest ML (hybrid, weighted 0.6/0.4)</td></tr>
+<tr><td>Response to threat</td><td>Write alert to log file</td><td>Autonomous: rate-limit, redirect to honeypot, or block via nftables</td></tr>
+<tr><td>Response latency</td><td>N/A (no response)</td><td>Designed for sub-second (~127ms target, pending formal measurement)</td></tr>
+<tr><td>Honeypot</td><td>Not available</td><td>Flow-aware NAT redirect to Cowrie SSH + HTTP honeypot</td></tr>
+<tr><td>Attacker intelligence</td><td>Alert text only</td><td>Captured commands, credentials, session duration, GeoIP</td></tr>
+<tr><td>Dashboard</td><td>Text logs (needs external tools)</td><td>Flutter cross-platform app with WebSocket live updates</td></tr>
+<tr><td>ML scoring</td><td>None</td><td>Isolation Forest trained on baseline traffic</td></tr>
+</table>
+
+<div class="gap">
+<strong>The gap we address:</strong> Snort detects threats but leaves a manual response gap. According to the IBM X-Force Threat Intelligence Index (2024), manual SOC response takes 15–30 minutes on average. Our system is designed to close this gap by automating the detect→decide→enforce loop. Whether the measured latency meets our ~127ms target will be confirmed through pending experiments.
+</div>
+
+<!-- ==================== PAPER 2: SURICATA ==================== -->
+<div class="section-break"></div>
+<h2>3.2 — Suricata (Multi-Threaded IDS/IPS)</h2>
+
+<div class="paper-box">
+<h3>Paper Details</h3>
+<table>
+<tr><td style="width:120px"><strong>Title</strong></td><td>Suricata: Open Source IDS/IPS/NSM Engine</td></tr>
+<tr><td><strong>Author</strong></td><td>Open Information Security Foundation (OISF)</td></tr>
+<tr><td><strong>Published</strong></td><td>Ongoing open-source project, active since 2009</td></tr>
+<tr><td><strong>Link</strong></td><td><a href="https://suricata.io" target="_blank">https://suricata.io</a></td></tr>
+<tr><td><strong>Docs</strong></td><td><a href="https://docs.suricata.io/en/latest/" target="_blank">https://docs.suricata.io/en/latest/</a></td></tr>
+</table>
+</div>
+
+<h3>What Suricata Does</h3>
+<p>Suricata extends the Snort model with multi-threaded packet processing, protocol-aware detection, and rich JSON output (EVE logs). It can operate in IPS (inline) mode where it drops packets matching rules, but this mode requires specific network topology (inline bridge) and only performs binary drop/pass decisions. Suricata is widely regarded as the modern successor to Snort for high-throughput environments.</p>
+
+<h3>What Suricata Does Not Do</h3>
+<ul>
+<li><strong>No graduated response.</strong> Suricata's IPS mode can only drop or pass a packet. It cannot rate-limit, redirect to a honeypot, or apply different actions based on risk level. The decision is binary.</li>
+<li><strong>No ML anomaly component.</strong> Like Snort, Suricata relies on signatures. Some research has added ML classifiers on top of Suricata's EVE output, but these are external additions, not part of Suricata itself.</li>
+<li><strong>No honeypot integration.</strong> Suricata cannot redirect traffic to deception services.</li>
+<li><strong>No attacker intelligence capture.</strong> Suricata does not record attacker commands or credentials.</li>
+<li><strong>Lower false positive rates (1.8%) but at the cost of missing novel attacks.</strong> Suricata's extensive signature database is highly precise for known patterns but blind to zero-day or behavioral anomalies.</li>
+</ul>
+
+<h3>How NTTH Differs</h3>
+<table>
+<tr><th>Capability</th><th>Suricata</th><th>NTTH</th></tr>
+<tr><td>Packet processing</td><td>Multi-threaded, high throughput</td><td>Single-threaded async (sufficient for home/small LAN)</td></tr>
+<tr><td>Detection</td><td>Signatures only (30,000+ rules)</td><td>3 rule detectors + Isolation Forest anomaly scoring</td></tr>
+<tr><td>IPS capability</td><td>Binary drop/pass (inline mode)</td><td>5-tier graduated: allow → log → rate-limit → honeypot → block</td></tr>
+<tr><td>Honeypot redirection</td><td>Not available</td><td>Per-flow NAT redirect to Cowrie/HTTP honeypot</td></tr>
+<tr><td>Response latency</td><td>Inline drop is fast, but no further action</td><td>Full pipeline: detect → score → decide → enforce (~127ms target)</td></tr>
+<tr><td>Dashboard</td><td>EveBox (separate tool)</td><td>Built-in Flutter app with WebSocket</td></tr>
+<tr><td>Target environment</td><td>Enterprise/high-throughput networks</td><td>Residential IoT / small networks on commodity hardware</td></tr>
+</table>
+
+<div class="note">
+<strong>Fair acknowledgment:</strong> Suricata has lower false positive rates than our system (1.8% vs. our expected ~3.8%) because of its extensive, curated signature database. Our slightly higher FP rate is a tradeoff — the ML anomaly detector intentionally trades some precision for broader coverage of unknown attack patterns. This tradeoff needs to be validated through formal experiments, which are still pending.
+</div>
+
+<!-- ==================== PAPER 3: FAIL2BAN ==================== -->
+<div class="section-break"></div>
+<h2>3.3 — Fail2Ban (Log-Based Auto-Blocker)</h2>
+
+<div class="paper-box">
+<h3>Tool Details</h3>
+<table>
+<tr><td style="width:120px"><strong>Title</strong></td><td>Fail2Ban — Ban hosts that cause multiple authentication errors</td></tr>
+<tr><td><strong>Type</strong></td><td>Open-source log-monitoring and auto-ban tool</td></tr>
+<tr><td><strong>Published</strong></td><td>Active since 2004, continuously maintained</td></tr>
+<tr><td><strong>Link</strong></td><td><a href="https://github.com/fail2ban/fail2ban" target="_blank">https://github.com/fail2ban/fail2ban</a></td></tr>
+<tr><td><strong>Docs</strong></td><td><a href="https://www.fail2ban.org/wiki/index.php/Main_Page" target="_blank">https://www.fail2ban.org/wiki/index.php/Main_Page</a></td></tr>
+</table>
+</div>
+
+<h3>What Fail2Ban Does</h3>
+<p>Fail2Ban monitors service log files (e.g., <code>/var/log/auth.log</code>, <code>/var/log/apache2/error.log</code>) using regex patterns. When it detects repeated failed login attempts from the same IP, it automatically adds an iptables/nftables ban rule for that IP for a configurable duration. It is extremely lightweight and effective at stopping brute-force SSH attacks.</p>
+
+<h3>Why This Comparison Matters</h3>
+<div class="warn">
+<strong>Important:</strong> This is the comparison a professor is most likely to challenge us on. "Why not just use Fail2Ban?" is a reasonable question, and we need to have a clear, honest answer. The answer is not that Fail2Ban is bad — it is that it solves a different, narrower problem.
+</div>
+
+<h3>What Fail2Ban Does Not Do</h3>
+<ul>
+<li><strong>Log-based, not packet-based.</strong> Fail2Ban reads log files after a service has already processed the connection. It cannot detect port scans (no log entry is created for a SYN probe to a closed port). It cannot detect SYN floods (these happen at the network layer, below application logs). It can only react to events that produce log output.</li>
+<li><strong>No ML component.</strong> Fail2Ban uses regex pattern matching. It cannot learn normal traffic baselines or detect behavioral anomalies.</li>
+<li><strong>Binary response only.</strong> Fail2Ban either bans the IP entirely or does nothing. There is no graduated response — no rate-limiting, no honeypot redirection, no risk scoring.</li>
+<li><strong>No attacker intelligence.</strong> Fail2Ban blocks the IP and moves on. It does not redirect attackers to deception services or capture their commands and credentials.</li>
+<li><strong>No response latency measurement.</strong> Fail2Ban's response time depends on log file write latency, regex evaluation, and iptables execution. This latency is not measured or reported in any publication.</li>
+<li><strong>Single-service focus.</strong> Each Fail2Ban "jail" monitors one log file for one service. It does not correlate activity across services or provide a unified risk score.</li>
+</ul>
+
+<h3>Detailed Feature-by-Feature Comparison</h3>
+<table>
+<tr><th>Aspect</th><th>Fail2Ban</th><th>NTTH</th></tr>
+<tr><td>Detection input</td><td>Log files (post-event, after service processes the connection)</td><td>Raw packets (real-time, before any service sees the traffic)</td></tr>
+<tr><td>Detection scope</td><td>Only attacks that create log entries (brute force, auth failures)</td><td>All network-level attacks: port scans, SYN floods, brute force, HTTP probes</td></tr>
+<tr><td>Detection method</td><td>Regex pattern matching on log text</td><td>Rule-based sliding windows + Isolation Forest ML</td></tr>
+<tr><td>Risk scoring</td><td>None — binary match/no-match</td><td>Continuous 0.0–1.0 hybrid score (0.6×rule + 0.4×ML)</td></tr>
+<tr><td>Response type</td><td>Ban IP completely (iptables DROP)</td><td>5-tier: allow → log → rate-limit → honeypot redirect → block</td></tr>
+<tr><td>Honeypot redirection</td><td>Not available</td><td>Flow-aware NAT to Cowrie SSH or HTTP honeypot</td></tr>
+<tr><td>Intelligence gathering</td><td>None (just blocks)</td><td>Captures commands, credentials, session duration via honeypot</td></tr>
+<tr><td>Flow selectivity</td><td>Bans all traffic from source IP</td><td>Can redirect only the malicious flow while allowing other traffic</td></tr>
+<tr><td>ML capability</td><td>None</td><td>Isolation Forest anomaly detection</td></tr>
+<tr><td>Dashboard</td><td>None (CLI tool)</td><td>Flutter cross-platform app with live WebSocket updates</td></tr>
+<tr><td>Wireless monitoring</td><td>None</td><td>Planned: AR9271 WiFi probe/deauth detection</td></tr>
+</table>
+
+<div class="gap">
+<strong>The distinction in one sentence:</strong> Fail2Ban is a log-file regex parser that bans IPs after failed logins. NTTH operates at the packet level and sees attacks — like port scans and SYN floods — that never produce log entries in the first place. Additionally, NTTH redirects attackers to honeypots for intelligence gathering instead of simply blocking them.
+</div>
+
+<!-- ==================== PAPER 4: OSSEC/WAZUH ==================== -->
+<div class="section-break"></div>
+<h2>3.4 — OSSEC / Wazuh (Host-Based IDS)</h2>
+
+<div class="paper-box">
+<h3>Tool Details</h3>
+<table>
+<tr><td style="width:120px"><strong>Title</strong></td><td>OSSEC — Open Source Host-based Intrusion Detection System</td></tr>
+<tr><td><strong>Type</strong></td><td>Host-based IDS (HIDS) with active response</td></tr>
+<tr><td><strong>Published</strong></td><td>Active since 2004; Wazuh is the modern maintained fork</td></tr>
+<tr><td><strong>OSSEC Link</strong></td><td><a href="https://www.ossec.net/" target="_blank">https://www.ossec.net/</a></td></tr>
+<tr><td><strong>Wazuh Link</strong></td><td><a href="https://wazuh.com/" target="_blank">https://wazuh.com/</a></td></tr>
+<tr><td><strong>Wazuh Docs</strong></td><td><a href="https://documentation.wazuh.com/current/index.html" target="_blank">https://documentation.wazuh.com/current/index.html</a></td></tr>
+</table>
+</div>
+
+<h3>What OSSEC/Wazuh Does</h3>
+<p>OSSEC is a host-based intrusion detection system that monitors individual hosts rather than network traffic. It performs log analysis, file integrity monitoring (FIM), rootkit detection, and policy compliance checking. Wazuh, its modern fork, adds an API, Elastic Stack integration, and centralized management. OSSEC includes an "active response" feature that can execute scripts (e.g., add an iptables rule) when threats are detected.</p>
+
+<h3>What OSSEC/Wazuh Does Not Do</h3>
+<ul>
+<li><strong>Host-based, not network-based.</strong> OSSEC monitors files, logs, and system calls on individual machines. It does not capture network packets or analyze traffic patterns across the network. A port scan against the network would not be detected unless a service logs the connection attempt.</li>
+<li><strong>Active response is script-based with higher latency.</strong> OSSEC's active response executes shell scripts, which typically take 1–10 seconds. This is much slower than kernel-level nftables rule application.</li>
+<tr></tr>
+<li><strong>No ML anomaly detection.</strong> OSSEC uses predefined decoder rules and log correlation. It does not incorporate machine learning models.</li>
+<li><strong>No honeypot integration.</strong> OSSEC cannot redirect traffic to deception services.</li>
+<li><strong>No per-flow traffic control.</strong> OSSEC's active response blocks or unbans IPs, but cannot selectively redirect specific flows.</li>
+<li><strong>Different attack surface.</strong> OSSEC detects host-level compromise (file changes, rootkits). NTTH detects network-level attacks (scans, floods, brute force) before they reach the host.</li>
+</ul>
+
+<h3>How NTTH Differs</h3>
+<table>
+<tr><th>Aspect</th><th>OSSEC / Wazuh</th><th>NTTH</th></tr>
+<tr><td>Monitoring type</td><td>Host-based (files, logs, syscalls)</td><td>Network-based (raw packets on the wire)</td></tr>
+<tr><td>Detection focus</td><td>Host compromise, file changes, rootkits</td><td>Network attacks: port scans, SYN floods, brute force</td></tr>
+<tr><td>Detection timing</td><td>Post-compromise (detects after changes happen)</td><td>Pre-compromise (detects attack traffic in transit)</td></tr>
+<tr><td>Response mechanism</td><td>Shell script execution (1–10 second latency)</td><td>nftables kernel rules (~127ms target latency)</td></tr>
+<tr><td>ML anomaly scoring</td><td>None</td><td>Isolation Forest trained on baseline traffic</td></tr>
+<tr><td>Honeypot</td><td>Not available</td><td>Flow-aware NAT redirect to Cowrie + HTTP honeypot</td></tr>
+<tr><td>Architecture</td><td>Agent/manager (agent on each host)</td><td>Gateway-level (monitors entire network from one point)</td></tr>
+<tr><td>Deployment model</td><td>Requires agent installed on every monitored host</td><td>Single gateway captures all network traffic — no per-device install</td></tr>
+</table>
+
+<div class="note">
+<strong>Complementary rather than competitive:</strong> OSSEC/Wazuh and NTTH actually address different layers. OSSEC monitors what happens <em>inside</em> a host. NTTH monitors what happens <em>on the network</em> before traffic reaches any host. In a complete security architecture, both would be valuable. Our contribution is the network-level autonomous response layer, which OSSEC does not provide.
+</div>
+
+<!-- ==================== SUMMARY TABLE FOR PART A ==================== -->
+<div class="section-break"></div>
+<h2>3.5 — Summary: NTTH vs. Established Tools</h2>
+
+<table>
+<tr>
+<th>Capability</th>
+<th>Snort</th>
+<th>Suricata</th>
+<th>Fail2Ban</th>
+<th>OSSEC</th>
+<th>NTTH</th>
+</tr>
+<tr><td>Packet-level detection</td><td><span class="badge yes">Yes</span></td><td><span class="badge yes">Yes</span></td><td><span class="badge no">No</span></td><td><span class="badge no">No</span></td><td><span class="badge yes">Yes</span></td></tr>
+<tr><td>ML anomaly detection</td><td><span class="badge no">No</span></td><td><span class="badge no">No</span></td><td><span class="badge no">No</span></td><td><span class="badge no">No</span></td><td><span class="badge yes">Yes</span></td></tr>
+<tr><td>Automated enforcement</td><td><span class="badge no">No</span></td><td><span class="badge partial">IPS drop only</span></td><td><span class="badge yes">Yes</span></td><td><span class="badge yes">Yes</span></td><td><span class="badge yes">Yes</span></td></tr>
+<tr><td>Graduated response</td><td><span class="badge no">No</span></td><td><span class="badge no">No</span></td><td><span class="badge no">No</span></td><td><span class="badge no">No</span></td><td><span class="badge yes">5-tier</span></td></tr>
+<tr><td>Honeypot integration</td><td><span class="badge no">No</span></td><td><span class="badge no">No</span></td><td><span class="badge no">No</span></td><td><span class="badge no">No</span></td><td><span class="badge yes">Yes</span></td></tr>
+<tr><td>Flow-aware redirect</td><td><span class="badge no">No</span></td><td><span class="badge no">No</span></td><td><span class="badge no">No</span></td><td><span class="badge no">No</span></td><td><span class="badge yes">Yes</span></td></tr>
+<tr><td>Attacker command capture</td><td><span class="badge no">No</span></td><td><span class="badge no">No</span></td><td><span class="badge no">No</span></td><td><span class="badge no">No</span></td><td><span class="badge yes">Yes</span></td></tr>
+<tr><td>Risk scoring</td><td><span class="badge no">No</span></td><td><span class="badge no">No</span></td><td><span class="badge no">No</span></td><td><span class="badge partial">Rule-based</span></td><td><span class="badge yes">Hybrid</span></td></tr>
+<tr><td>Real-time dashboard</td><td><span class="badge no">Logs</span></td><td><span class="badge partial">EveBox</span></td><td><span class="badge no">CLI</span></td><td><span class="badge partial">Kibana</span></td><td><span class="badge yes">Flutter WS</span></td></tr>
+<tr><td>Commodity hardware</td><td><span class="badge yes">Yes</span></td><td><span class="badge yes">Yes</span></td><td><span class="badge yes">Yes</span></td><td><span class="badge yes">Yes</span></td><td><span class="badge yes">Yes</span></td></tr>
+</table>
+
+<div class="gap">
+<strong>Key observation:</strong> All four established tools are excellent at their specific tasks. Snort and Suricata excel at signature detection. Fail2Ban is effective for brute-force blocking. OSSEC monitors host integrity. However, none of them provides the combination of packet-level detection, ML scoring, graduated response, and honeypot redirection in a single integrated pipeline. That is the gap our project is designed to fill — whether it fills it effectively is what our pending experiments will determine.
+</div>
+
+<p style="text-align:center;margin-top:40px;font-size:12px;color:#999">— End of Part 2A — Continued in Part 2B: Research System Comparisons (AARF, AETHER, LLM Honeypot, CAGE) —</p>
+
+</body>
+</html>

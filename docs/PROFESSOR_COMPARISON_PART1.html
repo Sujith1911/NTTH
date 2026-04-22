@@ -1,0 +1,209 @@
+<html>
+<head>
+<meta charset="UTF-8">
+<title>NTTH — Progress & Comparison Report</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Inter',sans-serif;color:#1a1a2e;line-height:1.7;background:#fff;padding:40px 60px;max-width:1000px;margin:0 auto}
+h1{font-size:28px;color:#0f3460;margin-bottom:6px;border-bottom:3px solid #0f3460;padding-bottom:8px}
+h2{font-size:22px;color:#16213e;margin:30px 0 12px;border-left:4px solid #e94560;padding-left:12px}
+h3{font-size:17px;color:#0f3460;margin:20px 0 8px}
+p{margin:8px 0;font-size:14px;text-align:justify}
+table{width:100%;border-collapse:collapse;margin:12px 0;font-size:13px}
+th{background:#0f3460;color:#fff;padding:8px 10px;text-align:left;font-weight:600}
+td{padding:7px 10px;border-bottom:1px solid #e0e0e0}
+tr:nth-child(even){background:#f8f9fa}
+.cover{text-align:center;padding:80px 0 40px;page-break-after:always}
+.cover h1{font-size:32px;border:none;margin-bottom:4px}
+.cover .subtitle{font-size:18px;color:#e94560;margin:8px 0 30px;font-weight:500}
+.cover .meta{font-size:14px;color:#555;line-height:2}
+.badge{display:inline-block;padding:2px 10px;border-radius:10px;font-size:11px;font-weight:600;color:#fff}
+.done{background:#27ae60}
+.wip{background:#f39c12}
+.pending{background:#e74c3c}
+.note{background:#eef4ff;border-left:4px solid #3498db;padding:12px 16px;margin:12px 0;font-size:13px;border-radius:0 6px 6px 0}
+.progress-bar{background:#e0e0e0;border-radius:8px;height:22px;margin:6px 0;overflow:hidden}
+.progress-fill{height:100%;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:600}
+.section-break{page-break-before:always}
+.highlight{background:#fff3cd;padding:2px 6px;border-radius:3px;font-weight:500}
+em.prof{font-style:normal;color:#e94560;font-weight:600}
+</style>
+</head>
+<body>
+
+<!-- ==================== COVER PAGE ==================== -->
+<div class="cover">
+<h1>NO TIME TO HACK (NTTH)</h1>
+<div class="subtitle">Progress, Comparison & Novelty Report</div>
+<p style="font-size:16px;color:#333;text-align:center">A Behavior-Driven Autonomous IoT Security Gateway with<br>Hybrid Intrusion Detection and Containerized Deception</p>
+<div class="meta">
+<br><br>
+Submitted to: <strong>Professor [Name]</strong><br>
+Prepared by: <strong>Team NTTH</strong><br>
+Department: <strong>[Department Name]</strong><br>
+Date: <strong>19 April 2026</strong><br>
+</div>
+<p style="text-align:center;margin-top:40px;font-size:13px;color:#777">
+This document presents our project journey from the initial proposal to the current implementation,<br>
+compares our work against existing published research, and demonstrates the novelty of our approach.
+</p>
+</div>
+
+<!-- ==================== TABLE OF CONTENTS ==================== -->
+<h2>Table of Contents</h2>
+<table>
+<tr><td><strong>Section 1</strong></td><td>Initial Idea vs. Where We Are Now</td><td>Page 2</td></tr>
+<tr><td><strong>Section 2</strong></td><td>Progress: From Final Goal to Current State</td><td>Page 4</td></tr>
+<tr><td><strong>Section 3</strong></td><td>Detailed Comparison with Existing Research</td><td>See Part 2</td></tr>
+<tr><td><strong>Section 4</strong></td><td>How Our Project Stands & Overall Assessment</td><td>See Part 3</td></tr>
+</table>
+
+<!-- ==================== SECTION 1 ==================== -->
+<div class="section-break"></div>
+<h1>Section 1: Initial Idea vs. Where We Are Now</h1>
+
+<h2>1.1 The Initial Proposal (What We Pitched)</h2>
+<p>When we first proposed this project, our idea was straightforward on paper — build a smart gateway that can watch over a home network and automatically protect IoT devices from attacks. We envisioned a system that could:</p>
+<ul style="margin:8px 0 8px 24px;font-size:14px">
+<li>Sit as an Access Point so all device traffic flows through us</li>
+<li>Detect common attacks like port scans and brute-force login attempts</li>
+<li>Use some form of machine learning to catch unusual behavior</li>
+<li>Redirect attackers to fake servers (honeypots) instead of real devices</li>
+<li>Block or isolate dangerous devices automatically</li>
+<li>Show everything on a dashboard in real time</li>
+</ul>
+
+<p>Honestly, at the proposal stage, we had a conceptual understanding of each piece but hadn't figured out how they would all connect. The proposal described an "Observe–Analyze–Decide–Act" pipeline, but the actual architecture — the event bus, the agent stages, the NAT redirection logic — none of that existed yet. It was an idea, not a design.</p>
+
+<h2>1.2 Where We Are Right Now (Current Implementation)</h2>
+<p>As of this writing, the implementation has progressed well past the initial proposal. Most modules are built and have undergone preliminary testing. Here is a breakdown of what currently exists:</p>
+
+<h3>Core Backend — Implementation Complete</h3>
+<table>
+<tr><th>Component</th><th>Technology</th><th>Status</th><th>Evidence</th></tr>
+<tr><td>API Server</td><td>Python FastAPI</td><td><span class="badge done">DONE</span></td><td>12 REST endpoints, running on port 8000</td></tr>
+<tr><td>Authentication</td><td>JWT (login/refresh)</td><td><span class="badge done">DONE</span></td><td>Secure admin access verified</td></tr>
+<tr><td>Database</td><td>PostgreSQL + SQLAlchemy</td><td><span class="badge done">DONE</span></td><td>515+ threat events stored</td></tr>
+<tr><td>Real-time Updates</td><td>WebSocket</td><td><span class="badge done">DONE</span></td><td>Live push to dashboard clients</td></tr>
+<tr><td>Configuration</td><td>Pydantic Settings + .env</td><td><span class="badge done">DONE</span></td><td>All parameters configurable</td></tr>
+<tr><td>Logging</td><td>Structured JSON</td><td><span class="badge done">DONE</span></td><td>File + console output</td></tr>
+</table>
+
+<h3>Intrusion Detection System — Implementation Complete</h3>
+<table>
+<tr><th>Component</th><th>How It Works</th><th>Status</th></tr>
+<tr><td>Packet Sniffer</td><td>Scapy AsyncSniffer on network interface, captures every IP packet</td><td><span class="badge done">DONE</span></td></tr>
+<tr><td>Feature Extractor</td><td>Extracts src_ip, dst_port, TCP flags, protocol, packet length</td><td><span class="badge done">DONE</span></td></tr>
+<tr><td>Port Scan Detector</td><td>Sliding window: 4+ unique ports in 15 seconds → score 1.0</td><td><span class="badge done">DONE</span></td></tr>
+<tr><td>SYN Flood Detector</td><td>Sliding window: 30+ SYN packets per second → score 1.0</td><td><span class="badge done">DONE</span></td></tr>
+<tr><td>Brute Force Detector</td><td>Sliding window: 3+ auth-port hits in 120 seconds → score 1.0</td><td><span class="badge done">DONE</span></td></tr>
+<tr><td>Isolation Forest ML</td><td>200 trees, trains on 500 baseline packets, scores anomalies 0–1</td><td><span class="badge done">DONE</span></td></tr>
+<tr><td>Risk Calculator</td><td>Hybrid: 0.6 × rule_score + 0.4 × ml_score</td><td><span class="badge done">DONE</span></td></tr>
+</table>
+
+<h3>Agent-Inspired Pipeline — Implementation Complete</h3>
+<table>
+<tr><th>Agent</th><th>Responsibility</th><th>Status</th></tr>
+<tr><td>Event Bus</td><td>Async pub/sub queue (5000 capacity) connecting all stages</td><td><span class="badge done">DONE</span></td></tr>
+<tr><td>Threat Agent</td><td>Runs IDS + ML scoring, enriches with GeoIP, publishes threats</td><td><span class="badge done">DONE</span></td></tr>
+<tr><td>Decision Agent</td><td>Protocol-aware action selection: block / honeypot / rate-limit</td><td><span class="badge done">DONE</span></td></tr>
+<tr><td>Enforcement Agent</td><td>Applies nftables kernel firewall rules, registers redirect contexts</td><td><span class="badge done">DONE</span></td></tr>
+<tr><td>Reporting Agent</td><td>Persists events to PostgreSQL, broadcasts via WebSocket</td><td><span class="badge done">DONE</span></td></tr>
+</table>
+
+<h3>Firewall & Honeypot — Implementation Complete</h3>
+<table>
+<tr><th>Component</th><th>Details</th><th>Status</th></tr>
+<tr><td>nftables Manager</td><td>Block, rate-limit, and NAT redirect rules via kernel firewall</td><td><span class="badge done">DONE</span></td></tr>
+<tr><td>Rule Tracker</td><td>Deduplication + DB tracking + auto-expiry after TTL</td><td><span class="badge done">DONE</span></td></tr>
+<tr><td>Cowrie SSH Honeypot</td><td>Docker container, port 30022, captures commands and credentials</td><td><span class="badge done">DONE</span></td></tr>
+<tr><td>HTTP Honeypot</td><td>Built-in Python server on port 8888, logs attack probes</td><td><span class="badge done">DONE</span></td></tr>
+<tr><td>Cowrie Log Watcher</td><td>Real-time JSON log tail with session correlation</td><td><span class="badge done">DONE</span></td></tr>
+</table>
+
+<h3>Flutter Dashboard — Implementation Complete</h3>
+<table>
+<tr><th>Screen</th><th>Features</th><th>Status</th></tr>
+<tr><td>Login Screen</td><td>JWT authentication, configurable server URL</td><td><span class="badge done">DONE</span></td></tr>
+<tr><td>Dashboard Overview</td><td>Summary cards with key statistics</td><td><span class="badge done">DONE</span></td></tr>
+<tr><td>Threat Map</td><td>Live/Recent badges, risk score chips, real-time updates</td><td><span class="badge done">DONE</span></td></tr>
+<tr><td>Firewall Rules</td><td>Active/History tabs, NEW/EXPIRED badges</td><td><span class="badge done">DONE</span></td></tr>
+<tr><td>Honeypot Sessions</td><td>Terminal-style command display, credential capture</td><td><span class="badge done">DONE</span></td></tr>
+<tr><td>Network Topology</td><td>ARP-based device discovery and risk visualization</td><td><span class="badge done">DONE</span></td></tr>
+</table>
+
+<div class="note">
+<strong>Note:</strong> The system implementation — backend, IDS, agents, firewall, honeypots, and dashboard — is largely complete and has undergone preliminary testing with attacks from an Android device running Termux on the same LAN. We have 515+ threat events recorded in our database from these test sessions. Formal controlled experiments are still pending.
+</div>
+
+<h2>1.3 How the Initial Idea Evolved</h2>
+<table>
+<tr><th>Aspect</th><th>Initial Proposal</th><th>Current Reality</th><th>Change</th></tr>
+<tr><td>Architecture</td><td>Vague "layered gateway"</td><td>4-stage agent-inspired pipeline with async event bus</td><td>Architectural extension</td></tr>
+<tr><td>Detection</td><td>"Some ML-based detection"</td><td>Hybrid: 3 rule detectors + Isolation Forest, weighted 0.6/0.4</td><td>Extended detection</td></tr>
+<tr><td>Enforcement</td><td>"Block suspicious devices"</td><td>5-tier graded response: allow → log → rate-limit → honeypot → block</td><td>Additional capability</td></tr>
+<tr><td>Honeypot</td><td>"Deploy honeypot"</td><td>Flow-aware NAT redirect per attacker-victim-port flow + Cowrie + HTTP honeypot</td><td>Implementation extension</td></tr>
+<tr><td>Firewall</td><td>"iptables rules"</td><td>nftables kernel firewall with rule tracking, dedup, and auto-cleanup</td><td>Improved implementation</td></tr>
+<tr><td>Dashboard</td><td>"Web interface"</td><td>Cross-platform Flutter app (Web + Android) with WebSocket live updates</td><td>Expanded scope</td></tr>
+<tr><td>Database</td><td>Not mentioned</td><td>PostgreSQL with 4 tables: threats, rules, sessions, devices</td><td>Added</td></tr>
+<tr><td>GeoIP</td><td>Not mentioned</td><td>MaxMind GeoLite2 enrichment (country, city, ASN, lat/lon)</td><td>Added</td></tr>
+</table>
+
+<!-- ==================== SECTION 2 ==================== -->
+<div class="section-break"></div>
+<h1>Section 2: Progress From Final Goal to Current State</h1>
+
+<h2>2.1 Overall Progress Visualization</h2>
+
+<h3>System Implementation</h3>
+<div class="progress-bar"><div class="progress-fill" style="width:100%;background:linear-gradient(90deg,#27ae60,#2ecc71)">100% — All 47 components built</div></div>
+
+<h3>Research Paper</h3>
+<div class="progress-bar"><div class="progress-fill" style="width:75%;background:linear-gradient(90deg,#f39c12,#e67e22)">75% — Structure complete, results pending</div></div>
+
+<h3>Experimental Validation</h3>
+<div class="progress-bar"><div class="progress-fill" style="width:15%;background:linear-gradient(90deg,#e74c3c,#c0392b)">15% — Live demos done, formal metrics pending</div></div>
+
+<h3>Wireless Monitoring (AR9271)</h3>
+<div class="progress-bar"><div class="progress-fill" style="width:0%;background:#e74c3c">0% — Planned for enhancement</div></div>
+
+<h3 style="margin-top:16px">Combined Overall Progress</h3>
+<div class="progress-bar" style="height:28px"><div class="progress-fill" style="width:65%;background:linear-gradient(90deg,#0f3460,#3498db)">~65% Complete</div></div>
+
+<h2>2.2 What's Done vs. What Remains</h2>
+<table>
+<tr><th>Area</th><th>Status</th><th>Items Done</th><th>Items Remaining</th></tr>
+<tr><td>Backend + API</td><td><span class="badge done">100%</span></td><td>8 of 8</td><td>0</td></tr>
+<tr><td>IDS + ML</td><td><span class="badge done">100%</span></td><td>10 of 10</td><td>0</td></tr>
+<tr><td>Agent Pipeline</td><td><span class="badge done">100%</span></td><td>5 of 5</td><td>0</td></tr>
+<tr><td>Firewall</td><td><span class="badge done">100%</span></td><td>3 of 3</td><td>0</td></tr>
+<tr><td>Honeypot System</td><td><span class="badge done">100%</span></td><td>5 of 5</td><td>0</td></tr>
+<tr><td>Flutter Dashboard</td><td><span class="badge done">100%</span></td><td>9 of 9</td><td>0</td></tr>
+<tr><td>Documentation</td><td><span class="badge done">100%</span></td><td>8 of 8</td><td>0</td></tr>
+<tr><td>Formal Experiments</td><td><span class="badge pending">15%</span></td><td>Live demos</td><td>Controlled metrics collection, Snort/Suricata comparison, CICIDS2017 validation</td></tr>
+<tr><td>Research Paper</td><td><span class="badge wip">75%</span></td><td>Full structure + content</td><td>Insert verified results, IEEE formatting</td></tr>
+<tr><td>Wireless (AR9271)</td><td><span class="badge pending">0%</span></td><td>—</td><td>Monitor mode, probe tracking, deauth detection</td></tr>
+</table>
+
+<h2>2.3 Remaining Work — Prioritized Plan</h2>
+<table>
+<tr><th>#</th><th>Task</th><th>Priority</th><th>Time Est.</th><th>Why It Matters</th></tr>
+<tr><td>1</td><td>Run 180 controlled attack experiments (50 port scan + 50 brute force + 30 SYN flood + 50 HTTP probe)</td><td><span class="badge pending">CRITICAL</span></td><td>2 days</td><td>Provides detection rate and FP rate numbers</td></tr>
+<tr><td>2</td><td>Measure end-to-end latency T1→T4 for 200 packets</td><td><span class="badge pending">CRITICAL</span></td><td>1 day</td><td>Key metric for evaluating response time (~127ms target)</td></tr>
+<tr><td>3</td><td>Install Snort + Suricata, run same attacks, compare</td><td><span class="badge pending">CRITICAL</span></td><td>2 days</td><td>Intended for comparison against established IDS tools</td></tr>
+<tr><td>4</td><td>Ablation study: test 11 weight configurations</td><td><span class="badge pending">CRITICAL</span></td><td>1 day</td><td>Validates the 0.6/0.4 weight choice</td></tr>
+<tr><td>5</td><td>Multi-model comparison (RF, SVM, KNN, DT vs IF)</td><td><span class="badge pending">CRITICAL</span></td><td>2 days</td><td>Justifies Isolation Forest selection</td></tr>
+<tr><td>6</td><td>Validate on CICIDS2017 benchmark dataset</td><td><span class="badge wip">HIGH</span></td><td>2 days</td><td>Cross-validates on 2.8M record standard</td></tr>
+<tr><td>7</td><td>Finalize IEEE-format research paper</td><td><span class="badge pending">CRITICAL</span></td><td>5 days</td><td>The final deliverable</td></tr>
+<tr><td>8</td><td>AR9271 wireless monitoring module</td><td><span class="badge wip">MEDIUM</span></td><td>3 days</td><td>Adds wireless novelty dimension</td></tr>
+</table>
+
+<div class="note">
+<strong>Honest Assessment:</strong> The system implementation is complete and tested with real attacks. What remains is primarily the <em>scientific validation</em> — running controlled experiments, collecting formal metrics, and documenting them in the paper. The engineering is done; the science documentation is what we need to finish.
+</div>
+
+<p style="text-align:center;margin-top:40px;font-size:12px;color:#999">— End of Part 1 — Continued in Part 2: Detailed Research Paper Comparison —</p>
+
+</body>
+</html>

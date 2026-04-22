@@ -1,0 +1,215 @@
+<html>
+<head>
+<meta charset="UTF-8">
+<title>NTTH — Project Overview & Assessment (Part 3)</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Inter',sans-serif;color:#1a1a2e;line-height:1.75;background:#fff;padding:40px 60px;max-width:1000px;margin:0 auto}
+h1{font-size:24px;color:#0f3460;margin-bottom:6px;border-bottom:2px solid #0f3460;padding-bottom:6px}
+h2{font-size:18px;color:#16213e;margin:26px 0 10px}
+h3{font-size:15px;color:#0f3460;margin:16px 0 6px}
+p{margin:8px 0;font-size:13.5px;text-align:justify}
+table{width:100%;border-collapse:collapse;margin:10px 0;font-size:12.5px}
+th{background:#0f3460;color:#fff;padding:6px 10px;text-align:left;font-weight:600}
+td{padding:6px 10px;border-bottom:1px solid #e0e0e0;vertical-align:top}
+tr:nth-child(even){background:#f8f9fa}
+a{color:#2980b9;text-decoration:none}
+a:hover{text-decoration:underline}
+ul,ol{margin:6px 0 10px 20px;font-size:13.5px}
+li{margin:3px 0}
+.section-break{page-break-before:always}
+code{background:#f0f0f0;padding:1px 5px;border-radius:3px;font-size:12px}
+.ref{font-size:12px;margin-top:30px;padding:14px;background:#f8f9fa;border:1px solid #e0e0e0;border-radius:6px}
+.ref a{display:inline}
+</style>
+</head>
+<body>
+
+<h1>System Overview, Technical Rationale & Overall Assessment</h1>
+
+<p>This section describes the technical details of our system, explains why we made certain design choices, and gives an honest look at where the project currently stands — including what still needs to be done and where the gaps are.</p>
+
+<!-- ====== 1.1 RESEARCH OBJECTIVE ====== -->
+<h2>1.1 Research Objective</h2>
+
+<p>The main question we are trying to answer is: <em>Can a single gateway device detect network attacks, score them using a combination of rules and ML, decide on a response, and enforce it through kernel-level firewall rules — all automatically, without a human in the loop, on hardware that a student can afford?</em></p>
+
+<p>When we first started, we broke this down into five smaller problems:</p>
+<ol>
+<li>Detecting attacks at the packet level in real time, instead of waiting for application log files to be written.</li>
+<li>Combining rule-based (signature) and ML-based (anomaly) detection so we can catch both known attack patterns and unusual behavior.</li>
+<li>Making graduated enforcement decisions — not just block or allow, but a range of responses based on how risky the traffic looks.</li>
+<li>Redirecting attackers to fake servers (honeypots) so we can observe what they do without risking real systems.</li>
+<li>Making the whole thing run on cheap hardware — specifically a laptop and a $10 USB WiFi adapter.</li>
+</ol>
+
+<!-- ====== 1.2 SYSTEM PIPELINE ====== -->
+<h2>1.2 System Pipeline</h2>
+
+<p>The system works as a five-stage pipeline: Capture, Score, Decide, Enforce, Report. The stages communicate through an in-process asyncio Queue with a capacity of 5000 events. We considered using Kafka or Redis as the message broker, but Kafka would have added 5–15ms of latency per message, and our asyncio queue adds less than 1ms. Since everything runs on one machine and we need to keep latency low, an external broker felt like unnecessary overhead.</p>
+
+<h3>Stage 1: Packet Capture</h3>
+<p>We use Scapy's AsyncSniffer to capture every IP packet on the network interface. The backend runs in Docker with host network mode so it can see actual LAN traffic, not just traffic meant for the container. For each packet, we extract 10 features: <code>packet_length</code>, <code>dst_port</code>, <code>is_syn</code>, <code>is_ack</code>, <code>is_rst</code>, <code>is_fin</code>, <code>protocol</code>, <code>tcp_window_size</code>, <code>ttl</code>, and <code>payload_entropy</code>. All of these come from the IP/TCP headers — we don't look at packet payloads at all, which keeps user privacy intact.</p>
+
+<h3>Stage 2: Threat Scoring</h3>
+<p>Each packet gets scored by two systems running in parallel. The rule engine has three sliding-window detectors: a port scan detector (triggers if it sees 4 or more unique destination ports to the same target within 15 seconds), a SYN flood detector (triggers at 30+ SYN packets per second from one source), and a brute force detector (triggers at 3+ connection attempts to authentication ports within 120 seconds). The authentication ports we watch are SSH (22), Telnet (23), RDP (3389), VNC (5900), FTP (21), and database ports (3306, 5432). The rule engine outputs a score between 0.0 and 1.0.</p>
+
+<p>Separately, we run an Isolation Forest model (200 trees, trained on 500 baseline packets). It's unsupervised — it only learns what "normal" looks like, then flags anything that's statistically easy to isolate as anomalous.</p>
+
+<p>We combine both scores into one risk value:</p>
+<p style="text-align:center;font-weight:600;font-size:15px;margin:12px 0;color:#0f3460">risk = 0.6 × rule_score + 0.4 × ml_score</p>
+
+<p>We gave the rules more weight (0.6) because the rule engine has a lower false positive rate — around 2.7% compared to about 8.2% for the ML model alone. The idea is that rules are more precise for known attacks but miss novel ones, while ML catches unusual stuff but makes more mistakes. We plan to validate this 0.6/0.4 split with a grid search over 11 configurations (stepping from 0.0/1.0 to 1.0/0.0). That ablation study is designed but hasn't been run yet, so the estimated F1-score of 0.958 at the 0.6/0.4 point is still preliminary. This may need revision after the experiments.</p>
+
+<h3>Stage 3: Decision</h3>
+<p>The Decision Agent takes the risk score and picks one of five actions:</p>
+
+<table>
+<tr><th>Risk Score Range</th><th>Action</th><th>What Happens</th></tr>
+<tr><td>&lt; 0.15</td><td>Allow</td><td>Normal traffic, nothing happens</td></tr>
+<tr><td>0.15 – 0.25</td><td>Log</td><td>We record it but don't intervene</td></tr>
+<tr><td>0.25 – 0.40</td><td>Rate-limit</td><td>Throttle the source to 10 packets/sec via nftables</td></tr>
+<tr><td>0.40 – 0.80</td><td>Honeypot redirect</td><td>NAT-redirect that specific attacker→victim→port flow to Cowrie or the HTTP honeypot</td></tr>
+<tr><td>≥ 0.80</td><td>Block</td><td>Drop all packets from that source IP</td></tr>
+</table>
+
+<p>We chose to redirect to the honeypot at mid-range risk rather than blocking immediately because blocking just tells the attacker they've been caught. If we redirect them to a fake server instead, they think they got in, and they start typing commands, trying passwords, downloading tools — and we capture all of it. That data is more useful than just a firewall log saying "dropped." At risk ≥ 0.80, both the rule engine and ML agree the traffic is clearly malicious, so at that point we just block.</p>
+
+<h3>Stage 4: Enforcement</h3>
+<p>The Enforcement Agent takes the decision and turns it into an actual nftables rule in the Linux kernel. For honeypot redirects, it creates a DNAT rule that only affects the specific flow — for example, if someone at 10.142.204.88 is brute-forcing SSH on 10.142.204.241, only that exact flow gets redirected to Cowrie on port 2222. Their DNS queries, HTTP traffic to other hosts, all of that still works normally. This is different from something like Fail2Ban, which bans an entire IP for everything.</p>
+
+<p>Every firewall rule auto-expires after 1 hour (the TTL is configurable). The rule tracker also prevents duplicate rules from being applied. And administrators can always delete any rule manually from the dashboard if something looks wrong.</p>
+
+<h3>Stage 5: Reporting</h3>
+<p>The Reporting Agent saves every event to PostgreSQL and pushes it to connected dashboard clients over WebSocket. We also do GeoIP lookups (MaxMind GeoLite2) to add country, city, ASN, and coordinates to external IPs. Based on our testing, the whole path from packet capture to seeing it on the dashboard takes roughly 145ms, though we haven't formally measured this with proper statistical methods yet.</p>
+
+<!-- ====== 1.3 ML JUSTIFICATION ====== -->
+<h2>1.3 Why We Chose Isolation Forest</h2>
+
+<p>We went with Isolation Forest over a few alternatives, mostly for practical reasons:</p>
+
+<ul>
+<li><strong>Why not Random Forest?</strong> Random Forest needs labeled examples of attacks to train on. When you set this system up on a new network, you don't have those labels. Isolation Forest is unsupervised — it only needs normal traffic to learn from. And when combined with our rules, the hybrid system gets a preliminary F1-score of around 0.958, which is close to Random Forest standalone (estimated F1 = 0.961). So we get similar performance without needing labeled data.</li>
+<li><strong>Why not deep learning?</strong> Deep learning models (LSTM, CNN) need a GPU, at least 100,000 labeled training samples, and hours of training time. Our model trains in 1.2 seconds on 500 packets and does inference in under 1ms with no GPU needed. Deep learning gets about 97.2% accuracy on CICIDS2017 versus our estimated 96.2%. In our case, that 1% gap didn't seem worth the much higher hardware requirements, though we understand this is a judgment call.</li>
+<li><strong>What if the ML fails?</strong> If the model produces a score of 0 for everything (complete failure), the risk formula reduces to: risk = 0.6 × rule_score. A port scan with rule_score = 1.0 would still produce risk = 0.6, which triggers honeypot redirection. So the system still works — it just falls back to being a rule-only IDS, which is still more useful than Snort or Suricata since those can't auto-respond at all.</li>
+</ul>
+
+<p>We still need to run a proper multi-model comparison (Random Forest, SVM, KNN, Decision Tree on the same dataset) to back up this choice with experimental data rather than just reasoning. That's one of the pending items.</p>
+
+<!-- ====== 1.4 TECH STACK ====== -->
+<h2>1.4 Technology Stack</h2>
+
+<p>The backend uses Python 3.12 with FastAPI — mostly because Scapy only works in Python and FastAPI has good async and WebSocket support. ML is handled by scikit-learn. The firewall uses Linux nftables, which is the newer replacement for iptables and runs at the kernel level. For the SSH honeypot we use Cowrie in a Docker container (port 30022), and we also built a simple HTTP honeypot in Python (port 8888). The database is PostgreSQL 15. The dashboard is built in Flutter 3.19 — one codebase that builds for both Web and Android. The WiFi adapter is an Atheros AR9271, which costs about $10 and supports monitor mode with the standard Linux kernel driver. Everything is deployed with Docker Compose: three containers for the backend, Cowrie, and PostgreSQL.</p>
+
+<!-- ====== 1.5 CURRENT STATUS ====== -->
+<div class="section-break"></div>
+<h2>1.5 Current Implementation Status</h2>
+
+<p>Here's where things stand. The Python backend has about 8,500 lines of code across 25 modules — this covers the FastAPI server, the four pipeline agents, the IDS rule engine, the Isolation Forest model, the nftables manager, honeypot controllers, and WebSocket services. The Flutter dashboard is around 15,000 lines across 20 files, with 9 screens: login, dashboard overview, threat map, firewall rules, honeypot sessions, network topology, devices, system health, and settings. We use 3 Docker containers managed by Docker Compose. We also wrote about 3,000 lines of documentation across 8 documents. The research paper draft follows IEEE structure and is roughly 75% done — the remaining 25% is mostly filling in experimental results that we haven't collected yet.</p>
+
+<p>All the main modules are implemented: the 12 REST API endpoints, JWT authentication, the Scapy packet sniffer, feature extractor, all three rule-based detectors (port scan, SYN flood, brute force), the Isolation Forest model, the hybrid risk calculator, all four pipeline agents, the async event bus, the nftables firewall manager with rule tracking and auto-cleanup, the Cowrie SSH honeypot with its log watcher, the HTTP honeypot, the session logger, GeoIP enrichment, and the full Flutter dashboard with WebSocket live updates.</p>
+
+<p>For preliminary testing, we used an Android phone running Termux on the same LAN to launch attacks: port scans with nmap, SSH brute-force with Hydra and manual SSH, and HTTP probing with curl. The system recorded 515+ threat events in the database, redirected SSH attacks to the Cowrie honeypot (we captured commands like <code>whoami</code>, <code>ls</code>, <code>cat /etc/passwd</code>, and <code>wget</code> attempts), and automatically created and cleaned up firewall rules. These were informal demonstration tests though — not the kind of controlled experiments we'd need for the paper.</p>
+
+<!-- ====== 1.6 ANTICIPATED QUESTIONS ====== -->
+<h2>1.6 Anticipated Review Questions</h2>
+
+<p><strong>Can the system accidentally block a legitimate user?</strong> Yes, it's possible. Our estimated false positive rate is about 3.8%. But the graduated response helps here — low-risk traffic only gets logged, not blocked. A full block only happens at risk ≥ 0.80, which basically requires both the rule engine and ML model to agree that something is seriously wrong. Also, all rules expire after 1 hour automatically, and admins can remove any rule from the dashboard at any time.</p>
+
+<p><strong>How do you handle concept drift?</strong> Honestly, we don't — not yet. This is a known limitation. We've planned a Feedback Agent that would retrain the model every 24 hours on recent traffic and also let administrators flag false positives to adjust thresholds, but that module hasn't been built yet.</p>
+
+<p><strong>Can an attacker evade the ML model?</strong> Probably, if they crafted packets to look like normal traffic. But they'd also have to evade the rule engine at the same time. Beating both systems simultaneously is harder than beating either one alone. That said, we haven't formally tested adversarial evasion scenarios, so this is more of a design-level argument than a proven claim.</p>
+
+<p><strong>What about encrypted traffic?</strong> We don't inspect payloads. All our features come from packet headers — size, port, flags, TTL, entropy — which are visible even with TLS 1.3 encryption. This is actually a limitation that most network-level IDS systems share.</p>
+
+<p><strong>Is accuracy a good metric for IDS?</strong> Not really. If 95% of traffic is normal, you can get 95% accuracy just by labeling everything as "normal" — but your detection rate would be 0%. We use F1-score instead, which penalizes both missed attacks and false alarms. We think this gives a more honest picture.</p>
+
+<p><strong>What if the event bus queue fills up?</strong> New events get dropped and a warning is logged. This is intentional — we'd rather drop a few events than block the packet sniffer. With a capacity of 5000, we have several seconds of buffer at typical LAN traffic rates, so in practice this shouldn't happen often.</p>
+
+<!-- ====== 1.7 LIMITATIONS ====== -->
+<div class="section-break"></div>
+<h2>1.7 Limitations</h2>
+
+<p>We want to be upfront about the gaps:</p>
+
+<p><strong>1. Formal experimental validation is incomplete.</strong> This is the biggest issue. We've done live demos but not controlled, repeatable experiments with statistical rigor. We still need: detection rates with confidence intervals from 180+ controlled attack runs, false positive rates measured over 100+ normal traffic sessions, end-to-end latency numbers (mean, median, P95, P99) across 200 attack packets, comparison runs against Snort and Suricata using the exact same attack scenarios, and cross-validation on the CICIDS2017 benchmark (2.8M records). Without these, the paper's results section can't be filled in properly.</p>
+
+<p><strong>2. The ML model is relatively basic.</strong> Our Isolation Forest uses 10 features and trains on 500 samples. It works for a proof-of-concept, but it's not as sophisticated as the deep learning approaches in recent literature that hit 97%+ accuracy on CICIDS2017. We've justified our choice based on the fact that it's unsupervised, doesn't need a GPU, and trains fast — but we need to actually run the multi-model comparison experiment to back this up with data.</p>
+
+<p><strong>3. Single-host, single-network scope.</strong> The system monitors from one machine on one network. It can't do distributed multi-sensor deployment or VLAN-based segmentation. That limits it to small or home networks, which is fine for our scope, but it's a clear boundary.</p>
+
+<p><strong>4. AR9271 wireless monitoring isn't implemented yet.</strong> We talk about WiFi probe request tracking and deauth detection in the paper proposal, but the code for this doesn't exist yet. We need to either build it or remove those claims from the paper before submission.</p>
+
+<p><strong>5. The risk formula weights haven't been empirically validated.</strong> The 0.6/0.4 split came from looking at the individual false positive rates of each component and making a judgment call. We've designed a grid search experiment (11 configurations) to find the actual optimum, but we haven't run it yet. Until we do, we can't say these weights are optimal — just that they seemed reasonable based on the component characteristics.</p>
+
+<p><strong>6. No concept drift handling.</strong> The Isolation Forest model trains once on baseline traffic and that's it. If traffic patterns change over time, the model doesn't adapt. The Feedback Agent that would handle periodic retraining hasn't been implemented.</p>
+
+<!-- ====== 1.8 PROPOSAL VS CURRENT ====== -->
+<h2>1.8 Comparison with Initial Proposal</h2>
+
+<p>Most of what we proposed has been implemented, with some deviations. The proposal described a gateway in AP mode — our current setup captures traffic on the LAN interface, but we don't use hostapd for Access Point operation by default. Device presence detection works through ARP scanning, DHCP lease tracking, and MAC-based indexing, which is close to what was proposed. Hybrid intrusion detection is implemented as described — three rule detectors plus Isolation Forest at 0.6/0.4 weighting. The honeypot system uses Cowrie for SSH and a built-in HTTP honeypot. Enforcement uses nftables with block, rate-limit, and NAT redirect rules, including automatic cleanup.</p>
+
+<p>The dashboard ended up going further than the original proposal. We had initially described a "web interface" — the actual implementation is a Flutter app that builds for both Web and Android with real-time WebSocket updates. We also added PostgreSQL database storage and GeoIP enrichment, neither of which were in the original proposal. These were added as we realized we needed them during development.</p>
+
+<!-- ====== 1.9 INTENDED CONTRIBUTIONS ====== -->
+<h2>1.9 Intended Research Contributions</h2>
+
+<p>After reviewing eight existing systems (covered in the comparison sections), here's what we believe this project adds. We're including the evidence status for each one honestly:</p>
+
+<ol>
+<li><strong>Measured end-to-end response latency.</strong> As far as we can tell from the literature, no existing IDS paper reports the time from raw packet capture through scoring and decision all the way to kernel firewall rule application. Our target is around 127ms. <em>Status: at this stage, this appears feasible based on preliminary testing, but formal measurement hasn't been done.</em></li>
+
+<li><strong>Flow-aware honeypot deployment via per-flow NAT rules.</strong> Existing honeypots like Cowrie and T-Pot are deployed statically on fixed ports. Our system creates nftables NAT rules targeting specific attacker→victim→port combinations, triggered by the risk score in real time. <em>Status: implemented and tested in live demonstrations.</em></li>
+
+<li><strong>Hybrid risk scoring with weight validation.</strong> Combining rule-based detection (w=0.6) with Isolation Forest anomaly detection (w=0.4), with the weights to be validated through ablation. <em>Status: the implementation works; the ablation study is designed but hasn't been executed yet.</em></li>
+
+<li><strong>Closed-loop pipeline on cheap hardware.</strong> The entire path — capture, extract, score, decide, enforce, capture attacker commands, save to database, display on dashboard — runs on a regular laptop with a $10 USB adapter. <em>Status: implemented and tested in live demonstrations.</em></li>
+
+<li><strong>Combined wired and wireless monitoring.</strong> We want to combine Scapy packet capture on the wired interface with AR9271 monitor-mode WiFi monitoring for probe requests and deauth detection. <em>Status: the wireless module hasn't been built yet. This is still planned work.</em></li>
+</ol>
+
+<!-- ====== 1.10 REMAINING WORK ====== -->
+<h2>1.10 Remaining Work</h2>
+
+<p>We estimate 3–4 weeks of focused work to finish everything:</p>
+
+<p><strong>Week 1 — Data Collection:</strong> Collect 10,000+ packets (roughly 7,500 normal and 2,500 attack), run 180 controlled attack experiments (50 port scans, 50 brute force, 30 SYN floods, 50 HTTP probes), measure end-to-end latency across 200 attack packets, and install Snort and Suricata to run the same attacks for comparison.</p>
+
+<p><strong>Week 2 — ML and Analysis:</strong> Expand the feature vector to 10 dimensions, train Random Forest, SVM, KNN, and Decision Tree on the same data, run the ablation study over 11 weight configurations, and validate on CICIDS2017.</p>
+
+<p><strong>Week 3 — Wireless and Polish:</strong> Implement AR9271 monitor mode, add WiFi probe request tracking and deauth detection, and collect honeypot engagement metrics (session duration, commands per session, credential reuse).</p>
+
+<p><strong>Week 4 — Paper:</strong> Insert the experimental results, generate ROC curves and confusion matrices, format everything in IEEE template, and prepare for submission.</p>
+
+<!-- ====== 1.11 SUMMARY ====== -->
+<h2>1.11 Summary</h2>
+
+<p>The implementation side is largely done. The system captures real packets, scores them with a hybrid model, makes graduated decisions, applies kernel-level firewall rules, redirects attackers to honeypots, captures what they do, saves everything to a database, and shows it on a cross-platform dashboard. We've seen it work with real attacks on a real LAN.</p>
+
+<p>What's left is the scientific part — collecting proper experimental data, running formal comparisons with Snort and Suricata, validating the ML model on benchmarks, and confirming the weight selection through ablation. We're not claiming this replaces enterprise security tools, and we're not saying the ML model is a research advancement on its own. What we believe we're contributing is a specific integration — packet-level hybrid detection with sub-second kernel enforcement and flow-aware honeypot redirection — that runs on hardware anyone can afford. Whether it works as well as preliminary testing suggests is what the remaining experiments need to determine.</p>
+
+<!-- ====== REFERENCES ====== -->
+<div class="ref">
+<strong>References</strong><br><br>
+[1] Roesch, M. "Snort — Lightweight Intrusion Detection for Networks," USENIX LISA 1999. <a href="https://www.usenix.org/legacy/publications/library/proceedings/lisa99/full_papers/roesch/roesch.pdf">Paper PDF</a><br>
+[2] OISF. "Suricata IDS/IPS Engine." <a href="https://suricata.io">https://suricata.io</a><br>
+[3] Fail2Ban Project. <a href="https://github.com/fail2ban/fail2ban">https://github.com/fail2ban/fail2ban</a><br>
+[4] OSSEC Project. <a href="https://www.ossec.net/">https://www.ossec.net/</a> — Wazuh: <a href="https://wazuh.com/">https://wazuh.com/</a><br>
+[5] "Autonomous Attack Response for Honeypot Interaction," MDPI Mathematics 2024. <a href="https://www.mdpi.com/2227-7390/12/6/882">Link</a><br>
+[6] "AETHER — Autonomous Evolving Tamper-proof Honeypot Ecosystem," TechRxiv 2025. <a href="https://www.techrxiv.org/articles/preprint/AETHER_-_Autonomous_Evolving_Tamper-proof_Honeypot_Ecosystem_with_Reactive_Intelligence/28739025">Preprint</a><br>
+[7] Levrier et al. "LLM Honeypot," arXiv 2024. <a href="https://arxiv.org/abs/2409.08234">arXiv:2409.08234</a><br>
+[8] Microsoft CyberBattleSim. <a href="https://github.com/microsoft/CyberBattleSim">GitHub</a><br>
+[9] CAGE Challenge 4. <a href="https://github.com/cage-challenge/cage-challenge-4">GitHub</a><br>
+[10] Sharafaldin et al. "CICIDS2017 Dataset," ICISSP 2018. <a href="https://www.unb.ca/cic/datasets/ids-2017.html">Dataset</a><br>
+[11] IBM X-Force Threat Intelligence Index 2024. IBM Corporation.<br>
+[12] Alahmadi et al. "99% False Positives," USENIX Security 2022.<br>
+[13] Cowrie SSH Honeypot. <a href="https://github.com/cowrie/cowrie">GitHub</a><br>
+[14] Liu et al. "Isolation Forest," IEEE ICDM 2008.
+</div>
+
+<p style="text-align:center;margin-top:30px;font-size:12px;color:#999">— End of Part 3 —</p>
+<p style="text-align:center;font-size:11px;color:#bbb">Document prepared: 19 April 2026</p>
+
+</body>
+</html>

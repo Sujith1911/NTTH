@@ -1,0 +1,94 @@
+# ────────────────────────────────────────────────────────────────
+# NTTH — Docker Compose
+# One-command deployment with AR9271 auto-monitor mode
+# ────────────────────────────────────────────────────────────────
+# Usage:
+#   docker compose up -d        # Start NTTH
+#   docker compose logs -f      # Follow logs
+#   docker compose down         # Stop
+#
+# AR9271 Requirements:
+#   - USB adapter must be plugged in before starting
+#   - Container runs with NET_ADMIN + NET_RAW capabilities
+#   - USB bus is passed through for adapter access
+# ────────────────────────────────────────────────────────────────
+
+services:
+  ntth:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ntth_defense
+    restart: unless-stopped
+    ports:
+      - "8000:8000"          # Dashboard + API
+      - "8888:8888"          # HTTP Honeypot
+    
+    # ── Security capabilities for wireless + firewall ──
+    cap_add:
+      - NET_ADMIN            # Monitor mode, nftables rules
+      - NET_RAW              # Raw packet capture (scapy)
+    
+    # ── Network mode: host gives full access to all interfaces ──
+    # Required so the container can see wired + wireless adapters
+    network_mode: host
+    
+    # ── USB passthrough for AR9271 ──
+    privileged: true         # Required for USB wireless adapter access
+    devices:
+      - /dev/bus/usb:/dev/bus/usb   # Pass USB bus for AR9271 detection
+    
+    # ── Persistent storage ──
+    volumes:
+      - ntth_data:/app/data           # Database persistence
+      - ntth_logs:/app/logs           # Log persistence
+      - cowrie_logs:/cowrie_logs      # Cowrie honeypot logs
+      - /dev/bus/usb:/dev/bus/usb     # USB devices (AR9271)
+    
+    # ── Environment (override in .env file or here) ──
+    environment:
+      - ENVIRONMENT=production
+      - DEBUG=false
+      - DATABASE_URL=sqlite+aiosqlite:///./data/ntth.db
+      - ADMIN_USERNAME=admin
+      - ADMIN_PASSWORD=${NTTH_ADMIN_PASSWORD:-NtthAdmin2026}
+      - WIFI_ENABLED=true
+      - WIFI_INTERFACE=              # Auto-detected by auto_monitor.py
+      - DEAUTH_THRESHOLD=10
+      - DEAUTH_WINDOW_SECONDS=1.0
+      - ROGUE_AP_DETECTION=true
+      - PROBE_TRACKING=true
+      - AP_WHITELIST_SSIDS=          # Comma-separated trusted SSIDs
+      - LOG_LEVEL=INFO
+      - SECRET_KEY=${NTTH_SECRET_KEY:-ntth-production-secret-change-me}
+    
+    # ── Health check ──
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/api/v1/system/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # ── Optional: Cowrie SSH Honeypot (separate container) ──
+  cowrie:
+    image: cowrie/cowrie:latest
+    container_name: ntth_cowrie
+    restart: unless-stopped
+    ports:
+      - "2222:2222"          # SSH honeypot port
+    volumes:
+      - cowrie_logs:/cowrie/var/log/cowrie
+    environment:
+      - COWRIE_HOSTNAME=corporate-srv-01
+      - COWRIE_LOG_PATH=/cowrie/var/log/cowrie
+    profiles:
+      - full                 # Only starts with: docker compose --profile full up
+
+volumes:
+  ntth_data:
+    driver: local
+  ntth_logs:
+    driver: local
+  cowrie_logs:
+    driver: local

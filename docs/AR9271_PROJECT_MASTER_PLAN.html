@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NTTH × AR9271 — Master Integration Plan</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0a0e1a;--surface:#111827;--surface2:#1a2236;--border:#2a3450;--text:#e2e8f0;--muted:#94a3b8;--accent:#38bdf8;--accent2:#818cf8;--green:#34d399;--red:#f87171;--orange:#fb923c;--yellow:#fbbf24;--grad:linear-gradient(135deg,#38bdf8,#818cf8)}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);line-height:1.7}
+.container{max-width:960px;margin:0 auto;padding:2rem 1.5rem}
+header{background:linear-gradient(135deg,#0f172a 0%,#1e1b4b 50%,#0f172a 100%);border-bottom:1px solid var(--border);padding:3rem 0;text-align:center}
+header h1{font-size:2rem;font-weight:800;background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:.5rem}
+header .badge{display:inline-block;background:var(--surface2);border:1px solid var(--border);border-radius:999px;padding:.25rem .8rem;font-size:.8rem;color:var(--muted);margin:.25rem}
+.badge-green{border-color:rgba(52,211,153,.4);color:var(--green)}
+h2{font-size:1.4rem;font-weight:700;color:var(--accent);margin:2.5rem 0 1rem;padding-bottom:.5rem;border-bottom:1px solid var(--border)}
+h3{font-size:1.1rem;font-weight:600;color:var(--accent2);margin:1.5rem 0 .75rem}
+h4{font-size:1rem;font-weight:600;color:var(--green);margin:1.2rem 0 .5rem}
+p{margin:.6rem 0}
+strong{color:#fff}
+code{font-family:'JetBrains Mono',monospace;font-size:.85em;background:var(--surface2);padding:.12rem .4rem;border-radius:4px;color:var(--accent)}
+pre{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:1.25rem;overflow-x:auto;margin:1rem 0;font-family:'JetBrains Mono',monospace;font-size:.78rem;line-height:1.5;color:#c9d1d9;white-space:pre}
+table{width:100%;border-collapse:collapse;margin:1rem 0;font-size:.85rem}
+th{background:var(--surface2);color:var(--accent);font-weight:600;text-align:left;padding:.5rem .7rem;border:1px solid var(--border)}
+td{padding:.45rem .7rem;border:1px solid var(--border)}
+tr:nth-child(even) td{background:rgba(30,41,66,.4)}
+ul,ol{margin:.5rem 0 .5rem 1.5rem}
+li{margin:.25rem 0}
+.check{color:var(--green)}
+.uncheck{color:var(--muted)}
+.tag{display:inline-block;font-size:.7rem;font-weight:600;padding:.12rem .5rem;border-radius:4px;margin-left:.3rem}
+.tag-pass{background:rgba(52,211,153,.15);color:var(--green);border:1px solid rgba(52,211,153,.3)}
+.tag-done{background:rgba(52,211,153,.1);color:var(--green);border:1px solid rgba(52,211,153,.25)}
+.tag-pending{background:rgba(148,163,184,.1);color:var(--muted);border:1px solid rgba(148,163,184,.25)}
+.tag-new{background:rgba(56,189,248,.15);color:var(--accent);border:1px solid rgba(56,189,248,.3)}
+.info{background:var(--surface2);border-left:3px solid var(--accent);padding:.8rem 1rem;border-radius:0 8px 8px 0;margin:1rem 0;font-size:.88rem}
+.warn{background:rgba(251,146,60,.08);border-left:3px solid var(--orange);padding:.8rem 1rem;border-radius:0 8px 8px 0;margin:1rem 0;font-size:.88rem}
+hr{border:none;border-top:1px solid var(--border);margin:2rem 0}
+.progress-bar{background:var(--surface);border:1px solid var(--border);border-radius:6px;overflow:hidden;height:22px;margin:.4rem 0}
+.progress-fill{height:100%;display:flex;align-items:center;padding-left:8px;font-size:.7rem;font-weight:600;color:#000;border-radius:4px}
+.fill-100{width:100%;background:var(--grad)}
+.fill-75{width:75%;background:linear-gradient(135deg,var(--accent),var(--accent2))}
+.fill-0{width:5%;background:var(--surface2)}
+footer{text-align:center;color:var(--muted);font-size:.8rem;padding:2rem 0;border-top:1px solid var(--border);margin-top:3rem}
+@media(max-width:700px){.container{padding:1rem}pre{font-size:.7rem}h2{font-size:1.2rem}}
+</style>
+</head>
+<body>
+
+<header>
+<div class="container">
+<h1>NTTH × AR9271 — Master Integration Plan</h1>
+<p style="color:var(--muted);margin:.5rem 0">Wireless Security Module — Project Tracker &amp; Technical Reference</p>
+<span class="badge badge-green">AR9271 Validated ✅</span>
+<span class="badge">Phase 4 of 4</span>
+<span class="badge">Updated: 2026-04-22</span>
+</div>
+</header>
+
+<div class="container">
+
+<!-- PART 1 -->
+<h2>Part 1: AR9271 Hardware Validation</h2>
+
+<h3>Device Under Test</h3>
+<table>
+<tr><th>Property</th><th>Value</th></tr>
+<tr><td>Adapter</td><td>Atheros AR9271 (Wavenex)</td></tr>
+<tr><td>USB ID</td><td><code>0cf3:9271</code></td></tr>
+<tr><td>OS</td><td>Ubuntu Linux</td></tr>
+<tr><td>Driver</td><td><code>ath9k_htc</code></td></tr>
+<tr><td>Interface</td><td><code>wlx24ec99bfe292</code> → <code>wlan0mon</code></td></tr>
+</table>
+
+<h3>Validation Results — 2026-04-21</h3>
+<table>
+<tr><th>#</th><th>Test</th><th>Command</th><th>Result</th></tr>
+<tr><td>1</td><td>USB Detection</td><td><code>lsusb</code></td><td><span class="tag tag-pass">✅ PASS</span></td></tr>
+<tr><td>2</td><td>Driver Loaded</td><td><code>sudo airmon-ng</code></td><td><span class="tag tag-pass">✅ PASS</span></td></tr>
+<tr><td>3</td><td>Monitor Mode</td><td><code>sudo airmon-ng start wlx...</code></td><td><span class="tag tag-pass">✅ PASS</span></td></tr>
+<tr><td>4</td><td>Packet Injection</td><td><code>sudo aireplay-ng --test</code></td><td><span class="tag tag-pass">✅ PASS</span></td></tr>
+<tr><td>5</td><td>Passive Capture</td><td><code>sudo airodump-ng wlan0mon</code></td><td><span class="tag tag-pass">✅ PASS</span></td></tr>
+</table>
+
+<div class="info">⚠️ <strong>Constraint:</strong> AR9271 is <strong>2.4 GHz only</strong> — no 5 GHz / 6 GHz support.</div>
+
+<hr>
+<!-- PART 2 -->
+<h2>Part 2: Project Structure</h2>
+<pre>
+NTTH/
+├── backend/app/
+│   ├── agents/          # 5-stage AI pipeline (incl. feedback)
+│   ├── api/             # REST API (28+ endpoints)
+│   ├── core/            # Event bus, auth, logger
+│   ├── database/        # SQLAlchemy models, CRUD
+│   ├── firewall/        # nftables manager
+│   ├── geoip/           # MaxMind GeoIP
+│   ├── honeypot/        # Cowrie + HTTP + multi-protocol
+│   ├── ids/             # Rule engine + Isolation Forest
+│   ├── monitor/         # Packet sniffer + persistent tracker
+│   ├── wireless/        # AR9271 module (7 files)
+│   ├── config.py        # Pydantic settings
+│   └── main.py          # FastAPI lifespan
+├── flutter_app/         # 10-screen dashboard
+├── experiments/          # Experiment automation (5 tests)
+└── docs/                # Documentation</pre>
+
+<h3>Module Status</h3>
+<table>
+<tr><th>Module</th><th>Components</th><th>Status</th></tr>
+<tr><td>Backend Core</td><td>FastAPI, JWT, PostgreSQL, WebSocket, logging</td><td><span class="tag tag-pass">✅</span></td></tr>
+<tr><td>Packet Capture</td><td>Scapy sniffer, feature extractor, device registry</td><td><span class="tag tag-pass">✅</span></td></tr>
+<tr><td>IDS Engine</td><td>Port scan, SYN flood, brute force + Isolation Forest</td><td><span class="tag tag-pass">✅</span></td></tr>
+<tr><td>AI Agents</td><td>Threat → Decision → Enforcement → Reporting → Feedback</td><td><span class="tag tag-pass">✅</span></td></tr>
+<tr><td>Firewall</td><td>nftables block/rate_limit/redirect</td><td><span class="tag tag-pass">✅</span></td></tr>
+<tr><td>Honeypot</td><td>Cowrie SSH + HTTP + multi-protocol</td><td><span class="tag tag-pass">✅</span></td></tr>
+<tr><td>Wireless</td><td>AR9271 capture, deauth/rogue detection</td><td><span class="tag tag-pass">✅</span></td></tr>
+<tr><td>Persistent Tracker</td><td>MAC-based attacker fingerprinting</td><td><span class="tag tag-pass">✅</span></td></tr>
+<tr><td>Feedback Agent</td><td>FP tracking + honeypot engagement metrics</td><td><span class="tag tag-pass">✅</span></td></tr>
+<tr><td>Dashboard</td><td>Flutter: 10 screens, dark theme, wireless</td><td><span class="tag tag-pass">✅</span></td></tr>
+<tr><td>Experiments</td><td>Automation framework: 5 structured tests</td><td><span class="tag tag-pass">✅</span></td></tr>
+</table>
+
+<hr>
+<!-- PART 3 -->
+<h2>Part 3: AR9271 Integration — Wireless Module</h2>
+<pre>
+backend/app/wireless/
+├── __init__.py
+├── wifi_sniffer.py           # Monitor mode 802.11 capture
+├── wifi_feature_extractor.py # Probe/deauth/beacon parsing
+├── probe_tracker.py          # Device presence via probes
+├── deauth_detector.py        # Deauth flood detection
+├── rogue_ap_detector.py      # Evil twin detection
+└── channel_hopper.py         # Channel 1–13 cycling</pre>
+
+<h3>AR9271 Capabilities Used</h3>
+<table>
+<tr><th>#</th><th>Capability</th><th>How We Use It</th><th>Event Bus Topic</th></tr>
+<tr><td>1</td><td><strong>Monitor Mode</strong></td><td>Capture raw 802.11 frames</td><td>—</td></tr>
+<tr><td>2</td><td><strong>Probe Capture</strong></td><td>Track device MAC, SSID, RSSI</td><td><code>wifi_probe_seen</code></td></tr>
+<tr><td>3</td><td><strong>Deauth Detection</strong></td><td>Count deauth frames/sec</td><td><code>wifi_threat_detected</code></td></tr>
+<tr><td>4</td><td><strong>Beacon Capture</strong></td><td>Detect rogue APs</td><td><code>wifi_threat_detected</code></td></tr>
+<tr><td>5</td><td><strong>Channel Hopping</strong></td><td>Sweep channels 1–13</td><td>—</td></tr>
+<tr><td>6</td><td><strong>Packet Injection</strong></td><td>Future: active countermeasures</td><td>—</td></tr>
+</table>
+
+<h3>Integration Architecture</h3>
+<pre>
+                        ┌──────────────────────────────────────┐
+                        │  EXISTING WIRED PIPELINE             │
+  Scapy Sniffer ───────►│  device_seen → threat_detected →     │
+  (wlp0s20f3)           │  enforcement_action → report_event   │
+                        └──────────────────────────────────────┘
+                                         │
+                        ┌────────────────┴─────────────────────┐
+                        │  NEW WIRELESS PIPELINE               │
+  AR9271 Sniffer ──────►│  wifi_probe_seen → probe_tracker     │
+  (wlan0mon)            │  wifi_threat_detected → threat_agent │──► Same pipeline
+                        └──────────────────────────────────────┘</pre>
+
+<hr>
+<!-- PART 5 -->
+<h2>Part 5: Progress Tracker</h2>
+
+<p><strong>System Implementation</strong> <span style="float:right;color:var(--green)">100%</span></p>
+<div class="progress-bar"><div class="progress-fill fill-100">████████████████████ 100%</div></div>
+
+<p><strong>Wireless Module</strong> <span style="float:right;color:var(--green)">100%</span></p>
+<div class="progress-bar"><div class="progress-fill fill-100">████████████████████ 100%</div></div>
+
+<p><strong>Persistent Tracker</strong> <span style="float:right;color:var(--green)">100%</span></p>
+<div class="progress-bar"><div class="progress-fill fill-100">████████████████████ 100%</div></div>
+
+<p><strong>Multi-Honeypot</strong> <span style="float:right;color:var(--green)">100%</span></p>
+<div class="progress-bar"><div class="progress-fill fill-100">████████████████████ 100%</div></div>
+
+<p><strong>Auto Network Detect</strong> <span style="float:right;color:var(--green)">100%</span></p>
+<div class="progress-bar"><div class="progress-fill fill-100">████████████████████ 100%</div></div>
+
+<p><strong>Paper Writing</strong> <span style="float:right;color:var(--accent)">75%</span></p>
+<div class="progress-bar"><div class="progress-fill fill-75">████████████████░░░░ 75%</div></div>
+
+<p><strong>Dashboard (Wireless)</strong> <span style="float:right;color:var(--green)">100%</span></p>
+<div class="progress-bar"><div class="progress-fill fill-100">████████████████████ 100%</div></div>
+
+<p><strong>Feedback Agent</strong> <span style="float:right;color:var(--green)">100%</span></p>
+<div class="progress-bar"><div class="progress-fill fill-100">████████████████████ 100%</div></div>
+
+<p><strong>Tracker/Feedback API</strong> <span style="float:right;color:var(--green)">100%</span></p>
+<div class="progress-bar"><div class="progress-fill fill-100">████████████████████ 100%</div></div>
+
+<p><strong>Experiments Framework</strong> <span style="float:right;color:var(--green)">100%</span></p>
+<div class="progress-bar"><div class="progress-fill fill-100">████████████████████ 100%</div></div>
+
+<p style="margin-top:1.5rem"><strong>OVERALL: 87%</strong> (only paper finalization + live test runs remain)</p>
+<div class="progress-bar"><div class="progress-fill" style="width:87%;background:linear-gradient(135deg,var(--green),var(--accent))">█████████████████░░░ 87%</div></div>
+
+<h3>Milestone Checklist</h3>
+
+<h4>✅ Core System (items 1–47)</h4>
+<ul>
+<li class="check">✅ Full wired IDS pipeline operational</li>
+<li class="check">✅ All 5 AI agents working (incl. feedback)</li>
+<li class="check">✅ Flutter dashboard with 10 screens</li>
+<li class="check">✅ Research paper draft</li>
+</ul>
+
+<h4>✅ AR9271 Hardware Validation</h4>
+<ul><li class="check">✅ USB detection, driver, monitor mode, injection, capture</li></ul>
+
+<h4>✅ Wireless Module (Phase 1+2)</h4>
+<ul>
+<li class="check">✅ <code>channel_hopper.py</code> — channel sweep 1–13</li>
+<li class="check">✅ <code>wifi_sniffer.py</code> — Dot11 capture on wlan0mon</li>
+<li class="check">✅ <code>wifi_feature_extractor.py</code> — probe/deauth/beacon parsing</li>
+<li class="check">✅ <code>probe_tracker.py</code> — per-MAC device registry</li>
+<li class="check">✅ <code>deauth_detector.py</code> — sliding window attack detection</li>
+<li class="check">✅ <code>rogue_ap_detector.py</code> — evil twin detection</li>
+<li class="check">✅ <code>routes_wireless.py</code> — 8 REST API endpoints</li>
+<li class="check">✅ WiFi threats → threat_agent → enforcement pipeline</li>
+</ul>
+
+<h4>✅ Persistent Attacker Tracker <span class="tag tag-new">NEW</span></h4>
+<ul>
+<li class="check">✅ <code>persistent_tracker.py</code> — MAC-based fingerprinting</li>
+<li class="check">✅ Survives IP change / DHCP reassignment</li>
+<li class="check">✅ Auto-flag on ARP scan reconnection</li>
+<li class="check">✅ Auto-flag on WiFi probe (before connection)</li>
+</ul>
+
+<h4>✅ Multi-Protocol Honeypot <span class="tag tag-new">NEW</span></h4>
+<ul>
+<li class="check">✅ <code>multi_honeypot.py</code> — auto-deploy on any attacked port</li>
+<li class="check">✅ Protocol banners: FTP, Telnet, HTTP, MySQL, SMB, RDP, VNC</li>
+<li class="check">✅ Credential capture + command logging</li>
+<li class="check">✅ Decision agent routes ALL ports to honeypots</li>
+</ul>
+
+<h4>✅ Dynamic Network Auto-Detection <span class="tag tag-new">NEW</span></h4>
+<ul>
+<li class="check">✅ Reads real IP/netmask from OS</li>
+<li class="check">✅ Reads default gateway from routing table</li>
+<li class="check">✅ Works on 10.x, 192.168.x, 172.x — any network</li>
+</ul>
+
+<h4>✅ Feedback Agent <span class="tag tag-new">NEW</span></h4>
+<ul>
+<li class="check">✅ <code>feedback_agent.py</code> — enforcement outcome tracking</li>
+<li class="check">✅ Honeypot engagement rate metrics</li>
+<li class="check">✅ False positive rate estimation</li>
+<li class="check">✅ Per-IP enforcement history</li>
+</ul>
+
+<h4>✅ Wireless Dashboard (Phase 3) <span class="tag tag-new">NEW</span></h4>
+<ul>
+<li class="check">✅ <code>wireless_screen.dart</code> — 4-tab Flutter screen</li>
+<li class="check">✅ Dashboard wireless stats + feedback cards</li>
+<li class="check">✅ Threat map 📡 WIFI badges</li>
+<li class="check">✅ Nav rail + drawer integration (10th screen)</li>
+</ul>
+
+<h4>✅ Tracker/Feedback API <span class="tag tag-new">NEW</span></h4>
+<ul>
+<li class="check">✅ <code>routes_tracker.py</code> — 8 REST endpoints</li>
+<li class="check">✅ Attacker CRUD (list/detail/delete by MAC)</li>
+<li class="check">✅ Multi-honeypot instances + sessions</li>
+<li class="check">✅ Feedback metrics + top-enforced + per-IP history</li>
+</ul>
+
+<h4>✅ Experiment Framework <span class="tag tag-new">NEW</span></h4>
+<ul>
+<li class="check">✅ <code>run_experiments.py</code> — 5 automated tests</li>
+<li class="check">✅ Deauth detection accuracy</li>
+<li class="check">✅ Pipeline latency measurement</li>
+<li class="check">✅ IDS confusion matrix</li>
+<li class="check">✅ Honeypot deployment test</li>
+<li class="check">✅ Persistent tracker reconnection test</li>
+</ul>
+
+<h4 style="color:var(--muted)">🔲 Remaining: Live Test Runs</h4>
+<ul>
+<li class="uncheck">☐ Execute experiments with AR9271 in monitor mode</li>
+<li class="uncheck">☐ Collect empirical data from 30+ runs</li>
+<li class="uncheck">☐ Finalize paper with real results</li>
+</ul>
+
+<hr>
+<!-- PART 6 -->
+<h2>Part 6: Targeted Goals</h2>
+
+<h3>Academic Goals</h3>
+<table>
+<tr><th>Goal</th><th>Metric</th><th>Target</th></tr>
+<tr><td>WiFi detection (deauth)</td><td>True positive rate</td><td>≥ 95%</td></tr>
+<tr><td>WiFi detection (rogue AP)</td><td>True positive rate</td><td>≥ 90%</td></tr>
+<tr><td>WiFi false positive rate</td><td>False alarm rate</td><td>≤ 5%</td></tr>
+<tr><td>WiFi pipeline latency</td><td>Frame → threat_detected</td><td>≤ 200 ms</td></tr>
+<tr><td>Probe tracking accuracy</td><td>Unique MACs identified</td><td>≥ 98%</td></tr>
+<tr><td>Paper novelty</td><td>"Only system with wireless"</td><td>Table I</td></tr>
+</table>
+
+<h3>System Goals</h3>
+<table>
+<tr><th>Goal</th><th>Description</th></tr>
+<tr><td>Dual-interface</td><td>Wired (wlp0s20f3) + Wireless (wlan0mon) simultaneously</td></tr>
+<tr><td>Unified pipeline</td><td>WiFi threats use same 5-agent pipeline</td></tr>
+<tr><td>Real-time dashboard</td><td>WiFi devices visible within 1 second</td></tr>
+<tr><td>Zero-config</td><td>AR9271 auto-detected on startup</td></tr>
+<tr><td>Graceful degradation</td><td>System runs if AR9271 is unplugged</td></tr>
+</table>
+
+<h3>Research Paper Impact</h3>
+<table>
+<tr><th>Section</th><th>What AR9271 Adds</th></tr>
+<tr><td>Abstract</td><td>"convergent wired and wireless threat detection"</td></tr>
+<tr><td>Contribution #4</td><td>Wireless monitoring via $10 USB adapter</td></tr>
+<tr><td>Table I</td><td>Only system with wireless = "Yes"</td></tr>
+<tr><td>Section V.D</td><td>Full wireless module implementation</td></tr>
+<tr><td>Section VI</td><td>WiFi experiments + latency measurements</td></tr>
+</table>
+
+<hr>
+<!-- PART 7 -->
+<h2>Part 7: How to Run</h2>
+
+<h3>Prerequisites</h3>
+<pre>sudo apt update && sudo apt install -y aircrack-ng iw wireless-tools docker.io python3-pip
+cd /home/ubuntu/NTTH/backend && pip install -r requirements.txt
+sudo airmon-ng check kill
+sudo airmon-ng start wlx24ec99bfe292</pre>
+
+<h3>Development Mode</h3>
+<pre>cd /home/ubuntu/NTTH/backend
+sudo uvicorn app.main:app --reload --port 8000 --log-level info</pre>
+
+<h3>Verification</h3>
+<pre>curl http://localhost:8000/api/v1/system/health
+
+TOKEN=$(curl -s -X POST http://localhost:8000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"NtthAdmin2026"}' | jq -r .access_token)
+
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8000/api/v1/wireless/devices</pre>
+
+<h3>Attack Testing</h3>
+<pre># Deauth attack test
+sudo aireplay-ng --deauth 20 -a &lt;TARGET_BSSID&gt; wlan0mon
+
+# Rogue AP test
+sudo hostapd /tmp/rogue_ap.conf</pre>
+
+<div class="warn">⚠️ <strong>Docker note:</strong> Container needs <code>--privileged</code> or <code>cap_add: [NET_ADMIN, NET_RAW]</code> for AR9271 access.</div>
+
+<hr>
+<!-- PART 9 -->
+<h2>Part 9: Configuration Reference</h2>
+<pre>
+# ── Existing (auto-detected) ──
+NETWORK_INTERFACE=wlp0s20f3
+GATEWAY_IP=10.223.251.124       # Auto-detected from routing table
+SCAN_SUBNET=                    # Auto-detected from interface
+
+# ── AR9271 Wireless ──
+WIFI_ENABLED=true
+WIFI_INTERFACE=wlan0mon
+WIFI_CHANNELS=1,2,3,...,13
+WIFI_HOP_INTERVAL=0.3
+DEAUTH_THRESHOLD=10
+DEAUTH_WINDOW_SECONDS=1
+AP_WHITELIST_SSIDS=MyNetwork,MyNetwork_5G
+ROGUE_AP_DETECTION=true
+PROBE_TRACKING=true</pre>
+
+<h3>Event Bus Topics</h3>
+<table>
+<tr><th>Topic</th><th>Publisher</th><th>Subscriber</th></tr>
+<tr><td><code>wifi_probe_seen</code></td><td>wifi_sniffer</td><td>probe_tracker</td></tr>
+<tr><td><code>wifi_threat_detected</code></td><td>deauth/rogue detectors</td><td>threat_agent</td></tr>
+<tr><td><code>honeypot_interaction</code></td><td>multi_honeypot</td><td>reporting_agent</td></tr>
+</table>
+
+<hr>
+<!-- PART 10 -->
+<h2>Part 10: Risk &amp; Mitigation</h2>
+<table>
+<tr><th>Risk</th><th>Impact</th><th>Mitigation</th></tr>
+<tr><td>AR9271 disconnected</td><td>WiFi stops</td><td>Graceful degradation — wired unaffected</td></tr>
+<tr><td>Channel hop misses</td><td>Reduced coverage</td><td>Configurable interval, lock-channel option</td></tr>
+<tr><td>MAC randomization</td><td>Tracking inaccurate</td><td>Timing + IE fingerprinting</td></tr>
+<tr><td>Docker USB access</td><td>No WiFi in container</td><td>Run on host or <code>--device /dev/bus/usb</code></td></tr>
+<tr><td>5 GHz invisible</td><td>Incomplete coverage</td><td>Documented; future MT7612U adapter</td></tr>
+<tr><td>Deauth false positives</td><td>Alert fatigue</td><td>Tunable threshold (default 10/sec)</td></tr>
+</table>
+
+</div>
+
+<footer>
+<div class="container">NTTH × AR9271 — No Time To Hack &bull; Master Integration Plan &bull; 2026</div>
+</footer>
+
+</body>
+</html>

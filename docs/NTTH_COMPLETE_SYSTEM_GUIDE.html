@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NTTH — Complete System Guide &amp; Demo Test</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0a0e1a;--surface:#111827;--surface2:#1a2236;--border:#2a3450;--text:#e2e8f0;--muted:#94a3b8;--accent:#38bdf8;--accent2:#818cf8;--green:#34d399;--red:#f87171;--orange:#fb923c;--yellow:#fbbf24;--grad:linear-gradient(135deg,#38bdf8,#818cf8)}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);line-height:1.7;padding:0}
+.container{max-width:960px;margin:0 auto;padding:2rem 1.5rem}
+header{background:linear-gradient(135deg,#0f172a 0%,#1e1b4b 50%,#0f172a 100%);border-bottom:1px solid var(--border);padding:3rem 0;text-align:center}
+header h1{font-size:2.2rem;font-weight:800;background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:.5rem}
+header .badge{display:inline-block;background:var(--surface2);border:1px solid var(--border);border-radius:999px;padding:.25rem .8rem;font-size:.8rem;color:var(--muted);margin:.25rem}
+h2{font-size:1.5rem;font-weight:700;color:var(--accent);margin:2.5rem 0 1rem;padding-bottom:.5rem;border-bottom:1px solid var(--border)}
+h3{font-size:1.15rem;font-weight:600;color:var(--accent2);margin:1.5rem 0 .75rem}
+p{margin:.75rem 0;color:var(--text)}
+strong{color:#fff}
+code{font-family:'JetBrains Mono',monospace;font-size:.85em;background:var(--surface2);padding:.15rem .4rem;border-radius:4px;color:var(--accent)}
+pre{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:1.25rem;overflow-x:auto;margin:1rem 0;font-family:'JetBrains Mono',monospace;font-size:.8rem;line-height:1.6;color:#c9d1d9;white-space:pre}
+table{width:100%;border-collapse:collapse;margin:1rem 0;font-size:.9rem}
+th{background:var(--surface2);color:var(--accent);font-weight:600;text-align:left;padding:.6rem .8rem;border:1px solid var(--border)}
+td{padding:.5rem .8rem;border:1px solid var(--border);color:var(--text)}
+tr:nth-child(even) td{background:rgba(30,41,66,.4)}
+ul,ol{margin:.5rem 0 .5rem 1.5rem}
+li{margin:.3rem 0;color:var(--text)}
+.tag{display:inline-block;font-size:.7rem;font-weight:600;padding:.15rem .5rem;border-radius:4px;margin-left:.3rem}
+.tag-new{background:rgba(56,189,248,.15);color:var(--accent);border:1px solid rgba(56,189,248,.3)}
+.tag-pass{background:rgba(52,211,153,.15);color:var(--green);border:1px solid rgba(52,211,153,.3)}
+.info-box{background:var(--surface2);border-left:3px solid var(--accent);padding:1rem 1.25rem;border-radius:0 8px 8px 0;margin:1rem 0;font-size:.9rem}
+.warn-box{background:rgba(251,146,60,.08);border-left:3px solid var(--orange);padding:1rem 1.25rem;border-radius:0 8px 8px 0;margin:1rem 0;font-size:.9rem}
+hr{border:none;border-top:1px solid var(--border);margin:2rem 0}
+.step-num{display:inline-block;background:var(--grad);color:#000;font-weight:700;width:28px;height:28px;text-align:center;line-height:28px;border-radius:50%;font-size:.85rem;margin-right:.5rem}
+footer{text-align:center;color:var(--muted);font-size:.8rem;padding:2rem 0;border-top:1px solid var(--border);margin-top:3rem}
+@media(max-width:700px){.container{padding:1rem}.table-wrap{overflow-x:auto}pre{font-size:.72rem}h2{font-size:1.25rem}}
+</style>
+</head>
+<body>
+
+<header>
+<div class="container">
+<h1>NTTH — Complete System Guide</h1>
+<p style="color:var(--muted);margin:.5rem 0">Autonomous AI-Driven Honeypot Firewall — Full Technical Reference &amp; Demo</p>
+<span class="badge">Status: Fully Built</span>
+<span class="badge">AR9271 Integrated</span>
+<span class="badge">Date: 2026-04-22</span>
+</div>
+</header>
+
+<div class="container">
+
+<h2>How NTTH Works — End to End</h2>
+<h3>The One-Line Summary</h3>
+<p>NTTH is an <strong>autonomous network defense system</strong> that captures network traffic from two sources (wired NIC + AR9271 WiFi adapter), scores every packet using AI (rules + ML), and automatically blocks attackers or redirects them to honeypots — all visible on a live Flutter dashboard.</p>
+
+<h3>What Happens When You Start the System</h3>
+<p>When you run <code>sudo uvicorn app.main:app --port 8000</code>, the system boots <strong>8 concurrent tasks</strong>:</p>
+<pre>
+┌─ STARTUP SEQUENCE ────────────────────────────────────────────┐
+│                                                                │
+│  1. Database init (SQLite/PostgreSQL tables created)           │
+│  2. Admin user seeded (admin / NtthAdmin2026)                  │
+│  3. Event bus started (async pub/sub, 5000-event queue)        │
+│  4. Scheduler started (periodic jobs)                          │
+│  5. Wired packet sniffer started (Scapy on wlp0s20f3)    ←── IP packets
+│  5b. WiFi sniffer started (Scapy on wlan0mon via AR9271) ←── 802.11 frames
+│  6. HTTP honeypot started (port 8888)                          │
+│  7. Cowrie log watcher started (tails cowrie.json)             │
+│  8. Periodic network scan started (ARP every 60s)             │
+│                                                                │
+│  + 5 AI agents auto-subscribed to event bus at import time     │
+│  + Flutter dashboard served at http://localhost:8000/           │
+│  + REST API at http://localhost:8000/api/v1/                   │
+│  + Swagger docs at http://localhost:8000/docs                  │
+└────────────────────────────────────────────────────────────────┘</pre>
+
+<hr>
+<h2>The Two Capture Pipelines</h2>
+
+<h3>Pipeline A: Wired Traffic</h3>
+<pre>
+YOUR LAPTOP NIC (wlp0s20f3)
+       │
+       ▼
+  Scapy AsyncSniffer ──── filter: "ip" (all IP packets)
+       │
+       ▼
+  feature_extractor.py ── extracts: src_ip, dst_ip, dst_port, protocol,
+       │                  pkt_len, is_syn, is_ack, is_rst, flags, timestamp
+       │
+       ├──► device_registry.update()  ── per-IP state tracking
+       ├──► update_live_stats()        ── real-time bandwidth
+       │
+       ▼
+  EVENT BUS: "device_seen" ──────────────────────────────────────►</pre>
+<p><strong>What it captures:</strong> Every IP packet on your WiFi network — web browsing, SSH, DNS, scans, attacks.</p>
+
+<h3>Pipeline B: Wireless Monitor Mode <span class="tag tag-new">NEW — AR9271</span></h3>
+<pre>
+AR9271 USB ADAPTER (wlan0mon) — monitor mode
+       │
+       ├── channel_hopper.py ── cycles channels 1–13 every 0.3s
+       │
+       ▼
+  Scapy AsyncSniffer ──── no BPF filter (all raw 802.11 frames)
+       │
+       ▼
+  wifi_feature_extractor.py ── parses 3 frame types:
+       │
+       ├── Probe Requests ──► probe_tracker.py ──► "wifi_probe_seen"
+       │
+       ├── Deauth Frames ──► deauth_detector.py ──► "wifi_threat_detected"
+       │
+       └── Beacon Frames ──► rogue_ap_detector.py ──► "wifi_threat_detected"</pre>
+<p><strong>What it captures:</strong> Raw 802.11 management frames invisible to normal interfaces. Only possible because AR9271 supports monitor mode.</p>
+
+<hr>
+<h2>The AI Agent Pipeline</h2>
+<pre>
+                     ┌──────────────────────────────────────────────────────┐
+  "device_seen"  ───►│  THREAT AGENT (Stage 1)                             │
+                     │  • 3 IDS rules: port_scan, syn_flood, brute_force   │
+                     │  • Isolation Forest ML anomaly scorer                │
+                     │  • risk = 0.6×rule + 0.4×ml                         │
+                     │  • GeoIP: country, city, ASN, lat/lon               │
+                     └──────────────┬───────────────────────────────────────┘
+                                    │ "threat_detected"
+  "wifi_threat_  ───────────────────┤  (WiFi threats: risk=0.95–0.99)
+   detected"                        ▼
+                     ┌──────────────────────────────────────────────────────┐
+                     │  DECISION AGENT (Stage 2)                            │
+                     │  &lt; 0.15 → allow  │ 0.15–0.25 → log                  │
+                     │  0.25–0.40 → rate_limit │ 0.40–0.80 → honeypot      │
+                     │  ≥ 0.80 → block                                      │
+                     └──────────────┬───────────────────────────────────────┘
+                                    │ "enforcement_action"
+                     ┌──────────────▼──────────────────────────────────────┐
+                     │  ENFORCEMENT AGENT (Stage 3)                         │
+                     │  • nft: rate_limit / redirect / block                │
+                     │  • Auto-starts Cowrie + multi-protocol honeypots     │
+                     │  • Auto-expire after 1 hour                          │
+                     └──────────────┬───────────────────────────────────────┘
+                                    │ "report_event"
+                     ┌──────────────▼──────────────────────────────────────┐
+                     │  REPORTING AGENT (Stage 4)                           │
+                     │  • DB persist + WebSocket broadcast + risk update    │
+                     └──────────────┬───────────────────────────────────────┘
+                                    │
+                     ┌──────────────▼──────────────────────────────────────┐
+                     │  FEEDBACK AGENT (Stage 5)              [NEW]        │
+                     │  • Tracks FP rate + honeypot engagement             │
+                     │  • Per-IP enforcement history                       │
+                     │  • Publishes feedback_alert on anomalies            │
+                     └─────────────────────────────────────────────────────┘</pre>
+
+<div class="info-box">⚡ <strong>Pipeline latency:</strong> ~127ms average from packet capture to firewall rule applied.</div>
+
+<hr>
+<h2>The Deception Layer</h2>
+
+<h3>SSH Honeypot (Cowrie — Docker)</h3>
+<ul>
+<li><strong>Port 30022</strong> — accepts ANY credentials</li>
+<li>Simulates fake Linux shell — logs all commands</li>
+<li>Cowrie JSON log tailed in real-time by <code>cowrie_watcher.py</code></li>
+</ul>
+
+<h3>Multi-Protocol Honeypot <span class="tag tag-new">NEW</span></h3>
+<table>
+<tr><th>Port</th><th>Protocol</th><th>What Attacker Sees</th></tr>
+<tr><td>21</td><td>FTP</td><td>ProFTPD banner → captures credentials</td></tr>
+<tr><td>23</td><td>Telnet</td><td>Ubuntu login → captures username/password</td></tr>
+<tr><td>80/443</td><td>HTTP</td><td>Fake admin login page → captures form data</td></tr>
+<tr><td>3306</td><td>MySQL</td><td>MySQL handshake → captures credentials</td></tr>
+<tr><td>445</td><td>SMB</td><td>Connection logged</td></tr>
+<tr><td>3389</td><td>RDP</td><td>Connection logged</td></tr>
+<tr><td>5900</td><td>VNC</td><td>RFB banner → connection logged</td></tr>
+<tr><td>Any</td><td>Generic</td><td>TCP banner + connection logging</td></tr>
+</table>
+
+<h3>Flow-Aware Redirection</h3>
+<ol>
+<li>Detects brute force (3+ attempts in 120s)</li>
+<li>Creates nftables NAT rule redirecting ONLY that attacker to honeypot</li>
+<li>Attacker thinks they're in the real system — actually in the honeypot</li>
+<li>Commands captured and displayed on dashboard</li>
+</ol>
+
+<hr>
+<h2>Persistent Attacker Tracker <span class="tag tag-new">NEW</span></h2>
+<p>Tracks attackers by <strong>MAC address</strong> — survives IP changes, DHCP reassignment, and reconnections:</p>
+<pre>
+ATTACK HAPPENS → MAC fingerprint stored
+       │
+ATTACKER DISCONNECTS... hours/days pass...
+       │
+ATTACKER RECONNECTS (new IP, same MAC)
+       │
+├── ARP scan finds device → MAC lookup → "KNOWN ATTACKER!" ⚠️
+└── AR9271 detects WiFi probe → "ATTACKER NEARBY!" ⚠️ (before connection)</pre>
+
+<hr>
+<h2>Dashboard (Flutter) — 10 Screens</h2>
+<table>
+<tr><th>Screen</th><th>What You See</th></tr>
+<tr><td><strong>Dashboard</strong></td><td>Total threats, rules, events, wireless stats, feedback metrics</td></tr>
+<tr><td><strong>Threat Map</strong></td><td>Live threat feed with LIVE/RECENT/📡WIFI badges, GeoIP</td></tr>
+<tr><td><strong>Firewall</strong></td><td>Active nftables rules (block/redirect/rate_limit)</td></tr>
+<tr><td><strong>Honeypot</strong></td><td>SSH sessions with terminal-style command display</td></tr>
+<tr><td><strong>Topology</strong></td><td>Network device map from ARP scans</td></tr>
+<tr><td><strong>Devices</strong></td><td>Detailed per-device view with traffic stats</td></tr>
+<tr><td><strong>Wireless</strong></td><td>AR9271 status, WiFi devices, APs, threats <span class="tag tag-new">NEW</span></td></tr>
+<tr><td><strong>System Health</strong></td><td>Component status, 8 agents, event bus metrics</td></tr>
+<tr><td><strong>Settings</strong></td><td>Server URL, theme</td></tr>
+<tr><td><strong>Logs</strong></td><td>Real-time structured JSON log stream</td></tr>
+</table>
+
+<hr>
+<h2>REST API (28+ Endpoints)</h2>
+<table>
+<tr><th>Endpoint</th><th>What It Does</th></tr>
+<tr><td><code>POST /api/v1/auth/login</code></td><td>Get JWT token</td></tr>
+<tr><td><code>GET /api/v1/devices</code></td><td>List network devices</td></tr>
+<tr><td><code>GET /api/v1/threats</code></td><td>Paginated threat events</td></tr>
+<tr><td><code>GET /api/v1/firewall/rules</code></td><td>Active firewall rules</td></tr>
+<tr><td><code>POST /api/v1/firewall/flush</code></td><td>Emergency: remove all rules</td></tr>
+<tr><td><code>GET /api/v1/honeypot/sessions</code></td><td>Honeypot session log</td></tr>
+<tr><td><code>GET /api/v1/system/health</code></td><td>Health check (8 agents)</td></tr>
+<tr><td><code>GET /api/v1/wireless/status</code></td><td>AR9271 adapter state</td></tr>
+<tr><td><code>GET /api/v1/wireless/devices</code></td><td>WiFi devices (probe-based)</td></tr>
+<tr><td><code>GET /api/v1/wireless/probes</code></td><td>Unique SSIDs seen</td></tr>
+<tr><td><code>GET /api/v1/wireless/aps</code></td><td>Observed access points</td></tr>
+<tr><td><code>GET /api/v1/wireless/threats</code></td><td>WiFi threat state</td></tr>
+<tr><td><code>POST /api/v1/wireless/whitelist</code></td><td>Update AP whitelist</td></tr>
+<tr><td><code>GET /api/v1/tracker/attackers</code></td><td>List all tracked attackers <span class="tag tag-new">NEW</span></td></tr>
+<tr><td><code>GET /api/v1/tracker/attackers/{mac}</code></td><td>Attacker detail by MAC <span class="tag tag-new">NEW</span></td></tr>
+<tr><td><code>DELETE /api/v1/tracker/attackers/{mac}</code></td><td>Remove attacker from tracker <span class="tag tag-new">NEW</span></td></tr>
+<tr><td><code>GET /api/v1/tracker/honeypots</code></td><td>Active multi-honeypot instances <span class="tag tag-new">NEW</span></td></tr>
+<tr><td><code>GET /api/v1/tracker/honeypots/sessions</code></td><td>Honeypot interaction sessions <span class="tag tag-new">NEW</span></td></tr>
+<tr><td><code>GET /api/v1/tracker/feedback</code></td><td>Feedback agent metrics <span class="tag tag-new">NEW</span></td></tr>
+<tr><td><code>GET /api/v1/tracker/feedback/top-enforced</code></td><td>Most enforced IPs <span class="tag tag-new">NEW</span></td></tr>
+<tr><td><code>GET /api/v1/tracker/feedback/history/{ip}</code></td><td>IP enforcement history <span class="tag tag-new">NEW</span></td></tr>
+<tr><td><code>WS /ws/live?token=JWT</code></td><td>Live event stream</td></tr>
+</table>
+
+<hr>
+<h2>Deployment — 3 Options <span class="tag tag-new">NEW</span></h2>
+
+<h3>Option A: One-Command Docker Deploy</h3>
+<pre># Plug in AR9271 USB adapter, then:
+cd /home/ubuntu/NTTH
+docker compose up -d
+
+# Monitor mode is auto-configured inside the container
+# Dashboard: http://&lt;your-ip&gt;:8000/
+# Health:    curl http://localhost:8000/api/v1/system/health</pre>
+<div class="info-box">📦 <strong>Docker handles everything:</strong> installs deps, detects AR9271, enables monitor mode, starts backend, serves dashboard.</div>
+
+<h3>Option B: Auto-Start Script (Bare Metal)</h3>
+<pre># Plug in AR9271, then run:
+sudo ./scripts/start_ntth.sh
+
+# Auto-detects AR9271, kills conflicts, enables monitor mode, starts backend
+# Optional flags:
+#   --no-wifi    Skip wireless setup
+#   --dev        Enable hot-reload
+#   --port=9000  Change port</pre>
+
+<h3>Option C: Manual (Step by Step)</h3>
+
+<h3><span class="step-num">1</span> Prepare the AR9271 (Manual)</h3>
+<pre>sudo airmon-ng check kill
+sudo airmon-ng start wlx24ec99bfe292
+sudo airmon-ng   # Verify: wlan0mon ath9k_htc AR9271</pre>
+<div class="info-box">💡 <strong>Auto-monitor:</strong> If you use Option A or B, this step is done automatically. The system detects AR9271 via <code>lsusb</code>, finds the interface, and enables monitor mode.</div>
+
+<h3><span class="step-num">2</span> Start the Backend</h3>
+<pre>cd /home/ubuntu/NTTH/backend
+sudo uvicorn app.main:app --host 0.0.0.0 --port 8000 --log-level info</pre>
+
+<h3><span class="step-num">3</span> Verify System Health</h3>
+<pre>curl http://localhost:8000/api/v1/system/health | python3 -m json.tool
+
+TOKEN=$(curl -s -X POST http://localhost:8000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"NtthAdmin2026"}' \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")</pre>
+
+<h3><span class="step-num">4</span> Check WiFi Monitoring</h3>
+<pre>curl -s -H "Authorization: Bearer $TOKEN" \
+  http://localhost:8000/api/v1/wireless/status | python3 -m json.tool</pre>
+
+<h3><span class="step-num">5</span> See WiFi Devices</h3>
+<pre>curl -s -H "Authorization: Bearer $TOKEN" \
+  http://localhost:8000/api/v1/wireless/devices | python3 -m json.tool</pre>
+
+<h3><span class="step-num">6</span> Demo — Port Scan Attack</h3>
+<pre># From attacker device:
+nmap -sS -Pn 10.223.251.241
+# System auto-detects → auto-blocks via nftables</pre>
+
+<h3><span class="step-num">7</span> Demo — SSH Brute Force → Honeypot</h3>
+<pre># From attacker device — repeat 5 times:
+ssh root@10.223.251.241 -p 30022
+# After 3 attempts → redirected to Cowrie
+# Commands are captured: whoami, ls, cat /etc/passwd</pre>
+
+<h3><span class="step-num">8</span> Demo — WiFi Deauth Attack</h3>
+<pre>sudo aireplay-ng --deauth 50 -a &lt;TARGET_BSSID&gt; wlan0mon
+# AR9271 detects → threat event → risk=0.95</pre>
+
+<h3><span class="step-num">9</span> Passive WiFi Device Tracking</h3>
+<pre>curl -s -H "Authorization: Bearer $TOKEN" \
+  http://localhost:8000/api/v1/wireless/devices | python3 -m json.tool
+curl -s -H "Authorization: Bearer $TOKEN" \
+  http://localhost:8000/api/v1/wireless/probes | python3 -m json.tool</pre>
+
+<h3><span class="step-num">10</span> View Dashboard</h3>
+<pre># Open browser: http://10.223.251.241:8000/
+# API docs:      http://10.223.251.241:8000/docs</pre>
+
+<h3><span class="step-num">11</span> Check Firewall Rules</h3>
+<pre>curl -s -H "Authorization: Bearer $TOKEN" \
+  http://localhost:8000/api/v1/firewall/rules | python3 -m json.tool
+
+# Flush all rules (emergency):
+curl -s -X POST -H "Authorization: Bearer $TOKEN" \
+  http://localhost:8000/api/v1/firewall/flush</pre>
+
+<hr>
+<h2>Complete Data Flow Diagram</h2>
+<pre>
+                    PHYSICAL LAYER
+    ┌─────────────────────────────────────────────┐
+    │  wlp0s20f3 (built-in WiFi)                  │ ← Network connection
+    │  wlan0mon  (AR9271 USB, monitor mode)        │ ← 802.11 capture
+    └──────────┬──────────────────┬────────────────┘
+               │                  │
+         IP packets          802.11 frames
+               │                  │
+    ┌──────────▼──────┐  ┌───────▼──────────┐
+    │ packet_sniffer  │  │  wifi_sniffer    │
+    └──────────┬──────┘  └───────┬──────────┘
+               │                  │
+    ┌──────────▼──────┐  ┌───────▼──────────┐
+    │feature_extractor│  │wifi_feature_ext. │
+    └──────────┬──────┘  └───────┬──────────┘
+               │                  │
+         "device_seen"    "wifi_threat_detected"
+               │                  │
+    ┌──────────▼──────────────────▼──────────┐
+    │         EVENT BUS (asyncio.Queue)      │
+    │  Threat → Decision → Enforcement       │
+    │  → Reporting → Feedback                │
+    └──────────┬─────────────────┬───────────┘
+    ┌──────────▼──────┐  ┌──────▼───────────┐
+    │  PostgreSQL DB  │  │  Flutter Dashboard│
+    └─────────────────┘  └──────────────────┘</pre>
+
+<hr>
+<h2>File Map</h2>
+<pre>
+NTTH/
+├── backend/app/
+│   ├── main.py                    ← Boots all 8 tasks + 5 agents
+│   ├── config.py                  ← All settings (incl. WiFi)
+│   ├── agents/                    ← 5-stage AI pipeline (incl. feedback)
+│   ├── monitor/                   ← Wired capture + persistent tracker
+│   ├── wireless/                  ← AR9271 module (8 files)
+│   │   └── auto_monitor.py        ← Auto-detect + monitor mode setup
+│   ├── ids/                       ← Rule engine + Isolation Forest
+│   ├── firewall/                  ← nftables manager
+│   ├── honeypot/                  ← Cowrie + multi-protocol honeypot
+│   ├── api/                       ← REST endpoints (28+)
+│   └── core/                      ← Event bus, logger
+├── flutter_app/lib/screens/       ← 10 dashboard screens
+├── experiments/                   ← Experiment automation framework
+│   └── run_experiments.py         ← 5 automated tests
+├── scripts/start_ntth.sh          ← Auto-start script
+├── Dockerfile                     ← Docker image
+├── docker-compose.yml             ← One-command deploy
+└── .env                           ← Runtime config</pre>
+
+<hr>
+<h2>Quick Reference Card</h2>
+<table>
+<tr><th>What</th><th>Command</th></tr>
+<tr><td>Docker deploy</td><td><code>docker compose up -d</code> <span class="tag tag-new">NEW</span></td></tr>
+<tr><td>Auto-start</td><td><code>sudo ./scripts/start_ntth.sh</code> <span class="tag tag-new">NEW</span></td></tr>
+<tr><td>Start system</td><td><code>cd backend &amp;&amp; sudo uvicorn app.main:app --port 8000</code></td></tr>
+<tr><td>Monitor mode</td><td><code>sudo airmon-ng check kill &amp;&amp; sudo airmon-ng start wlx24ec99bfe292</code></td></tr>
+<tr><td>Health check</td><td><code>curl localhost:8000/api/v1/system/health</code></td></tr>
+<tr><td>WiFi status</td><td><code>curl -H "Authorization: Bearer $TOKEN" localhost:8000/api/v1/wireless/status</code></td></tr>
+<tr><td>All threats</td><td><code>curl -H "Authorization: Bearer $TOKEN" localhost:8000/api/v1/threats</code></td></tr>
+<tr><td>Test port scan</td><td><code>nmap -sS -Pn 10.223.251.241</code> (from attacker)</td></tr>
+<tr><td>Test deauth</td><td><code>sudo aireplay-ng --deauth 50 -a &lt;BSSID&gt; wlan0mon</code></td></tr>
+<tr><td>Flush rules</td><td><code>curl -X POST -H "Authorization: Bearer $TOKEN" localhost:8000/api/v1/firewall/flush</code></td></tr>
+<tr><td>Dashboard</td><td><code>http://10.223.251.241:8000/</code></td></tr>
+<tr><td>API docs</td><td><code>http://10.223.251.241:8000/docs</code></td></tr>
+</table>
+
+</div>
+
+<footer>
+<div class="container">NTTH — No Time To Hack &bull; Autonomous AI-Driven Honeypot Firewall &bull; 2026</div>
+</footer>
+
+</body>
+</html>
