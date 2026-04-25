@@ -13,10 +13,9 @@ Publishes ``wifi_device_update`` events for the reporting pipeline.
 """
 from __future__ import annotations
 
-import asyncio
 from collections import defaultdict
 from datetime import datetime
-from typing import Dict, List, Optional, Set
+from typing import Optional
 
 from app.core.event_bus import publish
 from app.core.logger import get_logger
@@ -24,7 +23,7 @@ from app.core.logger import get_logger
 log = get_logger("probe_tracker")
 
 # MAC → device state
-_registry: Dict[str, dict] = {}
+_registry: dict[str, dict] = {}
 
 # Maximum RSSI history entries per device
 _MAX_RSSI_HISTORY = 50
@@ -146,7 +145,7 @@ def get_device_count() -> int:
 
 def get_unique_ssids() -> list[str]:
     """Return all unique SSIDs seen across all devices."""
-    all_ssids: Set[str] = set()
+    all_ssids: set[str] = set()
     for entry in _registry.values():
         all_ssids.update(entry["ssids"])
     return sorted(all_ssids)

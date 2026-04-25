@@ -10,7 +10,7 @@ from datetime import datetime
 
 from sqlalchemy import (
     Boolean, Column, DateTime, Float, ForeignKey,
-    Integer, String, Text, func,
+    Integer, String, Text,
 )
 from sqlalchemy.orm import relationship
 

@@ -5,13 +5,11 @@ Also exposes a POST /scan trigger to kick off a network scan on demand.
 """
 from __future__ import annotations
 
-import asyncio
 import socket
 from datetime import datetime
 from ipaddress import ip_address, ip_network
-from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
@@ -32,7 +30,8 @@ def _get_gateway() -> str:
         return settings.gateway_ip
     """Try to detect gateway IP from routing table."""
     try:
-        import subprocess, sys
+        import subprocess
+        import sys
         if sys.platform == "win32":
             out = subprocess.check_output(["route", "print", "0.0.0.0"],
                                           text=True, timeout=5)

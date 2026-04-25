@@ -15,8 +15,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.core.event_bus import get_metrics
-from app.core.event_bus import publish
+from app.core.event_bus import get_metrics, publish
 from app.database import crud
 from app.database.schemas import DashboardStats, HealthResponse, PaginatedResponse, SystemLogRead
 from app.dependencies import get_current_user, get_db, require_admin

@@ -10,14 +10,14 @@ from __future__ import annotations
 
 import time
 from collections import defaultdict, deque
-from typing import Deque, Optional
+from typing import Optional
 
 from app.core.logger import get_logger
 
 log = get_logger("deauth_detector")
 
 # Sliding windows: BSSID → deque of timestamps
-_deauth_windows: dict[str, Deque[float]] = defaultdict(deque)
+_deauth_windows: dict[str, deque[float]] = defaultdict(deque)
 
 # Configurable thresholds (overridden by config.py settings)
 _DEAUTH_THRESHOLD = 10       # frames per window to trigger

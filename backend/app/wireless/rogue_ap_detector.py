@@ -10,24 +10,24 @@ Publishes ``wifi_threat_detected`` events when rogue APs are found.
 from __future__ import annotations
 
 import time
-from typing import Dict, Optional, Set
+from typing import Optional
 
 from app.core.logger import get_logger
 
 log = get_logger("rogue_ap_detector")
 
 # Whitelist: SSID → set of authorized BSSIDs
-_whitelist: Dict[str, Set[str]] = {}
+_whitelist: dict[str, set[str]] = {}
 
 # Track seen APs: BSSID → {ssid, first_seen, last_seen, beacon_count}
-_observed_aps: Dict[str, dict] = {}
+_observed_aps: dict[str, dict] = {}
 
 # Already-alerted rogue APs (avoid spam)
-_alerted_rogues: Set[str] = set()
+_alerted_rogues: set[str] = set()
 
 # Cooldown: seconds before re-alerting the same rogue AP
 _ALERT_COOLDOWN = 300  # 5 minutes
-_alert_timestamps: Dict[str, float] = {}
+_alert_timestamps: dict[str, float] = {}
 
 
 def configure_whitelist(whitelist_ssids: list[str]) -> None:

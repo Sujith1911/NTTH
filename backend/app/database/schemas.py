@@ -5,7 +5,7 @@ Each model has Read (response) and Create (request) variants where appropriate.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -242,6 +242,6 @@ class ThreatActionCount(BaseModel):
 
 
 class ThreatStats(BaseModel):
-    by_type: List[ThreatTypeCount]
-    by_action: List[ThreatActionCount]
+    by_type: list[ThreatTypeCount]
+    by_action: list[ThreatActionCount]
     total: int

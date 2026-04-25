@@ -8,7 +8,6 @@ errors (e.g. adapter unplugged) without crashing the main loop.
 from __future__ import annotations
 
 import asyncio
-from typing import List
 
 from app.core.logger import get_logger
 
@@ -19,7 +18,7 @@ _running = False
 
 async def start_channel_hopper(
     interface: str,
-    channels: List[int] | None = None,
+    channels: list[int] | None = None,
     hop_interval: float = 0.3,
 ) -> None:
     """

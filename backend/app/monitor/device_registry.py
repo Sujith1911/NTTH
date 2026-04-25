@@ -4,17 +4,15 @@ Tracks packets, ports, bytes, and SYN counts per source IP.
 """
 from __future__ import annotations
 
-import asyncio
 from collections import defaultdict
 from datetime import datetime
-from typing import Dict, Set
 
 from app.core.logger import get_logger
 
 log = get_logger("device_registry")
 
 # Per-IP in-memory state
-_registry: Dict[str, dict] = defaultdict(lambda: {
+_registry: dict[str, dict] = defaultdict(lambda: {
     "first_seen": None,
     "last_seen": None,
     "packet_count": 0,
