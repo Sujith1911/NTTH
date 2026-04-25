@@ -164,3 +164,29 @@ class SystemLog(Base):
     message = Column(Text, nullable=False)
     extra = Column(Text, nullable=True)  # JSON blob for arbitrary key-value pairs
     logged_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+
+# ── Captured Packets ──────────────────────────────────────────────────────────
+
+class CapturedPacket(Base):
+    """
+    Stores monitored network packets for user inspection and forensic analysis.
+    Only 'interesting' packets are persisted (threats, suspicious, or sampled normal).
+    """
+    __tablename__ = "captured_packets"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    src_ip = Column(String(45), nullable=False, index=True)
+    dst_ip = Column(String(45), nullable=False, index=True)
+    src_port = Column(Integer, nullable=True)
+    dst_port = Column(Integer, nullable=True)
+    protocol = Column(String(8), nullable=False)  # tcp | udp | icmp | other
+    pkt_len = Column(Integer, nullable=True)
+    flags = Column(String(16), nullable=True)  # TCP flags string e.g. "S", "SA", "A"
+    is_syn = Column(Boolean, default=False, nullable=False)
+    is_ack = Column(Boolean, default=False, nullable=False)
+    is_rst = Column(Boolean, default=False, nullable=False)
+    threat_type = Column(String(64), nullable=True)  # null for normal traffic
+    risk_score = Column(Float, nullable=True)
+    action_taken = Column(String(32), nullable=True)  # log | rate_limit | honeypot | block
+    captured_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)

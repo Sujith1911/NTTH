@@ -138,5 +138,57 @@ async def _handle_device_seen_ws(payload: dict) -> None:
         log.debug("reporting_agent.broadcast_device_seen_failed", error=str(exc))
 
 
+# ── Packet persistence for user inspection ───────────────────────────────────
+_packet_sample_counter = 0
+
+
+async def _persist_packet(payload: dict, threat_type: str | None = None,
+                          risk_score: float | None = None,
+                          action_taken: str | None = None) -> None:
+    """Store a captured packet to the DB for forensic inspection."""
+    try:
+        async with AsyncSessionLocal() as db:
+            await crud.store_captured_packet(
+                db,
+                src_ip=payload.get("src_ip", ""),
+                dst_ip=payload.get("dst_ip", ""),
+                src_port=payload.get("src_port"),
+                dst_port=payload.get("dst_port"),
+                protocol=payload.get("protocol", "other"),
+                pkt_len=payload.get("pkt_len"),
+                flags=payload.get("flags"),
+                is_syn=payload.get("is_syn", False),
+                is_ack=payload.get("is_ack", False),
+                is_rst=payload.get("is_rst", False),
+                threat_type=threat_type,
+                risk_score=risk_score,
+                action_taken=action_taken,
+            )
+            await db.commit()
+    except Exception as exc:
+        log.debug("reporting_agent.packet_persist_failed", error=str(exc))
+
+
+async def _handle_threat_packet_persist(payload: dict) -> None:
+    """Persist every threat-flagged packet for inspection."""
+    await _persist_packet(
+        payload,
+        threat_type=payload.get("threat_type"),
+        risk_score=payload.get("risk_score"),
+        action_taken=payload.get("action"),
+    )
+
+
+async def _handle_sample_normal_packet(payload: dict) -> None:
+    """Sample 1 in 100 normal packets for baseline inspection."""
+    global _packet_sample_counter
+    _packet_sample_counter += 1
+    if _packet_sample_counter % 100 == 0:
+        await _persist_packet(payload)
+
+
 event_bus.subscribe("report_event", _handle_report_event)
 event_bus.subscribe("device_seen", _handle_device_seen_ws)
+event_bus.subscribe("report_event", _handle_threat_packet_persist)
+event_bus.subscribe("device_seen", _handle_sample_normal_packet)
+

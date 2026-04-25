@@ -39,6 +39,10 @@ class _DashboardScreenState extends State<DashboardScreen>
     _NavItem(
         icon: Icons.bug_report_outlined, label: 'Honeypot', path: '/honeypot'),
     _NavItem(
+        icon: Icons.wifi_tethering_outlined, label: 'Wireless', path: '/wireless'),
+    _NavItem(
+        icon: Icons.inventory_2_outlined, label: 'Packets', path: '/packets'),
+    _NavItem(
         icon: Icons.monitor_heart_outlined, label: 'System', path: '/system'),
     _NavItem(
         icon: Icons.settings_outlined, label: 'Settings', path: '/settings'),

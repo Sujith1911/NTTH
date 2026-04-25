@@ -12,7 +12,7 @@ from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models import (
-    Device, DeviceStat, FirewallRule, HoneypotSession,
+    CapturedPacket, Device, DeviceStat, FirewallRule, HoneypotSession,
     SystemLog, ThreatEvent, User,
 )
 
@@ -526,3 +526,65 @@ async def purge_devices_outside_subnet(db: AsyncSession, subnet: str) -> int:
     await db.execute(delete(DeviceStat).where(DeviceStat.device_id.in_(stale_ids)))
     await db.execute(delete(Device).where(Device.id.in_(stale_ids)))
     return len(stale_ids)
+
+
+# ── Captured Packets ──────────────────────────────────────────────────────────
+
+async def store_captured_packet(db: AsyncSession, **kwargs) -> CapturedPacket:
+    """Persist a captured packet for forensic inspection."""
+    pkt = CapturedPacket(**kwargs)
+    db.add(pkt)
+    await db.flush()
+    return pkt
+
+
+async def list_captured_packets(
+    db: AsyncSession,
+    page: int = 1,
+    page_size: int = 100,
+    src_ip: Optional[str] = None,
+    dst_ip: Optional[str] = None,
+    protocol: Optional[str] = None,
+    threat_type: Optional[str] = None,
+    only_threats: bool = False,
+) -> tuple[int, Sequence[CapturedPacket]]:
+    """List captured packets with optional filters for inspection."""
+    q = select(CapturedPacket)
+    if src_ip:
+        q = q.where(CapturedPacket.src_ip == src_ip)
+    if dst_ip:
+        q = q.where(CapturedPacket.dst_ip == dst_ip)
+    if protocol:
+        q = q.where(CapturedPacket.protocol == protocol)
+    if threat_type:
+        q = q.where(CapturedPacket.threat_type == threat_type)
+    if only_threats:
+        q = q.where(CapturedPacket.threat_type.isnot(None))
+
+    count_q = select(func.count()).select_from(q.subquery())
+    total = (await db.execute(count_q)).scalar_one()
+    q = q.order_by(CapturedPacket.captured_at.desc()).offset((page - 1) * page_size).limit(page_size)
+    rows = (await db.execute(q)).scalars().all()
+    return total, rows
+
+
+async def get_captured_packet_stats(db: AsyncSession) -> dict:
+    """Aggregated stats for dashboard: total, by protocol, by threat type."""
+    total = (await db.execute(select(func.count()).select_from(CapturedPacket))).scalar_one()
+    threat_count = (await db.execute(
+        select(func.count()).select_from(CapturedPacket).where(CapturedPacket.threat_type.isnot(None))
+    )).scalar_one()
+
+    # By protocol
+    proto_q = (
+        select(CapturedPacket.protocol, func.count())
+        .group_by(CapturedPacket.protocol)
+    )
+    by_protocol = {row[0]: row[1] for row in (await db.execute(proto_q)).all()}
+
+    return {
+        "total_captured": total,
+        "threat_packets": threat_count,
+        "normal_packets": total - threat_count,
+        "by_protocol": by_protocol,
+    }

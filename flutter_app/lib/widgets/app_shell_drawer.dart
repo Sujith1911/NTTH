@@ -24,6 +24,8 @@ class AppShellDrawer extends StatelessWidget {
       _DrawerItem('Topology', Icons.hub_outlined, '/topology'),
       _DrawerItem('Firewall', Icons.security_outlined, '/firewall'),
       _DrawerItem('Honeypot', Icons.bug_report_outlined, '/honeypot'),
+      _DrawerItem('Wireless', Icons.wifi_tethering_outlined, '/wireless'),
+      _DrawerItem('Packets', Icons.inventory_2_outlined, '/packets'),
       _DrawerItem('System', Icons.monitor_heart_outlined, '/system'),
       _DrawerItem('Settings', Icons.settings_outlined, '/settings'),
     ];

@@ -30,6 +30,7 @@ import app.agents.threat_agent      # noqa: F401
 import app.agents.decision_agent    # noqa: F401
 import app.agents.enforcement_agent # noqa: F401
 import app.agents.reporting_agent   # noqa: F401
+import app.agents.feedback_agent    # noqa: F401
 
 # Routers
 from app.api import (
@@ -40,6 +41,9 @@ from app.api import (
     routes_system,
     routes_threats,
     routes_topology,
+    routes_tracker,
+    routes_wireless,
+    routes_packets,
 )
 from app.websocket.live_updates import router as ws_router
 
@@ -176,6 +180,9 @@ def create_app() -> FastAPI:
     app.include_router(routes_honeypot.router, prefix=f"{prefix}/honeypot", tags=["Honeypot"])
     app.include_router(routes_system.router,   prefix=f"{prefix}/system",   tags=["System"])
     app.include_router(routes_topology.router, prefix=f"{prefix}/network",  tags=["Network"])
+    app.include_router(routes_tracker.router,  prefix=f"{prefix}/tracker",  tags=["Tracker"])
+    app.include_router(routes_wireless.router, prefix=f"{prefix}/wireless", tags=["Wireless"])
+    app.include_router(routes_packets.router,  prefix=f"{prefix}/packets",  tags=["Packets"])
     app.include_router(ws_router,              prefix="/ws",                tags=["WebSocket"])
 
     # ── Serve Flutter Web App (SPA) ────────────────────────────────────────────

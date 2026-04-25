@@ -15,6 +15,8 @@ import 'screens/honeypot_screen.dart';
 import 'screens/system_health_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/network_topology_screen.dart';
+import 'screens/wireless_screen.dart';
+import 'screens/packet_inspector_screen.dart';
 import 'theme/app_theme.dart';
 import 'theme/theme_provider.dart';
 
@@ -86,6 +88,8 @@ class NTTHApp extends StatelessWidget {
         GoRoute(path: '/topology',   builder: (_, __) => const NetworkTopologyScreen()),
         GoRoute(path: '/firewall',   builder: (_, __) => const FirewallScreen()),
         GoRoute(path: '/honeypot',   builder: (_, __) => const HoneypotScreen()),
+        GoRoute(path: '/wireless',   builder: (_, __) => const WirelessScreen()),
+        GoRoute(path: '/packets',    builder: (_, __) => const PacketInspectorScreen()),
         GoRoute(path: '/system',     builder: (_, __) => const SystemHealthScreen()),
         GoRoute(path: '/settings',   builder: (_, __) => const SettingsScreen()),
       ],
