@@ -17,16 +17,21 @@ class HoneypotScreen extends StatefulWidget {
   State<HoneypotScreen> createState() => _HoneypotScreenState();
 }
 
-class _HoneypotScreenState extends State<HoneypotScreen> {
+class _HoneypotScreenState extends State<HoneypotScreen>
+    with SingleTickerProviderStateMixin {
   List<HoneypotModel> _sessions = [];
+  List<Map<String, dynamic>> _multiSessions = [];
+  List<Map<String, dynamic>> _activeHoneypots = [];
+  Map<String, dynamic>? _status;
   bool _loading = true;
-  Map<String, dynamic>? _cowrieStatus;
   DateTime? _lastSyncedAt;
   VoidCallback? _wsListener;
+  late TabController _tabController;
 
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 3, vsync: this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _fetchAll();
       _listenToWs();
@@ -35,6 +40,7 @@ class _HoneypotScreenState extends State<HoneypotScreen> {
 
   @override
   void dispose() {
+    _tabController.dispose();
     final listener = _wsListener;
     if (listener != null) {
       context.read<WebSocketService>().removeListener(listener);
@@ -49,14 +55,18 @@ class _HoneypotScreenState extends State<HoneypotScreen> {
       final responses = await Future.wait([
         api.get('/honeypot/sessions', params: {'page': 1, 'page_size': 100}),
         api.get('/honeypot/status'),
+        api.get('/honeypot/active'),
+        api.get('/honeypot/multi/sessions', params: {'limit': 200}),
       ]);
-      final sessResp = responses[0];
-      final statusResp = responses[1];
       setState(() {
-        _sessions = ((sessResp.data as Map)['items'] as List)
+        _sessions = ((responses[0].data as Map)['items'] as List)
             .map((j) => HoneypotModel.fromJson(j))
             .toList();
-        _cowrieStatus = statusResp.data as Map<String, dynamic>;
+        _status = responses[1].data as Map<String, dynamic>;
+        _activeHoneypots = List<Map<String, dynamic>>.from(
+            (responses[2].data as Map)['honeypots'] ?? []);
+        _multiSessions = List<Map<String, dynamic>>.from(
+            (responses[3].data as Map)['sessions'] ?? []);
         _loading = false;
         _lastSyncedAt = DateTime.now();
       });
@@ -70,19 +80,15 @@ class _HoneypotScreenState extends State<HoneypotScreen> {
     _wsListener ??= () {
       if (!mounted || ws.events.isEmpty) return;
       final latest = ws.events.first;
-      if (latest['type'] != 'honeypot_session') return;
-
-      final session = HoneypotModel.fromJson(latest);
-      final index =
-          _sessions.indexWhere((existing) => existing.sessionId == session.sessionId);
-      setState(() {
-        if (index >= 0) {
-          _sessions[index] = session;
-        } else {
-          _sessions = [session, ..._sessions];
-        }
-        _lastSyncedAt = DateTime.now();
-      });
+      if (latest['type'] == 'honeypot_session') {
+        final session = HoneypotModel.fromJson(latest);
+        final idx = _sessions.indexWhere((s) => s.sessionId == session.sessionId);
+        setState(() {
+          if (idx >= 0) _sessions[idx] = session;
+          else _sessions = [session, ..._sessions];
+          _lastSyncedAt = DateTime.now();
+        });
+      }
     };
     ws.addListener(_wsListener!);
   }
@@ -90,393 +96,486 @@ class _HoneypotScreenState extends State<HoneypotScreen> {
   @override
   Widget build(BuildContext context) {
     final isAdmin = context.read<AuthService>().isAdmin;
-    final status = _cowrieStatus?['status'] as String? ?? '?';
     final theme = Theme.of(context);
-    final activeSessions =
-        _sessions.where((session) => session.endedAt == null).length;
-    final sshSessions =
-        _sessions.where((session) => session.honeypotType == 'ssh').length;
+    final cowrieStatus = _status?['status'] as String? ?? '?';
+    final multiInfo = _status?['multi_honeypots'] as Map<String, dynamic>? ?? {};
+    final activePorts = multiInfo['total_active'] as int? ?? _activeHoneypots.length;
+    final multiTotal = multiInfo['total_sessions'] as int? ?? 0;
+    final byProto = multiInfo['sessions_by_protocol'] as Map<String, dynamic>? ?? {};
 
     return Scaffold(
       drawer: const AppShellDrawer(),
       appBar: AppBar(
-        title: const Text('Honeypot Sessions'),
+        title: const Text('Honeypot Center'),
         actions: [
-          IconButton(icon: const Icon(Icons.refresh), onPressed: _fetchAll)
+          IconButton(icon: const Icon(Icons.refresh), onPressed: _fetchAll),
         ],
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: const [
+            Tab(text: 'Overview'),
+            Tab(text: 'SSH / Cowrie'),
+            Tab(text: 'Multi-Protocol'),
+          ],
+        ),
       ),
       body: _loading
-          ? Center(
-              child:
-                  CircularProgressIndicator(color: theme.colorScheme.primary))
-          : RefreshIndicator(
-              onRefresh: _fetchAll,
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                children: [
-                  GlassyContainer(
-                    margin: const EdgeInsets.only(bottom: 16),
-                    padding: const EdgeInsets.all(20),
-                    borderRadius: 24,
-                    child: Wrap(
-                      alignment: WrapAlignment.spaceBetween,
-                      runSpacing: 14,
-                      spacing: 14,
-                      children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Deception surface',
-                              style: GoogleFonts.spaceGrotesk(
-                                fontSize: 24,
-                                fontWeight: FontWeight.w700,
-                                color: theme.colorScheme.onSurface,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'Track diverted attacker sessions, attempted credentials, approximate source intel, and captured commands.',
-                              style: TextStyle(
-                                color: theme.colorScheme.onSurface
-                                    .withOpacity(0.65),
-                                height: 1.5,
-                              ),
-                            ),
-                          ],
-                        ),
-                        Wrap(
-                          spacing: 10,
-                          runSpacing: 10,
-                          children: [
-                            _pill(theme, 'Status',
-                                status == 'running' ? 'Running' : 'Offline',
-                                color: status == 'running'
-                                    ? theme.colorScheme.primary
-                                    : Colors.red),
-                            _pill(theme, 'Active', '$activeSessions',
-                                color: Colors.purple.shade300),
-                            _pill(theme, 'SSH sessions', '$sshSessions',
-                                color: Colors.indigo),
-                            _pill(
-                              theme,
-                              'Last sync',
-                              _lastSyncedAt == null
-                                  ? 'Never'
-                                  : timeago.format(_lastSyncedAt!),
-                              color: theme.colorScheme.primary,
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  GlassyContainer(
-                    margin: const EdgeInsets.only(bottom: 16),
-                    padding: const EdgeInsets.all(16),
-                    borderRadius: 16,
-                    child: Row(
-                      children: [
-                        Icon(Icons.bug_report_outlined,
-                            color: theme.colorScheme.primary, size: 32),
-                        const SizedBox(width: 16),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Cowrie SSH Honeypot',
-                              style: TextStyle(
-                                  color: theme.colorScheme.onSurface,
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 16),
-                            ),
-                            Text(
-                              'Status: $status',
-                              style: TextStyle(
-                                color: status == 'running'
-                                    ? theme.colorScheme.primary
-                                    : Colors.red,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const Spacer(),
-                        if (isAdmin) ...[
-                          OutlinedButton.icon(
-                            icon: const Icon(Icons.play_arrow, size: 16),
-                            label: const Text('Start'),
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: theme.colorScheme.primary,
-                              side:
-                                  BorderSide(color: theme.colorScheme.primary),
-                            ),
-                            onPressed: () async {
-                              await context
-                                  .read<AuthService>()
-                                  .api
-                                  .post('/honeypot/start', {});
-                              _fetchAll();
-                            },
-                          ),
-                          const SizedBox(width: 8),
-                          OutlinedButton.icon(
-                            icon: const Icon(Icons.stop, size: 16),
-                            label: const Text('Stop'),
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: Colors.red,
-                              side: const BorderSide(color: Colors.red),
-                            ),
-                            onPressed: () async {
-                              await context
-                                  .read<AuthService>()
-                                  .api
-                                  .post('/honeypot/stop', {});
-                              _fetchAll();
-                            },
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                  if (_sessions.isEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 48),
-                      child: Center(
-                        child: Text(
-                          'No honeypot sessions yet',
-                          style: TextStyle(
-                              color:
-                                  theme.colorScheme.onSurface.withOpacity(0.5)),
-                        ),
-                      ),
-                    )
-                  else
-                    ...List.generate(_sessions.length, (i) {
-                      final session = _sessions[i];
-                      return Padding(
-                        padding: EdgeInsets.only(
-                            bottom: i == _sessions.length - 1 ? 0 : 8),
-                        child: GlassyContainer(
-                          borderRadius: 18,
-                          child: ExpansionTile(
-                            backgroundColor: Colors.transparent,
-                            collapsedBackgroundColor: Colors.transparent,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(18),
-                            ),
-                            collapsedShape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(18),
-                            ),
-                            leading: Icon(
-                              session.honeypotType == 'ssh'
-                                  ? Icons.terminal
-                                  : Icons.language,
-                              color: Colors.purple.shade300,
-                            ),
-                            title: Text(
-                              session.attackerIp,
-                              style: TextStyle(
-                                color: theme.colorScheme.onSurface,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            subtitle: Text(
-                              session.endedAt == null
-                                  ? '${_sourceDescriptor(session)} - active now'
-                                  : '${_sourceDescriptor(session)} - ${timeago.format(session.startedAt)}',
-                              style: TextStyle(
-                                  color: theme.colorScheme.onSurface
-                                      .withOpacity(0.6),
-                                  fontSize: 12),
-                            ),
-                            trailing: Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: Colors.purple.shade300.withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(6),
-                                border: Border.all(
-                                    color: Colors.purple.shade300
-                                        .withOpacity(0.5)),
-                              ),
-                              child: Text(
-                                session.honeypotType.toUpperCase(),
-                                style: TextStyle(
-                                  color: Colors.purple.shade300,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                            ),
-                            children: [
-                              Padding(
-                                padding: const EdgeInsets.all(16),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Divider(color: theme.dividerColor),
-                                    const SizedBox(height: 8),
-                                    if (session.usernameTried != null)
-                                      _infoRow('Username',
-                                          session.usernameTried!, theme),
-                                    if (session.passwordTried != null)
-                                      _infoRow('Password',
-                                          session.passwordTried!, theme),
-                                    if (session.victimIp != null)
-                                      _infoRow(
-                                          'Attacked IP',
-                                          session.victimPort != null
-                                              ? '${session.victimIp}:${session.victimPort}'
-                                              : session.victimIp!,
-                                          theme),
-                                    if (session.sourceMasked &&
-                                        session.observedAttackerIp != null)
-                                      _infoRow('Observed IP',
-                                          session.observedAttackerIp!, theme),
-                                    if (session.commandsRun != null)
-                                      _infoRow('Commands', _formatCommands(session.commandsRun!),
-                                          theme),
-                                    if (session.durationSeconds != null)
-                                      _infoRow(
-                                          'Duration',
-                                          '${session.durationSeconds!.toStringAsFixed(1)}s',
-                                          theme),
-                                    if (session.org != null)
-                                      _infoRow('Network', session.org!, theme),
-                                    if (session.asn != null)
-                                      _infoRow('ASN', session.asn!, theme),
-                                    if (session.sourceMasked &&
-                                        session.sourceMaskReason != null)
-                                      _infoRow('Source note',
-                                          session.sourceMaskReason!, theme),
-                                    _infoRow(
-                                      'Status',
-                                      session.endedAt == null
-                                          ? 'Active session'
-                                          : 'Closed ${timeago.format(session.endedAt!)}',
-                                      theme,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    }),
-                ],
-              ),
+          ? Center(child: CircularProgressIndicator(color: theme.colorScheme.primary))
+          : TabBarView(
+              controller: _tabController,
+              children: [
+                _buildOverview(theme, cowrieStatus, activePorts, multiTotal, byProto, isAdmin),
+                _buildCowrieSessions(theme),
+                _buildMultiSessions(theme, isAdmin),
+              ],
             ),
     );
   }
 
-  Widget _pill(ThemeData theme, String label, String value,
-      {required Color color}) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.10),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: TextStyle(
-              color: theme.colorScheme.onSurface.withOpacity(0.55),
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-            ),
+  // ── Tab 1: Overview ────────────────────────────────────────────────────────
+
+  Widget _buildOverview(ThemeData theme, String cowrieStatus, int activePorts,
+      int multiTotal, Map<String, dynamic> byProto, bool isAdmin) {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        // Header card
+        GlassyContainer(
+          padding: const EdgeInsets.all(20),
+          borderRadius: 24,
+          margin: const EdgeInsets.only(bottom: 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Deception Surface',
+                  style: GoogleFonts.spaceGrotesk(
+                      fontSize: 22, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 6),
+              Text(
+                'All active honeypots lure, trap, and log attacker activity in real-time. '
+                'Any attacked port is automatically covered.',
+                style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.6), height: 1.5),
+              ),
+              const SizedBox(height: 16),
+              Wrap(spacing: 10, runSpacing: 10, children: [
+                _pill(theme, 'Cowrie SSH',
+                    cowrieStatus == 'running' ? 'Running' : 'Offline',
+                    color: cowrieStatus == 'running' ? Colors.green : Colors.red),
+                _pill(theme, 'Active Honeypots', '$activePorts',
+                    color: theme.colorScheme.primary),
+                _pill(theme, 'Multi-Protocol Sessions', '$multiTotal',
+                    color: Colors.orange),
+                _pill(theme, 'Cowrie Sessions', '${_sessions.length}',
+                    color: Colors.purple),
+                _pill(theme, 'Last sync',
+                    _lastSyncedAt == null ? 'Never' : timeago.format(_lastSyncedAt!),
+                    color: theme.colorScheme.primary),
+              ]),
+            ],
           ),
-          const SizedBox(height: 2),
-          Text(
-            value,
-            style: GoogleFonts.spaceGrotesk(
-              color: color,
-              fontWeight: FontWeight.w700,
+        ),
+
+        // Cowrie control
+        GlassyContainer(
+          padding: const EdgeInsets.all(16),
+          borderRadius: 16,
+          margin: const EdgeInsets.only(bottom: 16),
+          child: Row(
+            children: [
+              Icon(Icons.terminal, color: Colors.purple.shade300, size: 32),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('Cowrie SSH Honeypot',
+                      style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                  Text('Port 30022 · Status: $cowrieStatus',
+                      style: TextStyle(
+                          color: cowrieStatus == 'running' ? Colors.green : Colors.red,
+                          fontSize: 13)),
+                ]),
+              ),
+              if (isAdmin) ...[
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.play_arrow, size: 16),
+                  label: const Text('Start'),
+                  style: OutlinedButton.styleFrom(foregroundColor: Colors.green,
+                      side: const BorderSide(color: Colors.green)),
+                  onPressed: () async {
+                    await context.read<AuthService>().api.post('/honeypot/start', {});
+                    _fetchAll();
+                  },
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.stop, size: 16),
+                  label: const Text('Stop'),
+                  style: OutlinedButton.styleFrom(foregroundColor: Colors.red,
+                      side: const BorderSide(color: Colors.red)),
+                  onPressed: () async {
+                    await context.read<AuthService>().api.post('/honeypot/stop', {});
+                    _fetchAll();
+                  },
+                ),
+              ],
+            ],
+          ),
+        ),
+
+        // Active honeypots grid
+        if (_activeHoneypots.isNotEmpty) ...[
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Text('Active Multi-Protocol Honeypots',
+                style: GoogleFonts.spaceGrotesk(fontWeight: FontWeight.w700, fontSize: 16)),
+          ),
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+              maxCrossAxisExtent: 180,
+              childAspectRatio: 1.6,
+              crossAxisSpacing: 10,
+              mainAxisSpacing: 10,
+            ),
+            itemCount: _activeHoneypots.length,
+            itemBuilder: (ctx, i) {
+              final hp = _activeHoneypots[i];
+              final port = hp['port'] as int;
+              final proto = (hp['protocol'] as String? ?? 'tcp').toUpperCase();
+              final sessions = byProto[(hp['protocol'] as String?) ?? ''] as int? ?? 0;
+              return GlassyContainer(
+                padding: const EdgeInsets.all(12),
+                borderRadius: 14,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Row(children: [
+                      Container(width: 8, height: 8,
+                          decoration: const BoxDecoration(
+                              color: Colors.green, shape: BoxShape.circle)),
+                      const SizedBox(width: 6),
+                      Text('Port $port',
+                          style: GoogleFonts.spaceGrotesk(
+                              fontWeight: FontWeight.w700, fontSize: 13)),
+                    ]),
+                    const SizedBox(height: 4),
+                    Text(proto, style: TextStyle(
+                        color: theme.colorScheme.primary,
+                        fontWeight: FontWeight.w600, fontSize: 12)),
+                    Text('$sessions sessions',
+                        style: TextStyle(
+                            color: theme.colorScheme.onSurface.withOpacity(0.5),
+                            fontSize: 11)),
+                  ],
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 16),
+        ] else
+          GlassyContainer(
+            padding: const EdgeInsets.all(20),
+            borderRadius: 16,
+            margin: const EdgeInsets.only(bottom: 16),
+            child: Row(children: [
+              Icon(Icons.info_outline, color: theme.colorScheme.primary),
+              const SizedBox(width: 12),
+              Expanded(child: Text(
+                'No multi-protocol honeypots active yet. They auto-deploy when an attack is detected on any port.',
+                style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.7)),
+              )),
+            ]),
+          ),
+
+        // Protocol breakdown
+        if (byProto.isNotEmpty) ...[
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Text('Sessions by Protocol',
+                style: GoogleFonts.spaceGrotesk(fontWeight: FontWeight.w700, fontSize: 16)),
+          ),
+          GlassyContainer(
+            padding: const EdgeInsets.all(16),
+            borderRadius: 16,
+            child: Column(
+              children: byProto.entries.map((e) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(children: [
+                  Text(e.key.toUpperCase(),
+                      style: TextStyle(
+                          color: theme.colorScheme.primary,
+                          fontWeight: FontWeight.w700, fontSize: 13)),
+                  const Spacer(),
+                  Text('${e.value} sessions',
+                      style: TextStyle(
+                          color: theme.colorScheme.onSurface.withOpacity(0.7))),
+                ]),
+              )).toList(),
             ),
           ),
         ],
+      ],
+    );
+  }
+
+  // ── Tab 2: Cowrie SSH sessions ─────────────────────────────────────────────
+
+  Widget _buildCowrieSessions(ThemeData theme) {
+    if (_sessions.isEmpty) {
+      return Center(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Icon(Icons.terminal, size: 48, color: theme.colorScheme.onSurface.withOpacity(0.3)),
+          const SizedBox(height: 12),
+          Text('No Cowrie sessions yet',
+              style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.5))),
+          const SizedBox(height: 6),
+          Text('SSH to port 30022 to trigger a session',
+              style: TextStyle(
+                  fontSize: 12, color: theme.colorScheme.onSurface.withOpacity(0.35))),
+        ]),
+      );
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: _sessions.length,
+      itemBuilder: (ctx, i) {
+        final session = _sessions[i];
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: GlassyContainer(
+            borderRadius: 18,
+            child: ExpansionTile(
+              backgroundColor: Colors.transparent,
+              collapsedBackgroundColor: Colors.transparent,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+              collapsedShape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+              leading: Icon(Icons.terminal, color: Colors.purple.shade300),
+              title: Text(session.attackerIp,
+                  style: TextStyle(fontWeight: FontWeight.w600)),
+              subtitle: Text(
+                  session.endedAt == null
+                      ? 'Active now'
+                      : 'Ended ${timeago.format(session.endedAt!)}',
+                  style: TextStyle(
+                      color: theme.colorScheme.onSurface.withOpacity(0.55), fontSize: 12)),
+              trailing: _typeBadge('SSH', Colors.purple.shade300),
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Divider(color: theme.dividerColor),
+                    const SizedBox(height: 8),
+                    if (session.usernameTried != null)
+                      _infoRow('Username', session.usernameTried!, theme),
+                    if (session.passwordTried != null)
+                      _infoRow('Password', session.passwordTried!, theme),
+                    if (session.victimIp != null)
+                      _infoRow('Target',
+                          session.victimPort != null
+                              ? '${session.victimIp}:${session.victimPort}'
+                              : session.victimIp!,
+                          theme),
+                    if (session.commandsRun != null)
+                      _infoRow('Commands', _formatCommands(session.commandsRun!), theme),
+                    if (session.durationSeconds != null)
+                      _infoRow('Duration', '${session.durationSeconds!.toStringAsFixed(1)}s', theme),
+                    if (session.org != null) _infoRow('Org', session.org!, theme),
+                    if (session.country != null) _infoRow('Country', session.country!, theme),
+                  ]),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // ── Tab 3: Multi-Protocol sessions ─────────────────────────────────────────
+
+  Widget _buildMultiSessions(ThemeData theme, bool isAdmin) {
+    return Column(children: [
+      if (isAdmin)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+          child: GlassyContainer(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            borderRadius: 14,
+            child: Row(children: [
+              Icon(Icons.add_circle_outline, color: theme.colorScheme.primary, size: 20),
+              const SizedBox(width: 10),
+              Text('Tap a port below or attacks auto-deploy honeypots',
+                  style: TextStyle(
+                      color: theme.colorScheme.onSurface.withOpacity(0.65), fontSize: 13)),
+            ]),
+          ),
+        ),
+      Expanded(
+        child: _multiSessions.isEmpty
+            ? Center(
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.shield_outlined, size: 48,
+                      color: theme.colorScheme.onSurface.withOpacity(0.3)),
+                  const SizedBox(height: 12),
+                  Text('No multi-protocol sessions yet',
+                      style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.5))),
+                  const SizedBox(height: 6),
+                  Text('Honeypots auto-deploy when any port is attacked',
+                      style: TextStyle(
+                          fontSize: 12,
+                          color: theme.colorScheme.onSurface.withOpacity(0.35))),
+                ]),
+              )
+            : ListView.builder(
+                padding: const EdgeInsets.all(16),
+                itemCount: _multiSessions.length,
+                itemBuilder: (ctx, i) {
+                  final s = _multiSessions[_multiSessions.length - 1 - i];
+                  final proto = s['protocol'] as String? ?? 'tcp';
+                  final ip = s['attacker_ip'] as String? ?? '?';
+                  final port = s['honeypot_port'] as int? ?? 0;
+                  final data = s['data_received'] as String? ?? '';
+                  final connected = s['connected_at'] as String? ?? '';
+                  final duration = s['duration_seconds'] as num? ?? 0;
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: GlassyContainer(
+                      borderRadius: 16,
+                      child: ExpansionTile(
+                        backgroundColor: Colors.transparent,
+                        collapsedBackgroundColor: Colors.transparent,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        collapsedShape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        leading: Icon(_protoIcon(proto), color: _protoColor(proto)),
+                        title: Text(ip, style: TextStyle(fontWeight: FontWeight.w600)),
+                        subtitle: Text('Port $port · ${duration.toStringAsFixed(1)}s',
+                            style: TextStyle(
+                                color: theme.colorScheme.onSurface.withOpacity(0.55),
+                                fontSize: 12)),
+                        trailing: _typeBadge(proto.toUpperCase(), _protoColor(proto)),
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                              Divider(color: theme.dividerColor),
+                              const SizedBox(height: 8),
+                              _infoRow('IP', ip, theme),
+                              _infoRow('Port', '$port', theme),
+                              _infoRow('Protocol', proto.toUpperCase(), theme),
+                              _infoRow('Connected', connected, theme),
+                              _infoRow('Duration', '${duration.toStringAsFixed(2)}s', theme),
+                              if (data.isNotEmpty)
+                                _infoRow('Data captured', data.length > 300 ? '${data.substring(0, 300)}…' : data, theme),
+                              if (s['credentials_captured'] == true)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 6),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                    decoration: BoxDecoration(
+                                      color: Colors.red.withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(color: Colors.red.withOpacity(0.4)),
+                                    ),
+                                    child: const Text('⚠ Credentials captured',
+                                        style: TextStyle(color: Colors.red, fontWeight: FontWeight.w700, fontSize: 12)),
+                                  ),
+                                ),
+                            ]),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
       ),
+    ]);
+  }
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+
+  Widget _pill(ThemeData theme, String label, String value, {required Color color}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+          color: color.withOpacity(0.10), borderRadius: BorderRadius.circular(999)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(label,
+            style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.55),
+                fontSize: 11, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 2),
+        Text(value,
+            style: GoogleFonts.spaceGrotesk(color: color, fontWeight: FontWeight.w700)),
+      ]),
+    );
+  }
+
+  Widget _typeBadge(String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withOpacity(0.5)),
+      ),
+      child: Text(label,
+          style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w800)),
     );
   }
 
   Widget _infoRow(String label, String value, ThemeData theme) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        SizedBox(
             width: 80,
             child: Text(label,
                 style: TextStyle(
-                    color: theme.colorScheme.onSurface.withOpacity(0.5),
-                    fontSize: 12)),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              style: TextStyle(
-                color: theme.colorScheme.onSurface.withOpacity(0.9),
-                fontSize: 12,
-                fontFamily: 'monospace',
-              ),
-            ),
-          ),
-        ],
-      ),
+                    color: theme.colorScheme.onSurface.withOpacity(0.5), fontSize: 12))),
+        Expanded(
+            child: Text(value,
+                style: TextStyle(
+                    color: theme.colorScheme.onSurface.withOpacity(0.9),
+                    fontSize: 12, fontFamily: 'monospace'))),
+      ]),
     );
   }
 
   String _formatCommands(String raw) {
-    final trimmed = raw.trim();
     try {
-      final decoded = jsonDecode(trimmed);
-      if (decoded is Map<String, dynamic>) {
-        return decoded.entries
-            .map((entry) => '${entry.key}: ${entry.value}')
-            .join('\n');
-      }
-      if (decoded is List) {
-        final items = decoded
-            .map((entry) => entry.toString().trim())
-            .where((entry) => entry.isNotEmpty)
-            .toList();
-        if (items.isNotEmpty) {
-          return items.join('\n');
-        }
-      }
+      final decoded = jsonDecode(raw);
+      if (decoded is List) return decoded.map((e) => e.toString()).join('\n');
+      if (decoded is Map) return decoded.entries.map((e) => '${e.key}: ${e.value}').join('\n');
     } catch (_) {}
-    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
-      final cleaned = trimmed
-          .replaceAll('[', '')
-          .replaceAll(']', '')
-          .replaceAll('"', '')
-          .split(',')
-          .map((part) => part.trim())
-          .where((part) => part.isNotEmpty)
-          .join('\n');
-      if (cleaned.isNotEmpty) {
-        return cleaned;
-      }
-    }
     return raw;
   }
 
-  String _sourceDescriptor(HoneypotModel session) {
-    if (session.sourceMasked && session.victimIp != null) {
-      return 'Correlated attacker for ${session.victimIp}';
+  IconData _protoIcon(String proto) {
+    switch (proto) {
+      case 'http': case 'https': case 'http-alt': return Icons.language;
+      case 'ftp': return Icons.folder_open;
+      case 'telnet': case 'ssh': return Icons.terminal;
+      case 'mysql': case 'postgres': case 'mssql': return Icons.storage;
+      case 'rdp': return Icons.desktop_windows;
+      case 'smb': return Icons.share;
+      case 'redis': case 'mongodb': return Icons.dns;
+      case 'vnc': return Icons.screen_share;
+      default: return Icons.electrical_services;
     }
-    if (session.locationSummary != null && session.locationSummary!.isNotEmpty) {
-      return session.locationSummary!;
+  }
+
+  Color _protoColor(String proto) {
+    switch (proto) {
+      case 'http': case 'https': case 'http-alt': return Colors.blue;
+      case 'ftp': return Colors.orange;
+      case 'ssh': case 'telnet': return Colors.purple;
+      case 'mysql': case 'postgres': case 'mssql': return Colors.teal;
+      case 'rdp': return Colors.indigo;
+      case 'smb': return Colors.brown;
+      case 'redis': return Colors.red;
+      case 'mongodb': return Colors.green;
+      default: return Colors.grey;
     }
-    if (session.attackerIp.startsWith('172.19.')) {
-      return 'Docker NAT masked source';
-    }
-    return '${session.country ?? "Unknown"} - ${session.org ?? "Unknown network"}';
   }
 }

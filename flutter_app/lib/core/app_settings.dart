@@ -9,8 +9,8 @@ class AppSettings extends ChangeNotifier {
   static const _keyWsUrl = 'server_ws_url';
 
   // localhost defaults — works for Flutter Web and Desktop on dev machine
-  String _baseUrl = 'http://localhost:8000';
-  String _wsUrl = 'ws://localhost:8000';
+  String _baseUrl = 'http://localhost:8001';
+  String _wsUrl = 'ws://localhost:8001';
 
   String get baseUrl => _baseUrl;
   String get wsUrl => _wsUrl;

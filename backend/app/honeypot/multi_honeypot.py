@@ -79,6 +79,10 @@ def _get_protocol_name(port: int) -> str:
     return names.get(port, f"tcp-{port}")
 
 
+# Public alias so routes don't need to access a private name
+get_protocol_name = _get_protocol_name
+
+
 async def _handle_connection(
     reader: asyncio.StreamReader,
     writer: asyncio.StreamWriter,

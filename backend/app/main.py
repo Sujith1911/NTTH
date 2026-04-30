@@ -92,6 +92,39 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         log.warning("ntth.sniffer_skipped", reason=str(exc))
 
+    # 5b. Auto-detect AR9271 and start WiFi sniffer
+    wifi_sniffer_task = None
+    if settings.wifi_enabled:
+        try:
+            from app.wireless.auto_monitor import setup_monitor_interface
+            mon_iface = await asyncio.get_event_loop().run_in_executor(
+                None, setup_monitor_interface
+            )
+            if mon_iface:
+                # Patch the settings object's wifi_interface dynamically
+                # (pydantic v2 allows model_config extra="ignore" but fields are
+                #  still frozen by default — use object.__setattr__ to bypass)
+                if mon_iface != settings.wifi_interface:
+                    log.info(
+                        "ntth.wifi_iface_auto_updated",
+                        detected=mon_iface,
+                        configured=settings.wifi_interface,
+                    )
+                    try:
+                        object.__setattr__(settings, "wifi_interface", mon_iface)
+                    except Exception:
+                        pass  # non-critical — wifi_sniffer reads from settings on start
+                from app.wireless.wifi_sniffer import start_wifi_sniffer
+                wifi_sniffer_task = asyncio.create_task(
+                    start_wifi_sniffer(), name="wifi_sniffer"
+                )
+                log.info("ntth.wifi_sniffer_started", interface=mon_iface)
+            else:
+                log.warning("ntth.wifi_adapter_not_found",
+                            hint="Plug in AR9271 adapter — will work once connected")
+        except Exception as exc:
+            log.warning("ntth.wifi_sniffer_skipped", reason=str(exc))
+
     # 6. Start HTTP honeypot
     honeypot_task = None
     try:
@@ -141,6 +174,8 @@ async def lifespan(app: FastAPI):
     log.info("ntth.shutdown")
     if sniffer_task:
         sniffer_task.cancel()
+    if wifi_sniffer_task:
+        wifi_sniffer_task.cancel()
     if honeypot_task:
         honeypot_task.cancel()
     if cowrie_watcher_task:

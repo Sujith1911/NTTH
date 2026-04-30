@@ -86,6 +86,23 @@ async def _apply_enforcement(payload: dict) -> None:
                         )
                     except Exception as exc:
                         log.debug("enforcement_agent.redirect_context_failed", error=str(exc))
+
+                    # Auto-deploy a multi-honeypot on the originally attacked port
+                    # so any retry hits a live lure — regardless of which port was targeted
+                    if dst_port and dst_port not in (8000, 8001, settings.cowrie_redirect_port):
+                        try:
+                            from app.honeypot.multi_honeypot import deploy_honeypot, get_protocol_name
+                            deployed = await deploy_honeypot(dst_port)
+                            if deployed:
+                                log.info(
+                                    "enforcement_agent.multi_honeypot_deployed",
+                                    port=dst_port,
+                                    protocol=get_protocol_name(dst_port),
+                                    attacker_ip=src_ip,
+                                )
+                        except Exception as exc:
+                            log.debug("enforcement_agent.multi_honeypot_deploy_failed", error=str(exc))
+
                 if handle and honeypot_port == settings.cowrie_redirect_port:
                     try:
                         from app.honeypot.cowrie_controller import ensure_cowrie_running
