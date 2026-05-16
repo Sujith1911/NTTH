@@ -2,7 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class ApiClient {
-  static const String _defaultBaseUrl = 'http://localhost:8000/api/v1';
+  static String get _defaultBaseUrl => '${_defaultServerUrl()}/api/v1';
 
   late Dio _dio;
   final FlutterSecureStorage _storage;
@@ -90,4 +90,13 @@ class ApiClient {
       _dio.put(path, data: data);
 
   Future<Response> delete(String path) => _dio.delete(path);
+}
+
+String _defaultServerUrl() {
+  final current = Uri.base;
+  if (current.hasScheme && current.host.isNotEmpty) {
+    final port = current.hasPort ? ':${current.port}' : '';
+    return '${current.scheme}://${current.host}$port';
+  }
+  return 'http://localhost:8001';
 }

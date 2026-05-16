@@ -18,9 +18,10 @@ from app.core.event_bus import start_event_bus, stop_event_bus
 from app.core.logger import get_logger, setup_logging
 from app.core.scheduler import start_scheduler, stop_scheduler
 from app.core.security import hash_password
+from app.core.time_utils import local_now_iso
 from app.database import crud
 from app.database.crud import create_user, get_user_by_username
-from app.database.session import AsyncSessionLocal, init_db
+from app.database.session import AsyncSessionLocal, engine, init_db
 from app.monitor.network_scanner import get_effective_scan_subnet
 
 # Import all agents so they can subscribe on startup
@@ -40,7 +41,6 @@ from app.api import (
     routes_threats,
     routes_topology,
     routes_tracker,
-    routes_wireless,
     routes_packets,
 )
 from app.websocket.live_updates import router as ws_router
@@ -59,6 +59,44 @@ async def lifespan(app: FastAPI):
     # 1. Init DB (create tables in dev mode)
     if settings.environment == "development":
         await init_db()
+        # Safe migration: add new columns to existing SQLite dev tables.
+        from sqlalchemy import text as sa_text
+        migration_columns = [
+            ("devices", "open_ports", "TEXT"),
+            ("captured_packets", "payload_len", "INTEGER"),
+            ("captured_packets", "direction", "VARCHAR(16)"),
+            ("captured_packets", "src_mac", "VARCHAR(17)"),
+            ("captured_packets", "dst_mac", "VARCHAR(17)"),
+            ("captured_packets", "ip_version", "INTEGER"),
+            ("captured_packets", "ip_ttl", "INTEGER"),
+            ("captured_packets", "ip_tos", "INTEGER"),
+            ("captured_packets", "ip_id", "INTEGER"),
+            ("captured_packets", "ip_flags", "VARCHAR(16)"),
+            ("captured_packets", "frag_offset", "INTEGER"),
+            ("captured_packets", "tcp_seq", "INTEGER"),
+            ("captured_packets", "tcp_ack", "INTEGER"),
+            ("captured_packets", "tcp_window", "INTEGER"),
+            ("captured_packets", "tcp_options", "TEXT"),
+            ("captured_packets", "udp_len", "INTEGER"),
+            ("captured_packets", "icmp_type", "INTEGER"),
+            ("captured_packets", "icmp_code", "INTEGER"),
+            ("captured_packets", "payload_preview", "TEXT"),
+            ("captured_packets", "payload_text", "TEXT"),
+            ("captured_packets", "http_method", "VARCHAR(12)"),
+            ("captured_packets", "http_host", "VARCHAR(255)"),
+            ("captured_packets", "http_path", "TEXT"),
+            ("captured_packets", "http_user_agent", "TEXT"),
+            ("captured_packets", "http_content_type", "VARCHAR(255)"),
+            ("captured_packets", "http_body_preview", "TEXT"),
+            ("captured_packets", "http_form_fields", "TEXT"),
+        ]
+        async with engine.begin() as conn:
+            for table, column, column_type in migration_columns:
+                try:
+                    await conn.execute(sa_text(f"ALTER TABLE {table} ADD COLUMN {column} {column_type}"))
+                    log.info("ntth.db_migrated", column=f"{table}.{column}")
+                except Exception:
+                    pass  # Column already exists.
 
     # 2. Seed admin user
     async with AsyncSessionLocal() as db:
@@ -73,9 +111,26 @@ async def lifespan(app: FastAPI):
     if effective_scan_subnet:
         async with AsyncSessionLocal() as db:
             removed = await crud.purge_devices_outside_subnet(db, effective_scan_subnet)
+            removed += await crud.purge_invalid_devices(db, effective_scan_subnet)
+            noisy_packets = await crud.purge_packet_noise(db)
+            demo_cleanup = await crud.purge_synthetic_demo_data(db)
+            benign_cleanup = await crud.purge_benign_web_false_positives(db)
+            scanner_cleanup = await crud.purge_scanner_false_positives(
+                db,
+                server_ip=settings.server_display_ip,
+                subnet=effective_scan_subnet,
+            )
             await db.commit()
             if removed:
                 log.info("ntth.device_cleanup", removed=removed, subnet=effective_scan_subnet)
+            if noisy_packets:
+                log.info("ntth.packet_noise_cleanup", removed=noisy_packets)
+            if any(demo_cleanup.values()):
+                log.info("ntth.demo_data_cleanup", **demo_cleanup)
+            if any(benign_cleanup.values()):
+                log.info("ntth.benign_web_cleanup", **benign_cleanup)
+            if any(scanner_cleanup.values()):
+                log.info("ntth.scanner_false_positive_cleanup", **scanner_cleanup)
 
     # 3. Start event bus
     await start_event_bus()
@@ -92,39 +147,6 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         log.warning("ntth.sniffer_skipped", reason=str(exc))
 
-    # 5b. Auto-detect AR9271 and start WiFi sniffer
-    wifi_sniffer_task = None
-    if settings.wifi_enabled:
-        try:
-            from app.wireless.auto_monitor import setup_monitor_interface
-            mon_iface = await asyncio.get_event_loop().run_in_executor(
-                None, setup_monitor_interface
-            )
-            if mon_iface:
-                # Patch the settings object's wifi_interface dynamically
-                # (pydantic v2 allows model_config extra="ignore" but fields are
-                #  still frozen by default — use object.__setattr__ to bypass)
-                if mon_iface != settings.wifi_interface:
-                    log.info(
-                        "ntth.wifi_iface_auto_updated",
-                        detected=mon_iface,
-                        configured=settings.wifi_interface,
-                    )
-                    try:
-                        object.__setattr__(settings, "wifi_interface", mon_iface)
-                    except Exception:
-                        pass  # non-critical — wifi_sniffer reads from settings on start
-                from app.wireless.wifi_sniffer import start_wifi_sniffer
-                wifi_sniffer_task = asyncio.create_task(
-                    start_wifi_sniffer(), name="wifi_sniffer"
-                )
-                log.info("ntth.wifi_sniffer_started", interface=mon_iface)
-            else:
-                log.warning("ntth.wifi_adapter_not_found",
-                            hint="Plug in AR9271 adapter — will work once connected")
-        except Exception as exc:
-            log.warning("ntth.wifi_sniffer_skipped", reason=str(exc))
-
     # 6. Start HTTP honeypot
     honeypot_task = None
     try:
@@ -133,6 +155,22 @@ async def lifespan(app: FastAPI):
         log.info("ntth.http_honeypot_started", port=settings.http_honeypot_port)
     except Exception as exc:
         log.warning("ntth.http_honeypot_skipped", reason=str(exc))
+
+    # 6b. Pre-deploy multi-honeypots on common attack ports
+    #     These ports attract attackers and capture their actions.
+    _DEFAULT_HONEYPOT_PORTS = [21, 23, 3306, 3389, 5900, 445, 6379, 27017]
+    try:
+        from app.honeypot.multi_honeypot import deploy_honeypot
+        deployed_count = 0
+        for hp_port in _DEFAULT_HONEYPOT_PORTS:
+            ok = await deploy_honeypot(hp_port)
+            if ok:
+                deployed_count += 1
+        log.info("ntth.multi_honeypots_deployed",
+                 ports=_DEFAULT_HONEYPOT_PORTS,
+                 count=deployed_count)
+    except Exception as exc:
+        log.warning("ntth.multi_honeypot_startup_failed", reason=str(exc))
 
     # 7. Start Cowrie JSON log watcher
     cowrie_watcher_task = None
@@ -150,9 +188,8 @@ async def lifespan(app: FastAPI):
             try:
                 from app.monitor.network_scanner import scan_network
                 from app.websocket.live_updates import broadcast
-                import datetime as _dt
                 devices = await scan_network()
-                now_iso = _dt.datetime.utcnow().isoformat() + "Z"
+                now_iso = local_now_iso()
                 await broadcast({
                     "type": "topology_updated",
                     "devices_found": len(devices),
@@ -174,12 +211,15 @@ async def lifespan(app: FastAPI):
     log.info("ntth.shutdown")
     if sniffer_task:
         sniffer_task.cancel()
-    if wifi_sniffer_task:
-        wifi_sniffer_task.cancel()
     if honeypot_task:
         honeypot_task.cancel()
     if cowrie_watcher_task:
         cowrie_watcher_task.cancel()
+    try:
+        from app.honeypot.multi_honeypot import shutdown_all
+        await shutdown_all()
+    except Exception:
+        pass
     await stop_scheduler()
     await stop_event_bus()
 
@@ -214,7 +254,6 @@ def create_app() -> FastAPI:
     app.include_router(routes_system.router,   prefix=f"{prefix}/system",   tags=["System"])
     app.include_router(routes_topology.router, prefix=f"{prefix}/network",  tags=["Network"])
     app.include_router(routes_tracker.router,  prefix=f"{prefix}/tracker",  tags=["Tracker"])
-    app.include_router(routes_wireless.router, prefix=f"{prefix}/wireless", tags=["Wireless"])
     app.include_router(routes_packets.router,  prefix=f"{prefix}/packets",  tags=["Packets"])
     app.include_router(ws_router,              prefix="/ws",                tags=["WebSocket"])
 

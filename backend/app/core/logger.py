@@ -17,9 +17,10 @@ settings = get_settings()
 
 
 def _setup_stdlib_logging() -> None:
-    os.makedirs(settings.log_dir, exist_ok=True)
     root = logging.getLogger()
     root.setLevel(getattr(logging, settings.log_level.upper(), logging.INFO))
+    if root.handlers:
+        return
 
     # Console handler
     ch = logging.StreamHandler()
@@ -27,14 +28,21 @@ def _setup_stdlib_logging() -> None:
     root.addHandler(ch)
 
     # Rotating file handler
-    fh = logging.handlers.RotatingFileHandler(
-        filename=os.path.join(settings.log_dir, "ntth.log"),
-        maxBytes=settings.log_max_bytes,
-        backupCount=settings.log_backup_count,
-        encoding="utf-8",
-    )
-    fh.setFormatter(logging.Formatter("%(message)s"))
-    root.addHandler(fh)
+    try:
+        os.makedirs(settings.log_dir, exist_ok=True)
+        fh = logging.handlers.RotatingFileHandler(
+            filename=os.path.join(settings.log_dir, "ntth.log"),
+            maxBytes=settings.log_max_bytes,
+            backupCount=settings.log_backup_count,
+            encoding="utf-8",
+        )
+        fh.setFormatter(logging.Formatter("%(message)s"))
+        root.addHandler(fh)
+    except PermissionError:
+        root.warning(
+            "log_file_unavailable path=%s reason=permission_denied",
+            os.path.join(settings.log_dir, "ntth.log"),
+        )
 
 
 def _configure_structlog() -> None:

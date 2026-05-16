@@ -252,6 +252,34 @@ class NFTManager:
                     return match.group(1)
         return "unknown"
 
+    async def remove_rules_for_ip(self, ip: str, *, update_db: bool = True) -> int:
+        """Remove ALL rules (block, rate-limit, redirect) matching the given IP."""
+        removed = 0
+        for family, table, chain in [
+            (_FILTER_TABLE_FAMILY, _FILTER_TABLE_NAME, _FILTER_CHAIN),
+            (_NAT_TABLE_FAMILY, _NAT_TABLE_NAME, _NAT_CHAIN),
+        ]:
+            _, stdout, _ = await _run_nft("-a", "list", "chain", family, table, chain)
+            for line in stdout.splitlines():
+                if ip in line:
+                    match = re.search(r"# handle (\d+)", line)
+                    if match:
+                        handle = match.group(1)
+                        rc, _, _ = await _run_nft("delete", "rule", family, table, chain, "handle", handle)
+                        if rc == 0:
+                            removed += 1
+                            log.info("nft_manager.rule_removed_for_ip", ip=ip, handle=handle)
+        if update_db:
+            try:
+                from app.database.session import AsyncSessionLocal
+                from app.database import crud
+                async with AsyncSessionLocal() as db:
+                    await crud.deactivate_firewall_rules_for_ip(db, ip)
+                    await db.commit()
+            except Exception as exc:
+                log.debug("nft_manager.db_cleanup_failed", ip=ip, error=str(exc))
+        return removed
+
     @staticmethod
     def _split_handle(handle: str) -> tuple[str, str]:
         if ":" in handle:

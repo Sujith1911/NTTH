@@ -5,11 +5,12 @@ Write operations are admin-only.
 from __future__ import annotations
 
 import shutil
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.config import get_settings
+from app.core.time_utils import utc_now_naive
 from app.database import crud
 from app.database.schemas import FirewallRuleCreate, FirewallRuleRead, PaginatedResponse
 from app.dependencies import get_current_user, get_db, require_admin
@@ -140,7 +141,7 @@ async def add_rule(
         raise HTTPException(status_code=500, detail=f"nftables error: {exc}")
 
     expires_at = (
-        datetime.utcnow() + timedelta(seconds=payload.expires_in_seconds)
+        utc_now_naive() + timedelta(seconds=payload.expires_in_seconds)
         if payload.expires_in_seconds else None
     )
     rule = await crud.create_firewall_rule(

@@ -7,7 +7,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 # ── Shared ────────────────────────────────────────────────────────────────────
@@ -57,10 +57,26 @@ class DeviceRead(OrmBase):
     mac_address: Optional[str] = None
     hostname: Optional[str] = None
     vendor: Optional[str] = None
+    open_ports: Optional[list[int]] = None
     first_seen: datetime
     last_seen: datetime
     is_trusted: bool
     risk_score: float
+
+    @field_validator("open_ports", mode="before")
+    @classmethod
+    def parse_open_ports(cls, v):
+        if v is None:
+            return None
+        if isinstance(v, str):
+            import json
+            try:
+                return json.loads(v)
+            except (json.JSONDecodeError, ValueError):
+                return []
+        if isinstance(v, list):
+            return v
+        return None
 
 
 class DeviceStatRead(OrmBase):

@@ -6,7 +6,7 @@ Also exposes a POST /scan trigger to kick off a network scan on demand.
 from __future__ import annotations
 
 import socket
-from datetime import datetime
+import json
 from ipaddress import ip_address, ip_network
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Request
@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.core.event_bus import publish
 from app.core.logger import get_logger
+from app.core.time_utils import local_now_iso
 from app.database import crud
 from app.dependencies import get_current_user, get_db
 from app.monitor.network_scanner import get_live_stats, get_scan_state, scan_network
@@ -88,6 +89,35 @@ def _should_hide_ip(ip: str) -> bool:
     return any(parsed in network for network in _IGNORED_DISPLAY_NETWORKS)
 
 
+def _risk_details(events) -> list[dict]:
+    details = []
+    for event in events:
+        notes = {}
+        if event.notes:
+            try:
+                notes = json.loads(event.notes)
+            except Exception:
+                notes = {}
+        reasons = [
+            f"Threat type: {event.threat_type}",
+            f"Rule score: {event.rule_score:.2f}" if event.rule_score is not None else None,
+            f"ML anomaly score: {event.ml_score:.2f}" if event.ml_score is not None else None,
+            f"Action: {event.action_taken or 'observe'}",
+            f"Destination: {event.dst_ip or '-'}:{event.dst_port or '-'}",
+            notes.get("response_mode"),
+        ]
+        details.append({
+            "threat_type": event.threat_type,
+            "risk_score": event.risk_score,
+            "rule_score": event.rule_score,
+            "ml_score": event.ml_score,
+            "action": event.action_taken,
+            "detected_at": event.detected_at.isoformat() if event.detected_at else None,
+            "reasons": [reason for reason in reasons if reason],
+        })
+    return details
+
+
 @router.get("/topology")
 async def get_topology(
     request: Request,
@@ -109,6 +139,11 @@ async def get_topology(
         raise
     stats_map = {s["ip"]: s for s in get_live_stats()}
     scan_state = get_scan_state()
+    risk_events = await crud.latest_threat_events_for_ips(
+        db,
+        [device.ip_address for device in devices],
+        limit_per_ip=5,
+    )
 
     gateway_ip = _get_gateway()
     local_ip = _display_local_ip(request, devices)
@@ -154,25 +189,43 @@ async def get_topology(
     edges.append({"from": "server", "to": "honeypot"})
 
     # Blocked IPs from firewall rules
-    blocked_ips = {r.target_ip for r in firewall_rules if r.is_active and r.rule_type == "block"}
+    blocked_ips = {r.target_ip for r in firewall_rules if r.is_active and r.rule_type in {"block", "drop"}}
+    redirected_ips = {r.target_ip for r in firewall_rules if r.is_active and r.rule_type == "redirect"}
+    throttled_ips = {r.target_ip for r in firewall_rules if r.is_active and r.rule_type == "rate_limit"}
 
-    # Devices
+    # Devices (skip gateway/server — they have dedicated nodes above)
+    _infrastructure_ips = {gateway_ip, local_ip}
     for device in devices:
+        if device.ip_address in _infrastructure_ips:
+            continue
         node_id = f"dev_{device.ip_address.replace('.', '_')}"
         live = stats_map.get(device.ip_address, {})
+        # Parse open_ports from JSON string
+        _open_ports = []
+        if device.open_ports:
+            import json
+            try:
+                _open_ports = json.loads(device.open_ports)
+            except Exception:
+                pass
         nodes.append({
             "id": node_id,
+            "device_id": device.id,
             "ip": device.ip_address,
             "mac": device.mac_address,
             "hostname": device.hostname,
             "vendor": device.vendor,
+            "open_ports": _open_ports,
             "label": device.hostname or device.ip_address,
             "type": "device",
             "is_trusted": device.is_trusted,
             "risk_score": device.risk_score,
+            "risk_details": _risk_details(risk_events.get(device.ip_address, [])),
             "first_seen": device.first_seen.isoformat() if device.first_seen else None,
             "last_seen": device.last_seen.isoformat() if device.last_seen else None,
             "is_blocked": device.ip_address in blocked_ips,
+            "is_redirected": device.ip_address in redirected_ips,
+            "is_throttled": device.ip_address in throttled_ips,
             "live": live,
         })
         # Device connects to gateway
@@ -184,7 +237,7 @@ async def get_topology(
         edges.append(edge)
 
         # If device was redirected to honeypot (high-risk)
-        if device.risk_score > 0.85 or device.ip_address in blocked_ips:
+        if device.ip_address in redirected_ips or device.risk_score > 0.85:
             edges.append({
                 "from": node_id,
                 "to": "honeypot",
@@ -254,7 +307,7 @@ async def scan_status(_user=Depends(get_current_user)):
 async def _run_scan():
     try:
         devices = await scan_network()
-        completed_at = get_scan_state()["completed_at"] or datetime.utcnow().isoformat()
+        completed_at = get_scan_state()["completed_at"] or local_now_iso()
         # Publish topology_updated so WS clients refresh
         await publish("topology_updated", {
             "type": "topology_updated",

@@ -5,9 +5,8 @@ Tracks packets, ports, bytes, and SYN counts per source IP.
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import datetime
-
 from app.core.logger import get_logger
+from app.core.time_utils import utc_now_naive
 
 log = get_logger("device_registry")
 
@@ -29,7 +28,7 @@ def update(features: dict) -> dict:
         return {}
 
     entry = _registry[ip]
-    now = datetime.utcnow()
+    now = utc_now_naive()
 
     if entry["first_seen"] is None:
         entry["first_seen"] = now

@@ -1,101 +1,128 @@
 # System Overview
 
+> Last updated: 2026-05-02
+
 ## What The System Does
 
-NO TIME TO HACK is an adaptive honeypot firewall system.
+**NO TIME TO HACK (NTTH)** is an autonomous network defense framework that combines:
 
-It is built from:
+- **Intrusion Detection** — Real-time packet capture + ML-based anomaly scoring
+- **Active Defense** — Multi-protocol honeypots auto-deployed on attacked ports
+- **Wireless Monitoring** — AR9271 USB adapter in monitor mode for 802.11 frame analysis
+- **Automated Response** — AI agent pipeline that detects, decides, and enforces in <100ms
 
-- FastAPI backend
-- Flutter frontend
-- PostgreSQL or SQLite
-- packet sniffer
-- threat scoring pipeline
-- firewall response logic
-- Cowrie SSH honeypot
-- HTTP honeypot
+## Architecture
 
-## Core Goal
+```
+                  ┌──────────────────────────────────────────┐
+                  │          NTTH DEFENSE SYSTEM             │
+                  ├──────────────────────────────────────────┤
+                  │                                          │
+   ┌──────────┐  │  ┌─────────┐  ┌──────────┐  ┌────────┐  │
+   │ Main NIC │──┼─►│ Packet  │  │ Network  │  │ AR9271 │  │
+   │(promisc) │  │  │ Sniffer │  │ Scanner  │  │WiFi Mon│  │
+   └──────────┘  │  └────┬────┘  └────┬─────┘  └───┬────┘  │
+                 │       │            │             │       │
+                 │       ▼            ▼             ▼       │
+                 │  ┌──────────────────────────────────┐    │
+                 │  │          EVENT BUS (pub/sub)      │    │
+                 │  └──────────────┬───────────────────┘    │
+                 │                 │                         │
+                 │    ┌────────────┼────────────┐           │
+                 │    ▼            ▼            ▼           │
+                 │  Threat    Decision    Enforcement       │
+                 │  Agent     Agent       Agent             │
+                 │  (IDS+ML)  (Risk→Act)  (Block/Redirect) │
+                 │                             │            │
+                 │    ┌────────────────────────┐            │
+                 │    │  HONEYPOT MESH         │            │
+                 │    │  FTP:21 Telnet:23      │            │
+                 │    │  MySQL:3306 RDP:3389   │            │
+                 │    │  VNC:5900 SMB:445      │            │
+                 │    │  Redis:6379 Mongo:27017│            │
+                 │    │  HTTP:8888 + dynamic   │            │
+                 │    └────────────────────────┘            │
+                 │                                          │
+                 │  ┌──────────────────────────────────┐    │
+                 │  │   Flutter Dashboard (10 screens)  │    │
+                 │  │   WebSocket real-time updates     │    │
+                 │  └──────────────────────────────────┘    │
+                 │                                          │
+                 │  Port: 8001 │ DB: SQLite │ Auth: JWT     │
+                 └──────────────────────────────────────────┘
+```
 
-When an attacker targets a device, the system should:
+## Core Components
 
-1. see the traffic
-2. score the threat
-3. decide the response
-4. redirect or block if needed
-5. log the session
-6. show the attacker, victim, and commands in the UI
+### Backend (`backend/app/`)
 
-## Main Components
+| Module | Purpose |
+|--------|---------|
+| `main.py` | FastAPI app + startup (sniffer, scanner, honeypots, WiFi) |
+| `monitor/packet_sniffer.py` | Scapy AsyncSniffer with promiscuous mode |
+| `monitor/network_scanner.py` | Ping sweep + 28-port TCP connect scan |
+| `monitor/feature_extractor.py` | Extract 8 IDS features per packet |
+| `agents/` | 6-agent AI pipeline (Threat→Decision→Enforcement→Reporting→Feedback) |
+| `ids/rule_engine.py` | Port scan, SYN flood, brute force detection |
+| `ids/anomaly_model.py` | Isolation Forest ML (200 trees) |
+| `firewall/nft_manager.py` | nftables block/rate-limit/redirect |
+| `honeypot/multi_honeypot.py` | 8+ protocol honeypots on common attack ports |
+| `wireless/auto_monitor.py` | AR9271 auto-detect + safe monitor mode |
+| `wireless/wifi_sniffer.py` | 802.11 frame capture (probes, beacons, deauth) |
 
-### Backend
+### Frontend (`flutter_app/lib/`)
 
-Path: `backend/app/`
+10 screens: Dashboard, Devices, Threat Map, Network Topology, Firewall, Honeypot, Wireless, Packets, System, Settings
 
-Responsibilities:
+Real-time WebSocket updates with auto-reconnect.
 
-- starts the app
-- runs API routes
-- starts packet sniffing
-- starts event bus and scheduler
-- ingests honeypot logs
-- serves the frontend build
+### Database (`ntth.db` — SQLite)
 
-### Frontend
+| Table | Purpose |
+|-------|---------|
+| `users` | Admin authentication |
+| `devices` | Discovered hosts + MAC + vendor + **open ports** |
+| `threat_events` | IDS detections with risk scores |
+| `firewall_rules` | Active/expired rules |
+| `honeypot_sessions` | Captured attacker interactions |
+| `captured_packets` | Raw packet forensic log |
 
-Path: `flutter_app/lib/`
-
-Responsibilities:
-
-- login
-- fetch REST data
-- subscribe to live WebSocket events
-- render dashboard, threat map, firewall, and honeypot sessions
-
-### Database
-
-Path: `backend/app/database/`
-
-Stores:
-
-- users
-- devices
-- threat events
-- firewall rules
-- honeypot sessions
-
-### Honeypots
-
-Paths:
-
-- `backend/app/honeypot/http_honeypot.py`
-- `backend/app/honeypot/cowrie_watcher.py`
-- `backend/cowrie/cowrie.cfg`
-
-## High-Level Flow
+## Defense Flow
 
 ```mermaid
 flowchart LR
     A[Network Traffic] --> B[Packet Sniffer]
+    W[AR9271 WiFi] --> X[WiFi Sniffer]
+    S[Scanner] --> Y[Port Scan]
     B --> C[Threat Agent]
+    X --> C
+    Y --> C
     C --> D[Decision Agent]
     D --> E[Enforcement Agent]
-    E --> F[nftables]
-    E --> G[Honeypot]
-    C --> H[Threat Events]
-    G --> I[Honeypot Sessions]
+    E --> F[nftables Block]
+    E --> G[Honeypot Deploy]
+    E --> R[Rate Limit]
+    C --> H[Reporting Agent]
     H --> J[Database]
-    I --> J
-    J --> K[FastAPI]
-    K --> L[Flutter UI]
+    H --> K[WebSocket]
+    J --> L[FastAPI API]
+    K --> M[Flutter UI]
+    L --> M
 ```
 
-## Important Deployment Truth
+## Deployment
 
-For full transparent protection of a pool of devices, the Ubuntu machine must sit in the traffic path.
+- **Port**: 8001
+- **WiFi Band**: 2.4 GHz (AR9271 requirement)
+- **Subnet**: Auto-detected (10.223.251.0/24)
+- **Startup**: `bash start.sh` or `sudo venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8001`
+- **Access**: http://localhost:8001
+- **Login**: admin / NtthAdmin2026
 
-That is why the real deployment model is:
+## Key Design Decisions
 
-- Ubuntu as gateway
-- protected subnet behind Ubuntu
-- attacker traffic passes through Ubuntu before reaching protected devices
+1. **NetworkManager-safe**: Uses `nmcli device disconnect` instead of `airmon-ng check kill` — main WiFi stays connected
+2. **USB adapter only**: Monitor mode targets `wlx*` interfaces — never touches the system NIC
+3. **Promiscuous mode**: Main sniffer runs with `promisc=True` for wider traffic capture
+4. **No fake data**: Simulation routes permanently disabled; all data is from live network
+5. **Persistent DB**: SQLite on disk survives restarts; safe ALTER TABLE migrations on startup

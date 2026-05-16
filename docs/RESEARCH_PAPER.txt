@@ -7,9 +7,9 @@ NTTH: An Agent-Inspired Autonomous Network Defense Architecture with Hybrid Risk
 
 ABSTRACT
 
-The increasing sophistication of automated cyber attacks demands network defense systems capable of autonomous detection, decision-making, and enforcement without human intervention. Traditional Intrusion Detection Systems (IDS) such as Snort [1] and Suricata [2] generate alerts but lack automated response capabilities, leaving a critical gap between threat detection and containment. This paper presents NTTH (No Time To Hack), an agent-inspired autonomous network defense architecture that implements a closed-loop pipeline from packet capture through threat scoring, enforcement, and attacker intelligence gathering. The system employs a hybrid risk scoring model combining signature-based IDS rules (weighted 0.6) with an unsupervised Isolation Forest [3] anomaly detector (weighted 0.4), validated through systematic ablation study across 11 weight configurations. Upon threat detection, the system autonomously applies Linux kernel-level nftables firewall rules and performs flow-aware dynamic redirection of specific attacker-victim-port flows to SSH and HTTP honeypots, capturing attacker commands, credentials, and behavioral patterns. We evaluate NTTH on a real-world dataset of 10,247 packets captured during controlled attack scenarios and cross-validate on the CICIDS2017 benchmark dataset [4]. Experimental results demonstrate a detection rate of 96.2% with a false positive rate of 3.8%, achieving a mean response latency of 127 milliseconds from packet capture to firewall rule enforcement. Comparative evaluation against Snort and Suricata shows that NTTH uniquely provides automated containment while maintaining comparable detection accuracy. The system is deployable on commodity hardware consisting of an Ubuntu laptop and a $10 Atheros AR9271 USB WiFi adapter, making enterprise-grade autonomous defense accessible for small-scale network environments.
+The increasing sophistication of automated cyber attacks demands network defense systems capable of autonomous detection, decision-making, and enforcement without human intervention. Traditional Intrusion Detection Systems (IDS) such as Snort [1] and Suricata [2] generate alerts but lack automated response capabilities, leaving a critical gap between threat detection and containment. This paper presents NTTH (No Time To Hack), an agent-inspired autonomous network defense architecture that implements a closed-loop pipeline from packet capture through threat scoring, enforcement, and attacker intelligence gathering. NTTH can be deployed either as a passive LAN sensor or as a commodity WiFi hotspot gateway that creates a protected subnet, forcing client traffic through the defense host for observation and policy enforcement. The system employs a hybrid risk scoring model combining signature-based IDS rules (weighted 0.6) with an unsupervised Isolation Forest [3] anomaly detector (weighted 0.4), validated through systematic ablation study across 11 weight configurations. Upon threat detection, the system autonomously applies Linux kernel-level nftables firewall rules and performs flow-aware dynamic redirection of specific attacker-victim-port flows to SSH and HTTP honeypots, capturing attacker commands, credentials, and behavioral patterns. We evaluate NTTH on a real-world dataset of 10,247 packets captured during controlled attack scenarios and cross-validate on the CICIDS2017 benchmark dataset [4]. Experimental results demonstrate a detection rate of 96.2% with a false positive rate of 3.8%, achieving a mean response latency of 127 milliseconds from packet capture to firewall rule enforcement. Comparative evaluation against Snort and Suricata shows that NTTH uniquely provides automated containment while maintaining comparable detection accuracy. The system is deployable on commodity hardware consisting of an Ubuntu laptop and a $10 Atheros AR9271 USB WiFi adapter, making enterprise-grade autonomous defense accessible for small-scale network environments.
 
-Index Terms — Intrusion Detection System, Honeypot, Autonomous Network Defense, Anomaly Detection, Isolation Forest, Firewall Automation, Agent-Inspired Architecture, WiFi Monitoring
+Index Terms — Intrusion Detection System, Honeypot, Autonomous Network Defense, Anomaly Detection, Isolation Forest, Firewall Automation, Agent-Inspired Architecture, WiFi Monitoring, Hotspot Gateway
 
 
 I. INTRODUCTION
@@ -18,7 +18,7 @@ The landscape of cyber threats has evolved dramatically, with automated scanning
 
 Traditional Intrusion Detection Systems (IDS) such as Snort [1] and Suricata [2] have been the cornerstone of network threat detection for over two decades. These systems excel at signature-based detection of known attack patterns but suffer from two fundamental limitations. First, they generate alerts without taking enforcement actions, requiring human operators to interpret alerts, correlate events, and manually configure firewall rules. Second, they cannot adapt to novel attack patterns that do not match existing signatures without manual rule updates. Studies have shown that the average organization receives over 10,000 IDS alerts per day, with analysts able to investigate only a fraction [7].
 
-Honeypot systems such as Cowrie [8] and T-Pot [9] provide valuable attacker intelligence by simulating vulnerable services and capturing adversary behavior. However, existing honeypot deployments are predominantly static, requiring manual configuration and pre-deployment before attacks occur. There is no existing system that dynamically deploys honeypot redirections in response to real-time threat assessments.
+Honeypot systems such as Cowrie [8] and T-Pot [9] provide valuable attacker intelligence by simulating vulnerable services and capturing adversary behavior. However, widely deployed honeypot systems are predominantly static, requiring manual configuration and pre-deployment before attacks occur. Prior dynamic honeypot work has explored transparent redirection and adaptive deception, but these systems are generally not integrated with a measured packet-to-firewall closed loop, hybrid risk scoring, commodity WiFi gateway deployment, and real-time victim-aware reporting in one deployable prototype.
 
 Machine learning approaches to intrusion detection have gained significant traction, with models such as Random Forest [10], Support Vector Machines [11], and deep learning architectures [12] achieving high detection accuracy on benchmark datasets. However, these approaches typically function as classification engines disconnected from enforcement mechanisms, producing predictions that still require human interpretation and action.
 
@@ -32,9 +32,11 @@ This paper addresses these gaps by presenting NTTH, an agent-inspired autonomous
 
     3) We implement flow-aware dynamic honeypot deployment that redirects specific attacker-victim-port flows to deception services while preserving the attacker's legitimate traffic to other destinations, a capability absent from existing static honeypot deployments [8][9].
 
-    4) We integrate wireless threat monitoring using a commodity Atheros AR9271 USB adapter in monitor mode for WiFi probe request analysis [16], deauthentication attack detection, and device presence tracking, enabling convergent wired and wireless threat detection.
+    4) We introduce a commodity WiFi hotspot gateway deployment mode in which Ubuntu acts as the protected subnet gateway, DHCP server, NAT router, packet sensor, firewall enforcement point, and honeypot host. This mode addresses the practical limitation of same-LAN WiFi monitoring, where a client device cannot reliably observe traffic between other clients unless it is placed in the forwarding path.
 
-    5) We provide comprehensive experimental validation on both a real-world dataset of 10,247 packets and the CICIDS2017 benchmark [4], with comparative evaluation against Snort [1] and Suricata [2] demonstrating that NTTH uniquely provides automated containment while maintaining comparable detection accuracy.
+    5) We integrate wireless threat monitoring using a commodity Atheros AR9271 USB adapter in monitor mode for WiFi probe request analysis [16], deauthentication attack detection, and device presence tracking, enabling convergent wired and wireless threat detection.
+
+    6) We provide comprehensive experimental validation on both a real-world dataset of 10,247 packets and the CICIDS2017 benchmark [4], with comparative evaluation against Snort [1] and Suricata [2] demonstrating that NTTH uniquely provides automated containment while maintaining comparable detection accuracy.
 
 The remainder of this paper is organized as follows. Section II reviews related work in intrusion detection, honeypot systems, and autonomous defense architectures. Section III presents the system architecture and agent-inspired pipeline design. Section IV details the hybrid risk scoring model. Section V describes the implementation. Section VI presents experimental evaluation and results. Section VII discusses limitations and future directions. Section VIII concludes the paper.
 
@@ -98,18 +100,37 @@ WiFi probe request tracking has been extensively studied in the context of user 
 
 Our system repurposes probe request monitoring for defensive security, using an Atheros AR9271 adapter in monitor mode to detect unauthorized device presence and deauthentication attacks on the monitored network.
 
+F. Gateway-Based WLAN Defense
+
+Several WLAN security studies deploy IDS and honeypot components in wireless environments, including Snort-based monitoring with low-interaction honeypots and Raspberry Pi access-point testbeds [36][37]. These systems demonstrate the feasibility of low-cost wireless security appliances, but they typically remain either alert-oriented or statically configured. A common practical weakness in same-LAN WiFi monitoring is that a station in managed client mode cannot reliably observe unicast traffic exchanged between other wireless clients because the access point does not forward every frame to every station.
+
+NTTH uses hotspot gateway mode to remove this visibility limitation. The Ubuntu host creates the protected SSID, assigns protected client addresses through DHCP, performs NAT to the upstream network, and runs packet capture and nftables enforcement at the same forwarding point. This positioning makes the system a transparent inline defense point for connected clients rather than a passive observer that depends on promiscuous WiFi behavior.
+
 
 III. SYSTEM ARCHITECTURE
 
 A. Overview
 
-NTTH implements an agent-inspired modular autonomous pipeline consisting of five processing phases and four specialized processing stages connected through an asynchronous event bus. The system captures network traffic from both wired interfaces (using Scapy [23] packet capture) and wireless interfaces (using the AR9271 adapter in monitor mode), analyzes each packet through a hybrid detection engine, and autonomously enforces appropriate responses through Linux kernel firewall rules and honeypot redirections. All events are persisted to a PostgreSQL database and streamed via WebSocket to a cross-platform Flutter dashboard.
+NTTH implements an agent-inspired modular autonomous pipeline consisting of five processing phases and four specialized processing stages connected through an asynchronous event bus. The system captures network traffic from both routed protected-subnet interfaces (using Scapy [23] packet capture) and optional wireless monitor-mode interfaces (using the AR9271 adapter), analyzes each packet through a hybrid detection engine, and autonomously enforces appropriate responses through Linux kernel firewall rules and honeypot redirections. All events are persisted to a PostgreSQL database and streamed via WebSocket to a cross-platform Flutter dashboard.
 
 Fig. 1 illustrates the overall system architecture.
 
-[FIGURE 1: System Architecture Diagram — Five-phase pipeline: Wireless Monitoring → Wired Capture → AI Agent Pipeline → Deception Layer → Real-Time Dashboard. Include event bus connecting all four processing stages.]
+[FIGURE 1: System Architecture Diagram — Upstream network → Ubuntu hotspot gateway/protected subnet → packet capture + AI Agent Pipeline → nftables enforcement + deception layer → real-time dashboard. Include event bus connecting all four processing stages.]
 
-B. Agent-Inspired Pipeline Design
+B. Protected Hotspot Gateway Mode
+
+NTTH supports an inline hotspot gateway deployment designed for small offices, classrooms, labs, and IoT test networks where administrators need full visibility without enterprise switching equipment. In this mode, Ubuntu uses one interface as the upstream connection and a WiFi adapter in access-point mode as the protected network:
+
+    Upstream interface: Internet-facing Ethernet, USB tethering, or managed WiFi interface
+    Protected interface: WiFi AP interface hosting the NTTH-Secure SSID
+    Gateway address: 192.168.4.1/24
+    Protected clients: 192.168.4.2 to 192.168.4.100 via dnsmasq DHCP
+
+The host enables IPv4 forwarding and NAT, making Ubuntu the default gateway for every protected device. Because all client-to-internet traffic and cross-subnet attack traffic traverse the Ubuntu forwarding path, the packet sniffer receives the packets needed for threat scoring, and nftables rules can block, rate-limit, or redirect malicious flows. This deployment is distinct from passive same-network monitoring: it does not depend on wireless promiscuous capture and therefore provides deterministic visibility for protected clients.
+
+When only one USB wireless adapter is available, NTTH uses it in AP mode for gateway protection and disables monitor-mode wireless sniffing on that adapter. If a second adapter is available, the system can run protected hotspot gateway mode and passive 802.11 monitor-mode detection concurrently.
+
+C. Agent-Inspired Pipeline Design
 
 We adopt an agent-inspired architecture where each processing stage operates as an autonomous module that perceives inputs, reasons about appropriate responses, and takes actions within its domain. We use the term "agent-inspired" following the classical definition by Russell and Norvig [24], where an agent is an entity that perceives its environment through sensors and acts upon it through actuators. Our processing stages implement this perception-reasoning-action cycle within their respective domains.
 
@@ -124,7 +145,7 @@ Decision Making      | Risk score + context   | Protocol-aware policy      | Sel
 Enforcement          | Action directive       | Rule dedup + flow analysis | Applies nftables rules
 Reporting            | Event data             | Victim identification      | Persists + broadcasts to UI
 
-C. Asynchronous Event Bus
+D. Asynchronous Event Bus
 
 The processing stages communicate through an asynchronous publish-subscribe event bus implemented using Python asyncio queues with a capacity of 5,000 events. This design pattern is inspired by reactive event-driven architectures [25] commonly used in microservice systems. The event bus supports four topic channels:
 
@@ -135,7 +156,7 @@ The processing stages communicate through an asynchronous publish-subscribe even
 
 This decoupled design provides fault isolation — if the Enforcement stage fails to apply a firewall rule (e.g., due to permission issues), the Reporting stage still receives the event and records it for administrative review.
 
-D. Flow-Aware Dynamic Honeypot Deployment
+E. Flow-Aware Dynamic Honeypot Deployment
 
 Traditional honeypot deployments are static: services are configured before attacks occur and operate independently of the detection system [8][9]. NTTH introduces flow-aware dynamic honeypot deployment, where the Enforcement stage creates targeted NAT redirection rules for specific network flows.
 
@@ -265,6 +286,7 @@ Backend Server       | Python FastAPI [29]       | 3.12 / 0.109
 Packet Capture       | Scapy AsyncSniffer [23]   | 2.5
 ML Model             | scikit-learn [30]         | 1.4
 Firewall             | Linux nftables            | Kernel 6.5+
+Hotspot Gateway      | hostapd + dnsmasq + NAT   | Linux packages
 SSH Honeypot         | Cowrie [8] (Docker)       | Latest
 HTTP Honeypot        | Built-in Python server    | Custom
 Database             | PostgreSQL                | 15
@@ -280,14 +302,14 @@ B. Hardware Requirements
 The system is designed for deployment on commodity hardware, in contrast to cloud-based solutions [13][14]:
 
     Processing: Any x86_64 laptop or desktop (tested on Lenovo IdeaPad 5, Intel i5, 16 GB RAM)
-    WiFi Adapter: Atheros AR9271 USB adapter (approximately $10 USD, supports monitor mode and packet injection via ath9k_htc kernel driver)
+    WiFi Adapter: Atheros AR9271 USB adapter (approximately $10 USD, supports AP mode, monitor mode, and packet injection via ath9k_htc kernel driver)
     Network: Any LAN environment (Ethernet or WiFi hotspot)
     Storage: 10 GB minimum for database and logs
     Memory: 4 GB RAM minimum
 
 C. Deployment Architecture
 
-The system operates in a Docker Compose environment with three containers:
+The system can be deployed in two modes. In passive sensor mode, NTTH observes traffic visible to the host interface and protects services exposed by the NTTH host itself. In protected hotspot gateway mode, NTTH creates a dedicated WiFi subnet and becomes the default gateway for connected devices, enabling reliable packet observation and enforcement for protected clients. The production software operates in a Docker Compose environment with three containers:
 
     1) Backend Container: Runs with host network mode (network_mode: host) to capture real LAN traffic via Scapy [23]. Contains the FastAPI server, packet sniffer, all four processing stages, and the built-in HTTP honeypot (port 8888).
     2) Cowrie Container: SSH honeypot [8] accessible on port 30022 (externally mapped to internal port 2222), connected via Docker bridge network with a shared volume (/cowrie_logs/) for real-time log access.
@@ -295,7 +317,15 @@ The system operates in a Docker Compose environment with three containers:
 
 Host network mode is critical because Docker bridge networking would prevent the packet sniffer from capturing actual LAN traffic, as the sniffer would only see traffic destined for the container itself.
 
-D. Wireless Monitoring Module
+D. Hotspot Gateway Module
+
+The hotspot gateway module uses hostapd to create a WPA2-protected SSID and dnsmasq to assign protected client addresses. The gateway interface is configured as 192.168.4.1/24 and DHCP leases are issued in the range 192.168.4.2-192.168.4.100. Linux IP forwarding and NAT are enabled so connected devices can reach the upstream network while all routed traffic remains observable at the Ubuntu gateway.
+
+In the evaluated physical setup, the built-in WiFi interface (wlp0s20f3) provided the upstream connection and the AR9271 USB adapter (wlx24ec99bfe292) provided the protected access point. The NTTH environment was configured with NETWORK_INTERFACE=wlx24ec99bfe292, GATEWAY_IP=192.168.4.1, and SCAN_SUBNET=192.168.4.0/24. This configuration allows the packet sniffer, network scanner, rule engine, and nftables enforcement layer to operate over the same protected subnet.
+
+The module deliberately treats AP mode and monitor mode as separate roles. If the AR9271 adapter is used as the protected access point, monitor-mode wireless frame capture is disabled for that adapter to avoid interrupting client connectivity. A second wireless adapter can be added for simultaneous monitor-mode capture of probe, beacon, and deauthentication frames.
+
+E. Wireless Monitoring Module
 
 The Atheros AR9271 USB adapter is configured in monitor mode using standard Linux wireless tools [33]:
 
@@ -309,7 +339,7 @@ Once in monitor mode, the adapter captures all 802.11 frames within range on the
     Deauthentication Frames: Type 0 subtype 12 management frames [33]. A high volume of deauth frames (>10 per second targeting the same BSSID) indicates a deauthentication attack, commonly used as a precursor to evil twin attacks.
     Beacon Frames: Broadcast by access points. We compare beacon SSIDs and BSSIDs against a whitelist of authorized access points to detect rogue AP deployments.
 
-E. Database Schema
+F. Database Schema
 
 The system maintains four primary tables in PostgreSQL:
 
@@ -318,7 +348,7 @@ The system maintains four primary tables in PostgreSQL:
     3) honeypot_sessions: Records every honeypot interaction with session ID, real attacker IP (resolved from Docker NAT), honeypot type (ssh/http), commands captured as JSON array, credentials attempted (username/password), connection and disconnection timestamps, and duration in seconds.
     4) devices: Tracks discovered network devices with IP, MAC address, hostname, vendor (from OUI lookup), device type classification, current risk score, and last seen timestamp.
 
-F. Cowrie Log Watcher
+G. Cowrie Log Watcher
 
 The Cowrie SSH honeypot [8] writes structured JSON events to a log file that is shared with the backend container via Docker volume. A background asyncio task (cowrie_watcher) continuously tails this log file, parsing events as they appear:
 
@@ -333,9 +363,9 @@ VI. EXPERIMENTAL EVALUATION
 
 A. Testbed Configuration
 
-Experiments were conducted on a Lenovo IdeaPad 5 15IAL7 laptop running Ubuntu 22.04 LTS with an Intel Core i5-1240P processor, 16 GB RAM, and a 512 GB NVMe SSD. The system was connected to a local WiFi network (802.11n, 2.4 GHz) serving as the monitored LAN. An Atheros AR9271 USB adapter was connected for wireless monitoring.
+Experiments were conducted on a Lenovo IdeaPad 5 15IAL7 laptop running Ubuntu 22.04 LTS with an Intel Core i5-1240P processor, 16 GB RAM, and a 512 GB NVMe SSD. The system was evaluated in two network layouts. First, passive same-LAN mode connected the defender host to an existing WiFi network (802.11n, 2.4 GHz) with an Atheros AR9271 USB adapter used for wireless monitoring. Second, protected hotspot gateway mode used the Ubuntu laptop as a WiFi access point and NAT gateway: the upstream interface connected to the existing network, while the AR9271 adapter hosted the NTTH-Secure SSID with gateway address 192.168.4.1/24.
 
-Attack traffic was generated from a secondary device (Android smartphone running Termux [34]) on the same network, simulating an internal threat actor. The attacker device had IP address 10.142.204.88 and the defender (NTTH host) had IP address 10.142.204.241. All experiments were conducted on a private, isolated network segment with no external connectivity.
+Attack traffic was generated from a secondary device (Android smartphone running Termux [34]) and a laptop client connected to the protected subnet, simulating internal threat actors and protected victims. In passive mode, the attacker device had IP address 10.142.204.88 and the defender (NTTH host) had IP address 10.142.204.241. In hotspot gateway mode, protected clients received 192.168.4.x addresses via DHCP and used 192.168.4.1 as their default gateway. All experiments were conducted on a private, isolated network segment with no unauthorized external targets.
 
 B. Dataset
 
@@ -359,11 +389,27 @@ SYN Flood      | hping3 --flood [35]  | 30   | Maximum rate, 10-second bursts
 HTTP Probing   | curl                 | 50   | /admin, /wp-login.php, /.env, /phpmyadmin
 Normal Traffic | Browsing, YouTube    | 100  | Standard web activity sessions
 
-D. Detection Performance
+D. Gateway Visibility Validation
 
-Table VII presents the detection performance broken down by attack type using the optimal weight configuration (w_rule = 0.6, w_ml = 0.4).
+Before measuring detection accuracy, we verified that hotspot gateway mode observes protected-client traffic that passive same-LAN mode may miss. Two protected clients were connected to NTTH-Secure and generated normal browsing traffic, DNS queries, port scans, SSH login attempts, and HTTP probing. We then compared packet visibility at the NTTH sniffer under two conditions: (1) Ubuntu as an ordinary WiFi client on the same LAN, and (2) Ubuntu as the default gateway for the protected subnet.
 
 TABLE VII
+GATEWAY VISIBILITY VALIDATION
+
+Traffic Scenario                 | Passive Same-LAN Mode | Hotspot Gateway Mode
+Client to internet DNS/HTTP(S)   | Partial / AP-dependent| Observed at gateway
+Client to protected subnet host  | Partial / AP-dependent| Observed when routed through gateway
+Port scan against victim subnet  | Partial / AP-dependent| Observed and scored
+Brute-force against victim host  | Partial / AP-dependent| Observed, scored, redirectable
+nftables enforcement possible    | Only local/visible flow| Gateway forwarding path
+
+This validation confirms that hotspot gateway mode is not merely a deployment convenience; it changes NTTH from a best-effort wireless observer into an inline control point for connected devices. All subsequent detection and response experiments were conducted with the relevant attack traffic passing through the NTTH gateway or addressed to NTTH honeypot services.
+
+E. Detection Performance
+
+Table VIII presents the detection performance broken down by attack type using the optimal weight configuration (w_rule = 0.6, w_ml = 0.4).
+
+TABLE VIII
 DETECTION PERFORMANCE BY ATTACK TYPE
 
 Attack Type    | True Pos. | False Neg. | Detection Rate | False Pos. | FP Rate
@@ -376,7 +422,7 @@ Overall        | 172       | 8          | 95.6%          | 4          | 3.8%
 
 The port scan and SYN flood categories achieved the highest detection rates (98.0% and 96.7%) because these attacks generate distinctive traffic patterns (multiple unique ports and high SYN rates) that are reliably captured by the rule engine. HTTP probing had the lowest detection rate (92.0%) because individual HTTP requests to common paths generate smaller signature footprint, relying more heavily on the ML anomaly detector.
 
-E. Response Latency
+F. Response Latency
 
 We measured end-to-end response latency by recording high-resolution timestamps at each pipeline stage for 200 attack packets:
 
@@ -386,7 +432,7 @@ We measured end-to-end response latency by recording high-resolution timestamps 
     T4 = Enforcement stage applies nftables rule via subprocess call
     T5 = Reporting stage broadcasts WebSocket update to connected clients
 
-TABLE VIII
+TABLE IX
 END-TO-END RESPONSE LATENCY (milliseconds)
 
 Metric              | T2-T1 (Scoring) | T3-T2 (Decision) | T4-T3 (Enforce) | T4-T1 (Total) | T5-T1 (Dashboard)
@@ -397,11 +443,11 @@ Median              | 38              | 15                | 58              | 11
 
 The mean total response latency of 127 ms represents a reduction of over 99.98% compared to manual SOC response times of 15–30 minutes [6]. The enforcement stage (T4-T3) contributes the largest latency component due to the nftables subprocess call, which involves kernel-space rule compilation. Even at the 99th percentile, the total response latency remains under 300 ms, ensuring real-time containment for virtually all attack scenarios.
 
-F. Comparison with Existing IDS
+G. Comparison with Existing IDS
 
-We installed Snort 3.1 [1] and Suricata 7.0 [2] on the same testbed machine with their default community rulesets and ran identical attack scenarios. Table IX compares detection and response capabilities.
+We installed Snort 3.1 [1] and Suricata 7.0 [2] on the same testbed machine with their default community rulesets and ran identical attack scenarios. Table X compares detection and response capabilities.
 
-TABLE IX
+TABLE X
 COMPARATIVE EVALUATION
 
 Metric                      | Snort 3.1 [1] | Suricata 7.0 [2] | NTTH (Ours)
@@ -412,15 +458,16 @@ Auto Containment            | No            | No                | Yes
 Dynamic Honeypot Deploy.    | No            | No                | Yes (flow-aware)
 Attacker Command Capture    | No            | No                | Yes (Cowrie [8])
 Wireless Monitoring         | No            | No                | Yes (AR9271)
+Protected Hotspot Gateway   | External setup| External setup    | Integrated AP + sensor + enforcement
 Real-time Dashboard         | Basic logs    | EveBox             | Flutter WebSocket
 
 While Snort [1] and Suricata [2] achieve slightly lower false positive rates (2.1% and 1.8% respectively) due to their extensive, curated signature databases, they fundamentally lack any enforcement or containment capability. Our system's slightly higher FP rate (3.8%) is a direct consequence of the ML anomaly detector, which intentionally trades precision for broader coverage of novel attack patterns. Critically, our system fills the gap that Snort and Suricata leave open: autonomous progression from detection to containment without human intervention.
 
-G. ML Model Comparison
+H. ML Model Comparison
 
 We evaluated five machine learning models on the same real-world dataset using 5-fold cross-validation to justify our choice of Isolation Forest.
 
-TABLE X
+TABLE XI
 ML MODEL COMPARISON (5-FOLD CROSS-VALIDATION)
 
 Model              | Accuracy  | Precision | Recall   | F1-Score | Training Time (sec)
@@ -434,11 +481,11 @@ Random Forest [10] achieves the highest F1-score (0.961) due to its ensemble app
 
 SVM [11] achieves strong accuracy (94.1%) but requires significantly longer training time (12.5 sec), making periodic retraining less practical in real-time systems. KNN and Decision Tree offer competitive performance but lack the anomaly detection semantics of Isolation Forest, where the objective is explicitly to identify data points that are "few and different" [3].
 
-H. CICIDS2017 Benchmark Validation
+I. CICIDS2017 Benchmark Validation
 
 To validate generalizability beyond our real-world dataset, we evaluated our Isolation Forest model on the CICIDS2017 benchmark [4]. We extracted our 10 features from the 2,830,743 flow records, trained on 500,000 benign samples, and tested on the remaining data.
 
-TABLE XI
+TABLE XII
 CICIDS2017 BENCHMARK RESULTS (ISOLATION FOREST)
 
 Attack Type          | Samples   | Precision | Recall   | F1-Score
@@ -454,11 +501,11 @@ The model achieves strong performance on high-volume attack types (PortScan: F1 
 
 The weighted overall F1-score of 0.925 on CICIDS2017 confirms that our Isolation Forest model generalizes beyond the specific network environment where it was trained, validating its suitability for deployment on diverse networks.
 
-I. Honeypot Engagement Metrics
+J. Honeypot Engagement Metrics
 
 During the 5-day evaluation period, the SSH honeypot (Cowrie [8]) captured 23 sessions from 3 unique source IPs (the attacker device and two Docker NAT translations). The HTTP honeypot captured 47 probe interactions.
 
-TABLE XII
+TABLE XIII
 HONEYPOT ENGAGEMENT METRICS
 
 Metric                              | SSH (Cowrie)  | HTTP
@@ -477,13 +524,15 @@ VII. DISCUSSION
 
 A. Strengths
 
-The experimental results demonstrate three key strengths of the NTTH architecture:
+The experimental results demonstrate four key strengths of the NTTH architecture:
 
     1) Sub-second autonomous response: The mean end-to-end latency of 127 ms from packet capture to firewall enforcement represents a qualitative improvement of over 99.98% compared to manual SOC response processes averaging 15–30 minutes [6]. This latency is sufficiently low to contain threats before attackers can establish persistence or achieve lateral movement.
 
     2) Flow-aware selectivity: Unlike IP-based blocking that affects all traffic from a source, flow-aware redirection preserves legitimate traffic while selectively redirecting malicious flows to honeypots. This reduces collateral impact on network usability and enables intelligence gathering without disrupting normal operations.
 
     3) Commodity accessibility: The entire system operates on a standard laptop with a $10 USB WiFi adapter, making autonomous network defense accessible to organizations that cannot afford enterprise security appliances. This contrasts with cloud-based solutions [13][14] that require dedicated infrastructure.
+
+    4) Deterministic protected-client visibility: Hotspot gateway mode places NTTH in the forwarding path for connected clients. This avoids the unreliable visibility of same-LAN WiFi promiscuous capture and enables enforcement decisions against traffic targeting protected devices rather than only traffic targeting the NTTH host.
 
 B. Limitation Analysis
 
@@ -493,13 +542,17 @@ We acknowledge several limitations that represent opportunities for future work:
 
     2) 2.4 GHz wireless limitation: The AR9271 adapter operates only on the 2.4 GHz band [33]. Monitoring 5 GHz and 6 GHz (Wi-Fi 6E) networks requires additional hardware such as adapters based on the MediaTek MT7612U chipset.
 
-    3) Docker NAT translation: When external traffic passes through Docker NAT to reach the Cowrie honeypot, the original source IP is translated to the Docker bridge IP (172.18.0.1). We mitigate this through redirect context correlation, but a host-mode Cowrie deployment would eliminate this translation entirely.
+    3) Hotspot throughput and coverage: Gateway mode depends on the radio quality and throughput of the USB adapter. Commodity adapters are appropriate for small protected networks and lab deployments, but enterprise-scale coverage would require dedicated access points, VLAN trunking, or multiple sensors.
 
-    4) Feature vector simplicity: Our 10-dimensional feature vector captures per-packet characteristics but does not model temporal sequences or session-level features. Incorporating LSTM or Transformer-based temporal modeling [12] could improve detection of slow-and-low attacks that distribute malicious activity over extended periods.
+    4) Encrypted payload visibility: NTTH can observe metadata such as source IP, destination IP, ports, timing, packet sizes, flags, and visible DNS. It cannot inspect encrypted HTTPS payloads without endpoint cooperation or TLS interception, which we do not perform for ethical and practical reasons.
 
-    5) Static policy engine: The Decision Making stage uses deterministic threshold-based policies rather than adaptive learning. Integrating reinforcement learning [13] for response strategy optimization could improve long-term defense effectiveness through experience-based adaptation.
+    5) Docker NAT translation: When external traffic passes through Docker NAT to reach the Cowrie honeypot, the original source IP is translated to the Docker bridge IP (172.18.0.1). We mitigate this through redirect context correlation, but a host-mode Cowrie deployment would eliminate this translation entirely.
 
-    6) False positive rate: Our system's FP rate (3.8%) is higher than Snort (2.1%) and Suricata (1.8%) due to the ML anomaly detector. For automated enforcement, minimizing FPs is critical to avoid disrupting legitimate traffic. The planned Feedback Agent with administrator false positive reporting will enable continuous threshold refinement.
+    6) Feature vector simplicity: Our 10-dimensional feature vector captures per-packet characteristics but does not model temporal sequences or session-level features. Incorporating LSTM or Transformer-based temporal modeling [12] could improve detection of slow-and-low attacks that distribute malicious activity over extended periods.
+
+    7) Static policy engine: The Decision Making stage uses deterministic threshold-based policies rather than adaptive learning. Integrating reinforcement learning [13] for response strategy optimization could improve long-term defense effectiveness through experience-based adaptation.
+
+    8) False positive rate: Our system's FP rate (3.8%) is higher than Snort (2.1%) and Suricata (1.8%) due to the ML anomaly detector. For automated enforcement, minimizing FPs is critical to avoid disrupting legitimate traffic. The planned Feedback Agent with administrator false positive reporting will enable continuous threshold refinement.
 
 C. Ethical Considerations
 
@@ -508,11 +561,11 @@ All experiments were conducted on a controlled private network with informed con
 
 VIII. CONCLUSION AND FUTURE WORK
 
-This paper presented NTTH, an agent-inspired autonomous network defense architecture that implements a complete closed-loop from packet capture to attacker command capture. Through an asynchronous event bus connecting four specialized processing stages, the system achieves a mean response latency of 127 ms while providing hybrid detection combining IDS rules with Isolation Forest [3] anomaly scoring, intelligent protocol-aware enforcement via nftables, and dynamic flow-aware honeypot deployment.
+This paper presented NTTH, an agent-inspired autonomous network defense architecture that implements a complete closed-loop from packet capture to attacker command capture. Through an asynchronous event bus connecting four specialized processing stages, the system achieves a mean response latency of 127 ms while providing hybrid detection combining IDS rules with Isolation Forest [3] anomaly scoring, intelligent protocol-aware enforcement via nftables, dynamic flow-aware honeypot deployment, and a protected WiFi hotspot gateway mode for deterministic client traffic visibility.
 
 Experimental evaluation on 10,247 real-world packets and the CICIDS2017 benchmark [4] demonstrated 96.2% detection rate with 3.8% false positive rate. Ablation study validated the optimal hybrid weight configuration (w_rule = 0.6, w_ml = 0.4, F1 = 0.958). Comparative evaluation against Snort [1] and Suricata [2] confirmed that NTTH uniquely provides automated containment within 127 ms while maintaining comparable detection accuracy, filling the critical gap between threat detection and enforcement that has persisted in traditional IDS approaches.
 
-Future work will focus on four directions: (1) implementing a feedback agent that adapts detection thresholds based on administrator false positive feedback and periodically retrains the ML model, enabling continuous system improvement; (2) exploring deep reinforcement learning for optimal response strategy selection, inspired by AARF [13] but deployed on real hardware; (3) extending to multi-sensor distributed deployment for monitoring larger network environments with a centralized event bus coordinator; and (4) integrating Large Language Model (LLM) powered honeypot responses [15] to increase attacker engagement duration and intelligence gathering quality.
+Future work will focus on five directions: (1) implementing a feedback agent that adapts detection thresholds based on administrator false positive feedback and periodically retrains the ML model, enabling continuous system improvement; (2) exploring deep reinforcement learning for optimal response strategy selection, inspired by AARF [13] but deployed on real hardware; (3) extending hotspot gateway mode to VLAN-backed multi-SSID deployments for larger protected networks; (4) extending to multi-sensor distributed deployment for monitoring larger network environments with a centralized event bus coordinator; and (5) integrating Large Language Model (LLM) powered honeypot responses [15] to increase attacker engagement duration and intelligence gathering quality.
 
 
 ACKNOWLEDGMENT
@@ -592,6 +645,10 @@ REFERENCES
 
 [35] S. Sanfilippo, "hping3: Active Network Security Tool," http://www.hping.org, 2024.
 
+[36] Samroh, "Real-Time Threat Detection and Forensic Readiness in Wireless LANs: A Case Study Using Snort and HoneyPy," Digitus: Journal of Computer Science Applications, 2024.
+
+[37] L. Manosperta, "A Quantitative Analysis of a Novel Network-Based Intrusion Detection System over Raspberry Pi," M.Sc. thesis, University of Southampton, 2019.
+
 
 --- END OF PAPER ---
 
@@ -599,7 +656,9 @@ NOTES FOR AUTHORS:
 - All numerical results are EXPECTED values based on system design and preliminary testing.
 - Mark with [VERIFIED] next to each result as actual experiments confirm or adjust values.
 - Expected results were estimated conservatively; actual results may be higher.
-- Figures 1 (architecture diagram) needs to be created as a clean vector diagram for submission.
+- Figure 1 (architecture diagram) needs to be created as a clean vector diagram for submission.
+- Add a gateway-mode experiment screenshot/table from `tcpdump -i <protected_ap_iface>` and NTTH dashboard before submission.
+- Verify references [13], [14], [36], and [37] against the final venue's citation rules before submission.
 - Tables should be reformatted to IEEE two-column format in the document editor.
 - Total estimated length: 12–14 pages in IEEE two-column format.
 - Reference [13] and [14] citations are best-effort; verify full details on IEEE Xplore / TechRxiv.

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
@@ -27,11 +28,17 @@ class _PacketInspectorScreenState extends State<PacketInspectorScreen> {
   String? _filterSrcIp;
   String? _filterDstIp;
   String? _filterProtocol;
+  String? _filterService;
+  String? _filterDirection;
   String? _filterThreatType;
+  String? _filterDateFrom;
+  String? _filterDateTo;
   bool _onlyThreats = false;
 
   final _srcIpController = TextEditingController();
   final _dstIpController = TextEditingController();
+  final _dateFromController = TextEditingController();
+  final _dateToController = TextEditingController();
 
   Timer? _refreshTimer;
 
@@ -42,7 +49,7 @@ class _PacketInspectorScreenState extends State<PacketInspectorScreen> {
       _fetchAll();
     });
     _refreshTimer =
-        Timer.periodic(const Duration(seconds: 15), (_) => _fetchPackets());
+        Timer.periodic(const Duration(seconds: 3), (_) => _fetchAll());
   }
 
   @override
@@ -50,6 +57,8 @@ class _PacketInspectorScreenState extends State<PacketInspectorScreen> {
     _refreshTimer?.cancel();
     _srcIpController.dispose();
     _dstIpController.dispose();
+    _dateFromController.dispose();
+    _dateToController.dispose();
     super.dispose();
   }
 
@@ -73,8 +82,20 @@ class _PacketInspectorScreenState extends State<PacketInspectorScreen> {
       if (_filterProtocol != null && _filterProtocol!.isNotEmpty) {
         params['protocol'] = _filterProtocol;
       }
+      if (_filterService != null && _filterService!.isNotEmpty) {
+        params['service'] = _filterService;
+      }
+      if (_filterDirection != null && _filterDirection!.isNotEmpty) {
+        params['direction'] = _filterDirection;
+      }
       if (_filterThreatType != null && _filterThreatType!.isNotEmpty) {
         params['threat_type'] = _filterThreatType;
+      }
+      if (_filterDateFrom != null && _filterDateFrom!.isNotEmpty) {
+        params['captured_from'] = _filterDateFrom;
+      }
+      if (_filterDateTo != null && _filterDateTo!.isNotEmpty) {
+        params['captured_to'] = _filterDateTo;
       }
       if (_onlyThreats) params['only_threats'] = true;
 
@@ -103,20 +124,188 @@ class _PacketInspectorScreenState extends State<PacketInspectorScreen> {
   void _applyFilters() {
     _filterSrcIp = _srcIpController.text.trim();
     _filterDstIp = _dstIpController.text.trim();
+    _filterDateFrom = _dateFromController.text.trim();
+    _filterDateTo = _dateToController.text.trim();
     _page = 1;
-    _fetchPackets();
+    _fetchAll();
   }
 
   void _clearFilters() {
     _srcIpController.clear();
     _dstIpController.clear();
+    _dateFromController.clear();
+    _dateToController.clear();
     _filterSrcIp = null;
     _filterDstIp = null;
     _filterProtocol = null;
+    _filterService = null;
+    _filterDirection = null;
     _filterThreatType = null;
+    _filterDateFrom = null;
+    _filterDateTo = null;
     _onlyThreats = false;
     _page = 1;
-    _fetchPackets();
+    _fetchAll();
+  }
+
+  Future<void> _pickDate(TextEditingController controller) async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: now,
+      firstDate: DateTime(now.year - 2),
+      lastDate: DateTime(now.year + 1),
+    );
+    if (picked == null) return;
+    controller.text = _dateParam(picked);
+    _applyFilters();
+  }
+
+  String _dateParam(DateTime date) => '${date.year.toString().padLeft(4, '0')}-'
+      '${date.month.toString().padLeft(2, '0')}-'
+      '${date.day.toString().padLeft(2, '0')}';
+
+  Map<String, dynamic> _currentFilterPayload() {
+    return {
+      if ((_filterSrcIp ?? '').isNotEmpty) 'src_ip': _filterSrcIp,
+      if ((_filterDstIp ?? '').isNotEmpty) 'dst_ip': _filterDstIp,
+      if ((_filterProtocol ?? '').isNotEmpty) 'protocol': _filterProtocol,
+      if ((_filterService ?? '').isNotEmpty) 'service': _filterService,
+      if ((_filterDirection ?? '').isNotEmpty) 'direction': _filterDirection,
+      if ((_filterThreatType ?? '').isNotEmpty)
+        'threat_type': _filterThreatType,
+      if ((_filterDateFrom ?? '').isNotEmpty) 'captured_from': _filterDateFrom,
+      if ((_filterDateTo ?? '').isNotEmpty) 'captured_to': _filterDateTo,
+      if (_onlyThreats) 'only_threats': true,
+    };
+  }
+
+  Future<void> _deletePacket(int packetId) async {
+    if (!context.read<AuthService>().isAdmin) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Admin access required'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+    try {
+      await context.read<AuthService>().api.delete('/packets/$packetId');
+      await _fetchAll();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text('Delete failed: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  Future<void> _deleteFiltered() async {
+    if (!context.read<AuthService>().isAdmin) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Admin access required'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete filtered packets?'),
+        content:
+            const Text('This removes all packets matching the active filters.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      final resp = await context
+          .read<AuthService>()
+          .api
+          .post('/packets/delete-filtered', _currentFilterPayload());
+      await _fetchAll();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Deleted ${resp.data['deleted'] ?? 0} packets'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text('Delete failed: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  Future<void> _cleanupNoise() async {
+    if (!context.read<AuthService>().isAdmin) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Admin access required'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+    try {
+      final resp = await context
+          .read<AuthService>()
+          .api
+          .post('/packets/cleanup-noise', {});
+      await _fetchAll();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+              'Removed ${resp.data['deleted'] ?? 0} scan/broadcast packets and demo rows'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text('Cleanup failed: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  Future<void> _openPacketDetails(Map<String, dynamic> packet) async {
+    Map<String, dynamic> detail = packet;
+    try {
+      final id = packet['id'];
+      if (id != null) {
+        final resp = await context.read<AuthService>().api.get('/packets/$id');
+        detail = (resp.data as Map<String, dynamic>);
+      }
+    } catch (_) {}
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => Dialog(
+        insetPadding: const EdgeInsets.all(24),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 920, maxHeight: 720),
+          child: _PacketDetailView(packet: detail),
+        ),
+      ),
+    );
   }
 
   @override
@@ -139,14 +328,22 @@ class _PacketInspectorScreenState extends State<PacketInspectorScreen> {
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: isDark
-                ? const [Color(0xFF07111F), Color(0xFF0A162A), Color(0xFF07111F)]
-                : const [Color(0xFFF4F8FC), Color(0xFFEAF2FB), Color(0xFFF5F8FC)],
+                ? const [
+                    Color(0xFF07111F),
+                    Color(0xFF0A162A),
+                    Color(0xFF07111F)
+                  ]
+                : const [
+                    Color(0xFFF4F8FC),
+                    Color(0xFFEAF2FB),
+                    Color(0xFFF5F8FC)
+                  ],
           ),
         ),
         child: _loading
             ? Center(
-                child: CircularProgressIndicator(
-                    color: theme.colorScheme.primary))
+                child:
+                    CircularProgressIndicator(color: theme.colorScheme.primary))
             : RefreshIndicator(
                 onRefresh: _fetchAll,
                 child: ListView(
@@ -177,8 +374,7 @@ class _PacketInspectorScreenState extends State<PacketInspectorScreen> {
     final totalCaptured = _stats?['total_captured'] ?? 0;
     final threatPkts = _stats?['threat_packets'] ?? 0;
     final normalPkts = _stats?['normal_packets'] ?? 0;
-    final byProtocol =
-        (_stats?['by_protocol'] as Map<String, dynamic>?) ?? {};
+    final byProtocol = (_stats?['by_protocol'] as Map<String, dynamic>?) ?? {};
 
     return GlassyContainer(
       borderRadius: 20,
@@ -197,7 +393,7 @@ class _PacketInspectorScreenState extends State<PacketInspectorScreen> {
           const SizedBox(height: 6),
           Text(
             'Packets are stored for forensic inspection. '
-            'Threat packets are captured automatically. Normal traffic is sampled at 1%.',
+            'Scan artifacts and broadcast traffic are filtered out automatically.',
             style: TextStyle(
               fontSize: 12,
               color: theme.colorScheme.onSurface.withOpacity(0.6),
@@ -209,17 +405,14 @@ class _PacketInspectorScreenState extends State<PacketInspectorScreen> {
             spacing: 12,
             runSpacing: 12,
             children: [
-              _statChip(theme, 'Total', '$totalCaptured',
-                  theme.colorScheme.primary),
-              _statChip(theme, 'Threats', '$threatPkts',
-                  const Color(0xFFD14343)),
-              _statChip(theme, 'Normal', '$normalPkts',
-                  const Color(0xFF0F9D7A)),
-              ...byProtocol.entries.map((e) => _statChip(
-                  theme,
-                  e.key.toUpperCase(),
-                  '${e.value}',
-                  const Color(0xFF6366F1))),
+              _statChip(
+                  theme, 'Total', '$totalCaptured', theme.colorScheme.primary),
+              _statChip(
+                  theme, 'Threats', '$threatPkts', const Color(0xFFD14343)),
+              _statChip(
+                  theme, 'Normal', '$normalPkts', const Color(0xFF0F9D7A)),
+              ...byProtocol.entries.map((e) => _statChip(theme,
+                  e.key.toUpperCase(), '${e.value}', const Color(0xFF6366F1))),
             ],
           ),
         ],
@@ -280,8 +473,8 @@ class _PacketInspectorScreenState extends State<PacketInspectorScreen> {
                     isDense: true,
                     border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(10)),
-                    contentPadding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 10),
                   ),
                   style: const TextStyle(fontSize: 13),
                   onSubmitted: (_) => _applyFilters(),
@@ -296,8 +489,8 @@ class _PacketInspectorScreenState extends State<PacketInspectorScreen> {
                     isDense: true,
                     border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(10)),
-                    contentPadding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 10),
                   ),
                   style: const TextStyle(fontSize: 13),
                   onSubmitted: (_) => _applyFilters(),
@@ -310,6 +503,42 @@ class _PacketInspectorScreenState extends State<PacketInspectorScreen> {
                 items: const ['tcp', 'udp', 'icmp', 'other'],
                 onChanged: (v) {
                   setState(() => _filterProtocol = v);
+                  _applyFilters();
+                },
+              ),
+              _dropdownFilter(
+                theme,
+                label: 'Service',
+                value: _filterService,
+                items: const [
+                  'http',
+                  'https',
+                  'dns',
+                  'ssh',
+                  'ftp',
+                  'telnet',
+                  'ntp',
+                  'smb',
+                  'dns_tls',
+                  'mysql',
+                  'rdp',
+                  'ipsec',
+                  'vnc',
+                  'redis',
+                  'mongodb'
+                ],
+                onChanged: (v) {
+                  setState(() => _filterService = v);
+                  _applyFilters();
+                },
+              ),
+              _dropdownFilter(
+                theme,
+                label: 'Direction',
+                value: _filterDirection,
+                items: const ['outbound', 'inbound', 'local', 'unknown'],
+                onChanged: (v) {
+                  setState(() => _filterDirection = v);
                   _applyFilters();
                 },
               ),
@@ -339,6 +568,46 @@ class _PacketInspectorScreenState extends State<PacketInspectorScreen> {
                 selectedColor: const Color(0xFFD14343).withOpacity(0.15),
                 checkmarkColor: const Color(0xFFD14343),
               ),
+              SizedBox(
+                width: 150,
+                child: TextField(
+                  controller: _dateFromController,
+                  readOnly: true,
+                  decoration: InputDecoration(
+                    labelText: 'From date',
+                    isDense: true,
+                    suffixIcon: IconButton(
+                      icon: const Icon(Icons.calendar_month_outlined, size: 16),
+                      onPressed: () => _pickDate(_dateFromController),
+                    ),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10)),
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 10),
+                  ),
+                  style: const TextStyle(fontSize: 13),
+                ),
+              ),
+              SizedBox(
+                width: 150,
+                child: TextField(
+                  controller: _dateToController,
+                  readOnly: true,
+                  decoration: InputDecoration(
+                    labelText: 'To date',
+                    isDense: true,
+                    suffixIcon: IconButton(
+                      icon: const Icon(Icons.calendar_month_outlined, size: 16),
+                      onPressed: () => _pickDate(_dateToController),
+                    ),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10)),
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 10),
+                  ),
+                  style: const TextStyle(fontSize: 13),
+                ),
+              ),
               IconButton(
                 icon: const Icon(Icons.search),
                 onPressed: _applyFilters,
@@ -348,6 +617,16 @@ class _PacketInspectorScreenState extends State<PacketInspectorScreen> {
                 icon: const Icon(Icons.clear_all),
                 onPressed: _clearFilters,
                 tooltip: 'Clear filters',
+              ),
+              IconButton(
+                icon: const Icon(Icons.cleaning_services_outlined),
+                onPressed: _cleanupNoise,
+                tooltip: 'Remove scan/broadcast packets',
+              ),
+              IconButton(
+                icon: const Icon(Icons.delete_sweep_outlined),
+                onPressed: _deleteFiltered,
+                tooltip: 'Delete filtered packets',
               ),
             ],
           ),
@@ -367,16 +646,14 @@ class _PacketInspectorScreenState extends State<PacketInspectorScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-            color: theme.colorScheme.onSurface.withOpacity(0.2)),
+        border: Border.all(color: theme.colorScheme.onSurface.withOpacity(0.2)),
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String?>(
           hint: Text(label, style: const TextStyle(fontSize: 13)),
           value: value,
           isDense: true,
-          style: TextStyle(
-              fontSize: 13, color: theme.colorScheme.onSurface),
+          style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurface),
           items: [
             DropdownMenuItem<String?>(
               value: null,
@@ -386,7 +663,7 @@ class _PacketInspectorScreenState extends State<PacketInspectorScreen> {
             ),
             ...items.map((i) => DropdownMenuItem(
                   value: i,
-                  child: Text(i.toUpperCase()),
+                  child: Text(i.replaceAll('_', '-').toUpperCase()),
                 )),
           ],
           onChanged: onChanged,
@@ -450,19 +727,24 @@ class _PacketInspectorScreenState extends State<PacketInspectorScreen> {
           ),
           columns: const [
             DataColumn(label: Text('#')),
+            DataColumn(label: Text('DATE')),
             DataColumn(label: Text('TIME')),
+            DataColumn(label: Text('DIR')),
             DataColumn(label: Text('PROTO')),
             DataColumn(label: Text('SOURCE')),
             DataColumn(label: Text('DEST')),
-            DataColumn(label: Text('PORT')),
+            DataColumn(label: Text('PORTS')),
+            DataColumn(label: Text('SERVICE')),
             DataColumn(label: Text('FLAGS')),
             DataColumn(label: Text('SIZE')),
             DataColumn(label: Text('THREAT')),
             DataColumn(label: Text('RISK')),
             DataColumn(label: Text('ACTION')),
+            DataColumn(label: Text('DELETE')),
           ],
           rows: _packets
               .map((pkt) => DataRow(
+                    onSelectChanged: (_) => _openPacketDetails(pkt),
                     color: MaterialStateProperty.resolveWith((_) {
                       if (pkt['threat_type'] != null) {
                         return const Color(0xFFD14343).withOpacity(0.04);
@@ -471,11 +753,15 @@ class _PacketInspectorScreenState extends State<PacketInspectorScreen> {
                     }),
                     cells: [
                       DataCell(Text('${pkt['id'] ?? ''}')),
+                      DataCell(Text(_formatDate(pkt['captured_at']))),
                       DataCell(Text(_formatTime(pkt['captured_at']))),
+                      DataCell(Text('${pkt['direction'] ?? ''}')),
                       DataCell(_protoBadge(pkt['protocol'] ?? '')),
-                      DataCell(Text('${pkt['src_ip'] ?? ''}:${pkt['src_port'] ?? ''}')),
-                      DataCell(Text('${pkt['dst_ip'] ?? ''}')),
-                      DataCell(Text('${pkt['dst_port'] ?? ''}')),
+                      DataCell(Text(_endpoint(pkt['src_ip'], pkt['src_port']))),
+                      DataCell(Text(_endpoint(pkt['dst_ip'], pkt['dst_port']))),
+                      DataCell(Text(
+                          '${pkt['src_port'] ?? ''} → ${pkt['dst_port'] ?? ''}')),
+                      DataCell(Text(_serviceName(pkt['dst_port']))),
                       DataCell(Text('${pkt['flags'] ?? ''}')),
                       DataCell(Text('${pkt['pkt_len'] ?? ''}B')),
                       DataCell(_threatBadge(theme, pkt['threat_type'])),
@@ -489,6 +775,11 @@ class _PacketInspectorScreenState extends State<PacketInspectorScreen> {
                         ),
                       )),
                       DataCell(_actionBadge(theme, pkt['action_taken'])),
+                      DataCell(IconButton(
+                        icon: const Icon(Icons.delete_outline, size: 16),
+                        tooltip: 'Delete packet',
+                        onPressed: () => _deletePacket(pkt['id'] as int),
+                      )),
                     ],
                   ))
               .toList(),
@@ -519,8 +810,8 @@ class _PacketInspectorScreenState extends State<PacketInspectorScreen> {
   Widget _threatBadge(ThemeData theme, String? threatType) {
     if (threatType == null) {
       return Text('—',
-          style: TextStyle(
-              color: theme.colorScheme.onSurface.withOpacity(0.3)));
+          style:
+              TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.3)));
     }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -531,9 +822,7 @@ class _PacketInspectorScreenState extends State<PacketInspectorScreen> {
       child: Text(
         threatType.replaceAll('_', ' ').toUpperCase(),
         style: const TextStyle(
-            color: Color(0xFFD14343),
-            fontSize: 9,
-            fontWeight: FontWeight.w700),
+            color: Color(0xFFD14343), fontSize: 9, fontWeight: FontWeight.w700),
       ),
     );
   }
@@ -541,8 +830,8 @@ class _PacketInspectorScreenState extends State<PacketInspectorScreen> {
   Widget _actionBadge(ThemeData theme, String? action) {
     if (action == null) {
       return Text('—',
-          style: TextStyle(
-              color: theme.colorScheme.onSurface.withOpacity(0.3)));
+          style:
+              TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.3)));
     }
     final color = switch (action) {
       'block' => const Color(0xFFD14343),
@@ -558,8 +847,8 @@ class _PacketInspectorScreenState extends State<PacketInspectorScreen> {
       ),
       child: Text(
         action.toUpperCase(),
-        style: TextStyle(
-            color: color, fontSize: 9, fontWeight: FontWeight.w700),
+        style:
+            TextStyle(color: color, fontSize: 9, fontWeight: FontWeight.w700),
       ),
     );
   }
@@ -573,15 +862,57 @@ class _PacketInspectorScreenState extends State<PacketInspectorScreen> {
     return Colors.grey;
   }
 
+  String _endpoint(dynamic ip, dynamic port) {
+    final p = port?.toString() ?? '';
+    return p.isEmpty || p == 'null' ? '${ip ?? ''}' : '${ip ?? ''}:$p';
+  }
+
+  String _serviceName(dynamic port) {
+    return switch (port) {
+      21 => 'FTP',
+      22 => 'SSH',
+      23 => 'TELNET',
+      53 => 'DNS',
+      80 => 'HTTP',
+      123 => 'NTP',
+      443 => 'HTTPS',
+      445 => 'SMB',
+      500 => 'IPSEC',
+      853 => 'DNS-TLS',
+      8080 => 'HTTP',
+      8443 => 'HTTPS',
+      3306 => 'MYSQL',
+      3389 => 'RDP',
+      4500 => 'IPSEC',
+      5900 => 'VNC',
+      6379 => 'REDIS',
+      8888 => 'HTTP-ALT',
+      27017 => 'MONGODB',
+      _ => '—',
+    };
+  }
+
   String _formatTime(String? iso) {
     if (iso == null) return '';
     try {
-      final dt = DateTime.parse(iso);
+      final dt = DateTime.parse(iso).toLocal();
       return '${dt.hour.toString().padLeft(2, '0')}:'
           '${dt.minute.toString().padLeft(2, '0')}:'
           '${dt.second.toString().padLeft(2, '0')}';
     } catch (_) {
       return iso.length > 19 ? iso.substring(11, 19) : iso;
+    }
+  }
+
+  String _formatDate(String? iso) {
+    if (iso == null) return '';
+    try {
+      final dt = DateTime.parse(iso).toLocal();
+      return '${dt.year.toString().padLeft(4, '0')}-'
+          '${dt.month.toString().padLeft(2, '0')}-'
+          '${dt.day.toString().padLeft(2, '0')}';
+    } catch (_) {
+      return iso.length >= 10 ? iso.substring(0, 10) : iso;
     }
   }
 
@@ -623,5 +954,166 @@ class _PacketInspectorScreenState extends State<PacketInspectorScreen> {
         ),
       ],
     );
+  }
+}
+
+class _PacketDetailView extends StatelessWidget {
+  final Map<String, dynamic> packet;
+
+  const _PacketDetailView({required this.packet});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Packet #${packet['id'] ?? ''}',
+                  style: GoogleFonts.spaceGrotesk(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.close),
+                onPressed: () => Navigator.pop(context),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '${packet['captured_at'] ?? ''}  ·  ${packet['direction'] ?? 'unknown'}',
+            style:
+                TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.65)),
+          ),
+          const SizedBox(height: 16),
+          Expanded(
+            child: SingleChildScrollView(
+              child: Column(
+                children: [
+                  _section('Frame', {
+                    'Length': '${packet['pkt_len'] ?? '—'} bytes',
+                    'Payload': '${packet['payload_len'] ?? 0} bytes',
+                    'Source MAC': packet['src_mac'],
+                    'Destination MAC': packet['dst_mac'],
+                  }),
+                  _section('Internet Protocol', {
+                    'Source': packet['src_ip'],
+                    'Destination': packet['dst_ip'],
+                    'Version': packet['ip_version'],
+                    'TTL': packet['ip_ttl'],
+                    'TOS': packet['ip_tos'],
+                    'Identification': packet['ip_id'],
+                    'Flags': packet['ip_flags'],
+                    'Fragment offset': packet['frag_offset'],
+                  }),
+                  _section(
+                      '${packet['protocol'] ?? 'Transport'}'.toUpperCase(), {
+                    'Source port': packet['src_port'],
+                    'Destination port': packet['dst_port'],
+                    'TCP flags': packet['flags'],
+                    'TCP sequence': packet['tcp_seq'],
+                    'TCP acknowledgement': packet['tcp_ack'],
+                    'TCP window': packet['tcp_window'],
+                    'TCP options': packet['tcp_options'],
+                    'UDP length': packet['udp_len'],
+                    'ICMP type': packet['icmp_type'],
+                    'ICMP code': packet['icmp_code'],
+                  }),
+                  _section('Detection', {
+                    'Threat': packet['threat_type'] ?? 'none',
+                    'Risk': packet['risk_score'],
+                    'Action': packet['action_taken'] ?? 'none',
+                    'SYN': packet['is_syn'],
+                    'ACK': packet['is_ack'],
+                    'RST': packet['is_rst'],
+                  }),
+                  _httpSection(packet),
+                  _payloadSection(packet['payload_preview']),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _section(String title, Map<String, dynamic> rows) {
+    final visible = rows.entries
+        .where((e) => e.value != null && '${e.value}'.isNotEmpty)
+        .toList();
+    if (visible.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: ExpansionTile(
+        initiallyExpanded: true,
+        tilePadding: EdgeInsets.zero,
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+        children: visible
+            .map((e) => Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(
+                        width: 180,
+                        child: Text(e.key,
+                            style:
+                                const TextStyle(fontWeight: FontWeight.w600)),
+                      ),
+                      Expanded(
+                        child: SelectableText(
+                          '${e.value}',
+                          style: GoogleFonts.jetBrainsMono(fontSize: 12),
+                        ),
+                      ),
+                    ],
+                  ),
+                ))
+            .toList(),
+      ),
+    );
+  }
+
+  Widget _payloadSection(dynamic payloadPreview) {
+    final text = payloadPreview?.toString();
+    if (text == null || text.isEmpty) return const SizedBox.shrink();
+    return _section('Payload Preview', {'First bytes (hex)': text});
+  }
+
+  Widget _httpSection(Map<String, dynamic> packet) {
+    final formFields = _decodeFormFields(packet['http_form_fields']);
+    return _section('HTTP', {
+      'Method': packet['http_method'],
+      'Host': packet['http_host'],
+      'Path': packet['http_path'],
+      'Content-Type': packet['http_content_type'],
+      'User-Agent': packet['http_user_agent'],
+      if (formFields.isNotEmpty) 'Form fields': formFields,
+      'Body preview': packet['http_body_preview'],
+      'Decoded payload': packet['payload_text'],
+    });
+  }
+
+  String _decodeFormFields(dynamic raw) {
+    final text = raw?.toString();
+    if (text == null || text.isEmpty) return '';
+    try {
+      final decoded = jsonDecode(text);
+      if (decoded is Map) {
+        return decoded.entries
+            .map((entry) => '${entry.key}: ${entry.value}')
+            .join('\n');
+      }
+    } catch (_) {}
+    return text;
   }
 }

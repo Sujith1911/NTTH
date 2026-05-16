@@ -66,12 +66,20 @@ def _location_summary(payload: dict) -> str:
 def _choose_response_action(payload: dict, base_action: str) -> tuple[str, str, int | None]:
     protocol = payload.get("protocol")
     dst_port = payload.get("dst_port")
+    risk_score = float(payload.get("risk_score") or 0.0)
 
-    if protocol == "tcp":
+    if base_action in {"allow", "log", "rate_limit"}:
+        response = "observe" if base_action in {"allow", "log"} else "observe_and_throttle"
+        return base_action, response, None
+
+    if base_action == "honeypot" and risk_score < 0.85:
+        return "rate_limit", "observe_and_throttle", None
+
+    if base_action == "honeypot" and protocol == "tcp":
         honeypot_port = settings.cowrie_redirect_port if dst_port in {21, 22, 23, 3389, 5900} else settings.http_honeypot_port
         return "honeypot", "redirect_and_hide_target", honeypot_port
 
-    if base_action in {"honeypot", "block"}:
+    if base_action == "block":
         return "block", "quarantine_source", None
     return "rate_limit", "observe_and_throttle", None
 
@@ -83,9 +91,9 @@ async def _handle_threat_detected(payload: dict) -> None:
     # Periodically prune stale dedup entries
     _prune_recent_decisions()
 
-    # Never act on gateway IP
-    if src_ip == settings.gateway_ip:
-        log.debug("decision_agent.skipped_gateway", ip=src_ip)
+    # Never act on gateway or our own server IP (our scanner generates port probes)
+    _self_ips = {settings.gateway_ip, settings.server_display_ip}
+    if src_ip in _self_ips:
         return
 
     base_action = determine_action(risk_score)

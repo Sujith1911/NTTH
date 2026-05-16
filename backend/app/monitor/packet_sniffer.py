@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import ipaddress
+import subprocess
 import sys
 from typing import Any
 
@@ -106,6 +107,31 @@ def _detect_interface() -> str:
         except Exception as exc:
             log.debug("sniffer.iface_detect_failed", error=str(exc))
         return None  # Let Scapy pick default
+    if sys.platform.startswith("linux"):
+        try:
+            output = subprocess.check_output(
+                ["ip", "route", "get", "8.8.8.8"],
+                text=True,
+                timeout=2,
+                stderr=subprocess.DEVNULL,
+            )
+            parts = output.split()
+            if "dev" in parts:
+                iface = parts[parts.index("dev") + 1]
+                if iface:
+                    log.info("sniffer.auto_detected_iface", iface=iface)
+                    return iface
+        except Exception as exc:
+            log.debug("sniffer.linux_iface_detect_failed", error=str(exc))
+        try:
+            from scapy.config import conf  # type: ignore
+            iface = str(getattr(conf, "iface", "") or "")
+            if iface:
+                log.info("sniffer.scapy_default_iface", iface=iface)
+                return iface
+        except Exception:
+            pass
+
     return configured
 
 
@@ -151,6 +177,7 @@ async def start_sniffer() -> None:
         "prn": _packet_callback,
         "store": False,
         "filter": "ip",
+        "promisc": True,  # Capture traffic for ALL devices on the segment
     }
     if iface:
         sniffer_kwargs["iface"] = iface

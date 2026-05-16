@@ -4,10 +4,11 @@ Prevents duplicate rules and tracks handles for later removal.
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Optional
 
 from app.config import get_settings
+from app.core.time_utils import utc_now_naive
 from app.database.crud import create_firewall_rule, rule_exists_for_ip
 from app.database.session import AsyncSessionLocal
 
@@ -27,7 +28,7 @@ async def track_rule(
 ) -> None:
     """Persist a new firewall rule in the DB."""
     ttl = ttl_seconds or settings.firewall_rule_ttl_seconds
-    expires_at = datetime.utcnow() + timedelta(seconds=ttl)
+    expires_at = utc_now_naive() + timedelta(seconds=ttl)
 
     async with AsyncSessionLocal() as db:
         await create_firewall_rule(

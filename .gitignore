@@ -23,6 +23,10 @@ env/
 *.sqlite3
 *.sqlite
 
+# Runtime/generated local state
+backend/models/
+backend/.env.monitor-backup
+
 # Logs
 *.log
 logs/

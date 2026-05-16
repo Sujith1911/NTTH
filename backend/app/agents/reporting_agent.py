@@ -11,6 +11,56 @@ from app.database import crud
 from app.monitor.network_scanner import is_managed_asset_ip
 
 log = get_logger("reporting_agent")
+_live_device_flush_at: dict[str, float] = {}
+_LIVE_DEVICE_FLUSH_SECONDS = 3.0
+_SCANNER_PROBE_PORTS = {
+    21, 22, 23, 25, 53, 80, 110, 111, 135, 139, 143, 443, 445,
+    993, 995, 1433, 1723, 3306, 3389, 5432, 5900, 5985, 6379,
+    8080, 8443, 8888, 9200, 27017,
+}
+
+
+def _is_scanner_probe_or_reply(payload: dict) -> bool:
+    from app.config import get_settings
+
+    settings = get_settings()
+    server_ip = settings.server_display_ip
+    src_ip = payload.get("src_ip", "")
+    dst_ip = payload.get("dst_ip", "")
+    src_port = payload.get("src_port")
+    dst_port = payload.get("dst_port")
+    if not server_ip or payload.get("protocol") != "tcp":
+        return False
+    if (
+        src_ip == server_ip
+        and is_managed_asset_ip(dst_ip)
+        and dst_port in _SCANNER_PROBE_PORTS
+    ):
+        return True
+    return bool(
+        dst_ip == server_ip
+        and is_managed_asset_ip(src_ip)
+        and src_port in _SCANNER_PROBE_PORTS
+        and isinstance(dst_port, int)
+        and dst_port >= 1024
+    )
+
+
+def _should_persist_packet(payload: dict, *, threat: bool = False) -> bool:
+    protocol = payload.get("protocol")
+    src_ip = payload.get("src_ip", "")
+    dst_ip = payload.get("dst_ip", "")
+    if protocol == "arp_scan":
+        return False
+    if not src_ip or not dst_ip:
+        return False
+    if src_ip.endswith((".255", ".0")) or dst_ip.endswith((".255", ".0")):
+        return False
+    if _is_scanner_probe_or_reply(payload):
+        return False
+    if threat:
+        return True
+    return is_managed_asset_ip(src_ip)
 
 
 async def _handle_report_event(payload: dict) -> None:
@@ -21,9 +71,12 @@ async def _handle_report_event(payload: dict) -> None:
             or payload.get("dst_ip")
             or payload.get("src_ip")
         )
-        managed_asset_ip = (
-            victim_ip if isinstance(victim_ip, str) and is_managed_asset_ip(victim_ip) else None
-        )
+        src_ip = payload.get("src_ip", "")
+        managed_asset_ip = None
+        if isinstance(src_ip, str) and is_managed_asset_ip(src_ip):
+            managed_asset_ip = src_ip
+        elif isinstance(victim_ip, str) and is_managed_asset_ip(victim_ip):
+            managed_asset_ip = victim_ip
         async with AsyncSessionLocal() as db:
             device = None
             if managed_asset_ip:
@@ -121,14 +174,36 @@ async def _handle_report_event(payload: dict) -> None:
 
 
 async def _handle_device_seen_ws(payload: dict) -> None:
-    """Forward ARP-discovered devices to WS so the topology map updates live."""
-    if payload.get("protocol") != "arp_scan":
-        return   # only forward network scanner discoveries, not every captured packet
+    """Forward discovered/live devices to WS so UI screens update live."""
+    import time
+
+    src_ip = payload.get("src_ip")
+    if not src_ip or not is_managed_asset_ip(src_ip):
+        return
+
+    now = time.monotonic()
+    is_scan = payload.get("protocol") == "arp_scan"
+    last_flush = _live_device_flush_at.get(src_ip, 0.0)
+    if not is_scan and now - last_flush < _LIVE_DEVICE_FLUSH_SECONDS:
+        return
+    _live_device_flush_at[src_ip] = now
+
     from app.websocket.live_updates import broadcast
     try:
+        async with AsyncSessionLocal() as db:
+            await crud.upsert_device_details(
+                db,
+                src_ip,
+                mac_address=payload.get("mac_address"),
+                hostname=payload.get("hostname"),
+                vendor=payload.get("vendor"),
+                open_ports=payload.get("open_ports"),
+            )
+            await db.commit()
+
         await broadcast({
             "type": "device_seen",
-            "ip": payload.get("src_ip"),
+            "ip": src_ip,
             "mac": payload.get("mac_address"),
             "hostname": payload.get("hostname"),
             "vendor": payload.get("vendor"),
@@ -146,6 +221,8 @@ async def _persist_packet(payload: dict, threat_type: str | None = None,
                           risk_score: float | None = None,
                           action_taken: str | None = None) -> None:
     """Store a captured packet to the DB for forensic inspection."""
+    if not _should_persist_packet(payload, threat=threat_type is not None):
+        return
     try:
         async with AsyncSessionLocal() as db:
             await crud.store_captured_packet(
@@ -156,7 +233,33 @@ async def _persist_packet(payload: dict, threat_type: str | None = None,
                 dst_port=payload.get("dst_port"),
                 protocol=payload.get("protocol", "other"),
                 pkt_len=payload.get("pkt_len"),
+                payload_len=payload.get("payload_len"),
+                direction=payload.get("direction"),
+                src_mac=payload.get("src_mac"),
+                dst_mac=payload.get("dst_mac"),
+                ip_version=payload.get("ip_version"),
+                ip_ttl=payload.get("ip_ttl"),
+                ip_tos=payload.get("ip_tos"),
+                ip_id=payload.get("ip_id"),
+                ip_flags=payload.get("ip_flags"),
+                frag_offset=payload.get("frag_offset"),
                 flags=payload.get("flags"),
+                tcp_seq=payload.get("tcp_seq"),
+                tcp_ack=payload.get("tcp_ack"),
+                tcp_window=payload.get("tcp_window"),
+                tcp_options=payload.get("tcp_options"),
+                udp_len=payload.get("udp_len"),
+                icmp_type=payload.get("icmp_type"),
+                icmp_code=payload.get("icmp_code"),
+                payload_preview=payload.get("payload_preview"),
+                payload_text=payload.get("payload_text"),
+                http_method=payload.get("http_method"),
+                http_host=payload.get("http_host"),
+                http_path=payload.get("http_path"),
+                http_user_agent=payload.get("http_user_agent"),
+                http_content_type=payload.get("http_content_type"),
+                http_body_preview=payload.get("http_body_preview"),
+                http_form_fields=payload.get("http_form_fields"),
                 is_syn=payload.get("is_syn", False),
                 is_ack=payload.get("is_ack", False),
                 is_rst=payload.get("is_rst", False),
@@ -180,15 +283,13 @@ async def _handle_threat_packet_persist(payload: dict) -> None:
 
 
 async def _handle_sample_normal_packet(payload: dict) -> None:
-    """Sample 1 in 100 normal packets for baseline inspection."""
+    """Persist live packets so the inspector shows real traffic immediately."""
     global _packet_sample_counter
     _packet_sample_counter += 1
-    if _packet_sample_counter % 100 == 0:
-        await _persist_packet(payload)
+    await _persist_packet(payload)
 
 
 event_bus.subscribe("report_event", _handle_report_event)
 event_bus.subscribe("device_seen", _handle_device_seen_ws)
 event_bus.subscribe("report_event", _handle_threat_packet_persist)
 event_bus.subscribe("device_seen", _handle_sample_normal_packet)
-

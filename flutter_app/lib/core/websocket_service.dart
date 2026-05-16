@@ -5,8 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 class WebSocketService extends ChangeNotifier {
-  // localhost default for dev
-  static const _defaultWsBase = 'ws://localhost:8000/ws/live';
+  static String get _defaultWsBase => '${_defaultWsUrl()}/ws/live';
 
   String _wsBase = _defaultWsBase;
   WebSocketChannel? _channel;
@@ -133,4 +132,14 @@ class WebSocketService extends ChangeNotifier {
     disconnect();
     super.dispose();
   }
+}
+
+String _defaultWsUrl() {
+  final current = Uri.base;
+  if (current.hasScheme && current.host.isNotEmpty) {
+    final wsScheme = current.scheme == 'https' ? 'wss' : 'ws';
+    final port = current.hasPort ? ':${current.port}' : '';
+    return '$wsScheme://${current.host}$port';
+  }
+  return 'ws://localhost:8001';
 }

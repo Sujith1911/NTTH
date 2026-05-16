@@ -57,8 +57,8 @@ class Settings(BaseSettings):
 
     # ── IDS / Risk thresholds ─────────────────────────────────────
     risk_log_threshold: float = 0.2
-    risk_rate_limit_threshold: float = 0.35
-    risk_honeypot_threshold: float = 0.45
+    risk_rate_limit_threshold: float = 0.6
+    risk_honeypot_threshold: float = 0.85
     risk_block_threshold: float = 0.95
 
     # ── Rule engine ───────────────────────────────────────────────
@@ -83,15 +83,6 @@ class Settings(BaseSettings):
     cowrie_log_path: str = "/cowrie_logs/cowrie.json"
     http_honeypot_port: int = 8888
     http_honeypot_host: str = "0.0.0.0"
-
-    # ── WiFi / Wireless monitoring ────────────────────────────────
-    wifi_enabled: bool = True
-    wifi_interface: str = "wlan0mon"      # auto-updated at runtime by auto_monitor
-    wifi_channels: list[int] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
-    wifi_hop_interval: float = 0.5        # seconds between channel hops
-    deauth_threshold: int = 5             # deauth frames before alert
-    deauth_window_seconds: int = 10       # rolling window for deauth detection
-    ap_whitelist_ssids: list[str] = []    # known-good AP SSIDs (rogue AP whitelist)
 
     # ── Logging ───────────────────────────────────────────────────
     log_level: str = "INFO"

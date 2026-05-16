@@ -6,7 +6,6 @@ Tables: users, devices, device_stats, threat_events,
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
 
 from sqlalchemy import (
     Boolean, Column, DateTime, Float, ForeignKey,
@@ -15,6 +14,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 
 from app.database.session import Base
+from app.core.time_utils import utc_now_naive
 
 
 def _uuid() -> str:
@@ -31,7 +31,7 @@ class User(Base):
     hashed_password = Column(String(128), nullable=False)
     role = Column(String(16), nullable=False, default="user")  # "admin" | "user"
     is_active = Column(Boolean, default=True, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=utc_now_naive, nullable=False)
     last_login = Column(DateTime, nullable=True)
 
 
@@ -45,8 +45,9 @@ class Device(Base):
     mac_address = Column(String(17), nullable=True)
     hostname = Column(String(128), nullable=True)
     vendor = Column(String(128), nullable=True)
-    first_seen = Column(DateTime, default=datetime.utcnow, nullable=False)
-    last_seen = Column(DateTime, default=datetime.utcnow, nullable=False)
+    open_ports = Column(Text, nullable=True)  # JSON list of open ports, e.g. "[22, 80, 443]"
+    first_seen = Column(DateTime, default=utc_now_naive, nullable=False)
+    last_seen = Column(DateTime, default=utc_now_naive, nullable=False)
     is_trusted = Column(Boolean, default=False, nullable=False)
     risk_score = Column(Float, default=0.0, nullable=False)
 
@@ -59,7 +60,7 @@ class DeviceStat(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     device_id = Column(String(36), ForeignKey("devices.id", ondelete="CASCADE"), nullable=False)
-    recorded_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    recorded_at = Column(DateTime, default=utc_now_naive, nullable=False)
     packet_count = Column(Integer, default=0)
     byte_count = Column(Integer, default=0)
     unique_ports = Column(Integer, default=0)
@@ -93,7 +94,7 @@ class ThreatEvent(Base):
     latitude = Column(Float, nullable=True)
     longitude = Column(Float, nullable=True)
 
-    detected_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    detected_at = Column(DateTime, default=utc_now_naive, nullable=False)
     acknowledged = Column(Boolean, default=False, nullable=False)
     acknowledged_by = Column(String(64), nullable=True)
     notes = Column(Text, nullable=True)
@@ -148,7 +149,7 @@ class FirewallRule(Base):
     is_active = Column(Boolean, default=True, nullable=False)
     created_by = Column(String(64), nullable=True)  # "system" | username
     expires_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=utc_now_naive, nullable=False)
     removed_at = Column(DateTime, nullable=True)
     reason = Column(Text, nullable=True)
 
@@ -163,7 +164,7 @@ class SystemLog(Base):
     component = Column(String(64), nullable=False)
     message = Column(Text, nullable=False)
     extra = Column(Text, nullable=True)  # JSON blob for arbitrary key-value pairs
-    logged_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    logged_at = Column(DateTime, default=utc_now_naive, nullable=False, index=True)
 
 
 # ── Captured Packets ──────────────────────────────────────────────────────────
@@ -182,11 +183,37 @@ class CapturedPacket(Base):
     dst_port = Column(Integer, nullable=True)
     protocol = Column(String(8), nullable=False)  # tcp | udp | icmp | other
     pkt_len = Column(Integer, nullable=True)
+    payload_len = Column(Integer, nullable=True)
+    direction = Column(String(16), nullable=True)  # inbound | outbound | internal | external
+    src_mac = Column(String(17), nullable=True)
+    dst_mac = Column(String(17), nullable=True)
+    ip_version = Column(Integer, nullable=True)
+    ip_ttl = Column(Integer, nullable=True)
+    ip_tos = Column(Integer, nullable=True)
+    ip_id = Column(Integer, nullable=True)
+    ip_flags = Column(String(16), nullable=True)
+    frag_offset = Column(Integer, nullable=True)
     flags = Column(String(16), nullable=True)  # TCP flags string e.g. "S", "SA", "A"
+    tcp_seq = Column(Integer, nullable=True)
+    tcp_ack = Column(Integer, nullable=True)
+    tcp_window = Column(Integer, nullable=True)
+    tcp_options = Column(Text, nullable=True)
+    udp_len = Column(Integer, nullable=True)
+    icmp_type = Column(Integer, nullable=True)
+    icmp_code = Column(Integer, nullable=True)
+    payload_preview = Column(Text, nullable=True)
+    payload_text = Column(Text, nullable=True)
+    http_method = Column(String(12), nullable=True)
+    http_host = Column(String(255), nullable=True)
+    http_path = Column(Text, nullable=True)
+    http_user_agent = Column(Text, nullable=True)
+    http_content_type = Column(String(255), nullable=True)
+    http_body_preview = Column(Text, nullable=True)
+    http_form_fields = Column(Text, nullable=True)
     is_syn = Column(Boolean, default=False, nullable=False)
     is_ack = Column(Boolean, default=False, nullable=False)
     is_rst = Column(Boolean, default=False, nullable=False)
     threat_type = Column(String(64), nullable=True)  # null for normal traffic
     risk_score = Column(Float, nullable=True)
     action_taken = Column(String(32), nullable=True)  # log | rate_limit | honeypot | block
-    captured_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    captured_at = Column(DateTime, default=utc_now_naive, nullable=False, index=True)

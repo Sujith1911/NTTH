@@ -1,9 +1,10 @@
 """
-Windows-compatible network scanner.
+Windows-compatible network scanner with port scanning.
 Uses:
   1. ARP via scapy (if Npcap installed + admin privileges)
   2. ICMP ping fallback (pure Python, no admin needed)
   3. MAC OUI lookup for vendor names
+  4. TCP connect scan for open port detection on all devices
 Populates the device DB with all live hosts on the local subnet.
 """
 from __future__ import annotations
@@ -22,6 +23,7 @@ from typing import Optional
 from app.config import get_settings
 from app.core.event_bus import publish
 from app.core.logger import get_logger
+from app.core.time_utils import local_now_iso
 from app.database import crud
 from app.database.session import AsyncSessionLocal
 
@@ -159,6 +161,14 @@ def is_managed_asset_ip(ip: str) -> bool:
         parsed = ipaddress.ip_address(ip)
     except ValueError:
         return False
+    if (
+        parsed.is_multicast
+        or parsed.is_unspecified
+        or parsed.is_loopback
+        or str(parsed).endswith(".255")
+        or str(parsed).endswith(".0")
+    ):
+        return False
 
     network = _choose_scan_network()
     if network is not None:
@@ -176,23 +186,75 @@ async def _resolve_hostname(ip: str) -> Optional[str]:
         return None
 
 
+# ── Common attack ports to scan on each discovered device ─────────────────────
+_SCAN_PORTS = [
+    21, 22, 23, 25, 53, 80, 110, 111, 135, 139, 143, 443, 445,
+    993, 995, 1433, 1723, 3306, 3389, 5432, 5900, 5985, 6379,
+    8080, 8443, 8888, 9200, 27017,
+]
+
+# Per-device open ports cache (ip → list of open ports)
+_device_open_ports: dict[str, list[int]] = {}
+
+
+async def _tcp_connect_scan(ip: str, port: int, timeout: float = 0.8) -> bool:
+    """Fast TCP connect scan — returns True if port is open."""
+    try:
+        _, writer = await asyncio.wait_for(
+            asyncio.open_connection(ip, port),
+            timeout=timeout,
+        )
+        writer.close()
+        await writer.wait_closed()
+        return True
+    except Exception:
+        return False
+
+
+async def _scan_ports(ip: str, ports: list[int] | None = None) -> list[int]:
+    """Scan a list of common ports on a single host. Returns list of open ports."""
+    target_ports = ports or _SCAN_PORTS
+    sem = asyncio.Semaphore(20)  # Limit concurrent connections per host
+
+    async def _check(port: int) -> int | None:
+        async with sem:
+            is_open = await _tcp_connect_scan(ip, port)
+            return port if is_open else None
+
+    results = await asyncio.gather(*[_check(p) for p in target_ports])
+    open_ports = [p for p in results if p is not None]
+    _device_open_ports[ip] = open_ports
+    return open_ports
+
+
+def get_device_open_ports(ip: str) -> list[int]:
+    """Return cached open ports for a device."""
+    return _device_open_ports.get(ip, [])
+
+
+def get_all_device_ports() -> dict[str, list[int]]:
+    """Return all cached device port scan results."""
+    return dict(_device_open_ports)
+
+
 async def scan_network() -> list[dict]:
     """
     Full network scan:
      1. Ping entire /24 subnet concurrently
      2. Read ARP table for MACs
      3. Resolve hostnames
-     4. Emit device_seen events for each live host
+     4. Port-scan each live host for common attack ports
+     5. Emit device_seen events for each live host
     Returns list of discovered device dicts.
     """
     global _scan_running, _last_scan_started_at, _last_scan_completed_at, _last_scan_device_count
     _scan_running = True
-    _last_scan_started_at = datetime.utcnow().isoformat()
+    _last_scan_started_at = local_now_iso()
     log.info("network_scanner.start")
     hosts = _get_local_network()
     if not hosts:
         log.warning("network_scanner.no_hosts_found")
-        _last_scan_completed_at = datetime.utcnow().isoformat()
+        _last_scan_completed_at = local_now_iso()
         _last_scan_device_count = 0
         _scan_running = False
         return []
@@ -207,10 +269,30 @@ async def scan_network() -> list[dict]:
 
     results = await asyncio.gather(*[_ping_guarded(h) for h in hosts])
     live_ips = [r for r in results if r is not None]
+
+    # Filter out broadcast (.255), network (.0), and multicast addresses
+    live_ips = [
+        ip for ip in live_ips
+        if not ip.endswith(".255") and not ip.endswith(".0")
+        and not ip.startswith("224.") and not ip.startswith("239.")
+    ]
     log.info("network_scanner.ping_done", alive=len(live_ips), total=len(hosts))
 
     # Read ARP cache for MACs (populated by pings)
     arp = _arp_table()
+
+    # Port-scan all live hosts in parallel
+    port_results = {}
+    if live_ips:
+        log.info("network_scanner.port_scan_start", hosts=len(live_ips), ports=len(_SCAN_PORTS))
+        scan_tasks = {ip: asyncio.create_task(_scan_ports(ip)) for ip in live_ips}
+        for ip, task in scan_tasks.items():
+            try:
+                port_results[ip] = await asyncio.wait_for(task, timeout=30)
+            except asyncio.TimeoutError:
+                port_results[ip] = []
+        total_open = sum(len(v) for v in port_results.values())
+        log.info("network_scanner.port_scan_done", total_open_ports=total_open)
 
     # Build device list
     devices = []
@@ -219,11 +301,13 @@ async def scan_network() -> list[dict]:
             mac = arp.get(ip)
             hostname = await _resolve_hostname(ip)
             vendor = _vendor_from_mac(mac)
+            open_ports = port_results.get(ip, [])
             device = {
                 "src_ip": ip,
                 "mac_address": mac,
                 "hostname": hostname,
                 "vendor": vendor,
+                "open_ports": open_ports,
                 "pkt_len": 0,
                 "protocol": "arp_scan",
                 "dst_port": None,
@@ -232,7 +316,7 @@ async def scan_network() -> list[dict]:
                 "is_syn": False,
                 "is_ack": False,
                 "is_rst": False,
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": local_now_iso(),
             }
             devices.append(device)
             await crud.upsert_device_details(
@@ -241,12 +325,38 @@ async def scan_network() -> list[dict]:
                 mac_address=mac,
                 hostname=hostname,
                 vendor=vendor,
+                open_ports=open_ports,
             )
             # Publish so the threat_agent / device registry processes it
             await publish("device_seen", device)
+
+            # Log open ports for each device
+            if open_ports:
+                log.info("network_scanner.device_ports",
+                         ip=ip, hostname=hostname, open_ports=open_ports)
+        subnet = get_effective_scan_subnet()
+        if subnet:
+            preserve_ips = {
+                ip
+                for ip in (settings.server_display_ip, settings.gateway_ip)
+                if ip
+            }
+            removed_stale = await crud.purge_unseen_devices_in_subnet(
+                db,
+                subnet,
+                set(live_ips) | preserve_ips,
+                preserve_ips=preserve_ips,
+            )
+            removed_invalid = await crud.purge_invalid_devices(db, subnet)
+            if removed_stale or removed_invalid:
+                log.info(
+                    "network_scanner.removed_stale_devices",
+                    stale=removed_stale,
+                    invalid=removed_invalid,
+                )
         await db.commit()
 
-    _last_scan_completed_at = datetime.utcnow().isoformat()
+    _last_scan_completed_at = local_now_iso()
     _last_scan_device_count = len(devices)
     _scan_running = False
     log.info("network_scanner.done", devices=len(devices))
@@ -272,7 +382,7 @@ def update_live_stats(features: dict) -> None:
     ip = features.get("src_ip", "")
     if not ip:
         return
-    now = datetime.utcnow().isoformat()
+    now = local_now_iso()
     entry = _live_stats.setdefault(ip, {
         "ip": ip, "first_seen": now, "last_seen": now,
         "bytes_in": 0, "bytes_out": 0,

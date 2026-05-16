@@ -35,6 +35,9 @@ class _NetworkTopologyScreenState extends State<NetworkTopologyScreen>
   Offset _lastPanStart = Offset.zero;
   double _scale = 1.0;
 
+  // Per-node drag state
+  String? _draggingNodeId;
+
   // Layout positions for nodes
   final Map<String, Offset> _nodePositions = {};
 
@@ -160,35 +163,48 @@ class _NetworkTopologyScreenState extends State<NetworkTopologyScreen>
   void _layoutNodes(Map<String, dynamic> topo) {
     final nodes = (topo['nodes'] as List? ?? []).cast<Map<String, dynamic>>();
     final size = MediaQuery.of(context).size;
-    final cx = size.width / 2;
-    final cy = size.height / 2.2;
+    final cx = size.width / 2.8;
+    final cy = size.height / 2.5;
 
-    _nodePositions['gateway'] = Offset(cx, cy - 180);
-    _nodePositions['server'] = Offset(cx, cy);
-    _nodePositions['honeypot'] = Offset(cx + 200, cy);
+    // Fixed infrastructure nodes — spread out
+    if (!_nodePositions.containsKey('gateway')) {
+      _nodePositions['gateway'] = Offset(cx, cy - 160);
+    }
+    if (!_nodePositions.containsKey('server')) {
+      _nodePositions['server'] = Offset(cx - 100, cy + 40);
+    }
+    if (!_nodePositions.containsKey('honeypot')) {
+      _nodePositions['honeypot'] = Offset(cx + 100, cy + 40);
+    }
 
     final deviceNodes = nodes.where((n) => n['type'] == 'device').toList();
     final attackerNodes = nodes.where((n) => n['type'] == 'attacker').toList();
 
+    // Spread devices in a wider arc below the server
     for (int i = 0; i < deviceNodes.length; i++) {
-      final angle =
-          math.pi * (i / math.max(deviceNodes.length - 1, 1)) + math.pi;
-      const radius = 220.0;
       final id = deviceNodes[i]['id'] as String;
       if (!_nodePositions.containsKey(id)) {
+        final totalDevices = math.max(deviceNodes.length, 1);
+        // Full semicircle below with generous spacing
+        final angleRange = math.pi * 0.8;
+        final startAngle = math.pi + (math.pi - angleRange) / 2;
+        final angle =
+            startAngle + angleRange * (i / math.max(totalDevices - 1, 1));
+        const radius = 260.0;
         _nodePositions[id] = Offset(
           cx + radius * math.cos(angle),
-          cy + radius * math.sin(angle),
+          cy + radius * math.sin(angle) + 60,
         );
       }
     }
 
+    // Attackers spread out to the right
     for (int i = 0; i < attackerNodes.length; i++) {
       final id = attackerNodes[i]['id'] as String;
       if (!_nodePositions.containsKey(id)) {
         _nodePositions[id] = Offset(
-          cx + 300 + (i % 3) * 80.0,
-          cy - 180 + (i ~/ 3) * 70.0,
+          cx + 320 + (i % 3) * 100.0,
+          cy - 160 + (i ~/ 3) * 100.0,
         );
       }
     }
@@ -397,29 +413,49 @@ class _NetworkTopologyScreenState extends State<NetworkTopologyScreen>
     final edges =
         (_topology?['edges'] as List? ?? []).cast<Map<String, dynamic>>();
 
+    String? hitTestNode(Offset localPos) {
+      final canvasPos = (localPos - _panOffset) / _scale;
+      for (final node in nodes) {
+        final id = node['id'] as String;
+        final pos = _nodePositions[id];
+        if (pos != null && (canvasPos - pos).distance < 36) {
+          return id;
+        }
+      }
+      return null;
+    }
+
     return GestureDetector(
       onScaleStart: (d) {
-        _lastPanStart = d.focalPoint - _panOffset;
+        // Check if user is dragging a node
+        final hitId = hitTestNode(d.focalPoint);
+        if (hitId != null) {
+          _draggingNodeId = hitId;
+        } else {
+          _draggingNodeId = null;
+          _lastPanStart = d.focalPoint - _panOffset;
+        }
       },
       onScaleUpdate: (d) {
         setState(() {
-          _panOffset = d.focalPoint - _lastPanStart;
-          _scale = (_scale * d.scale).clamp(0.4, 2.5);
-        });
-      },
-      onTapUp: (d) {
-        final localPos = (d.localPosition - _panOffset) / _scale;
-        String? hit;
-        for (final node in nodes) {
-          final id = node['id'] as String;
-          final pos = _nodePositions[id];
-          if (pos != null) {
-            if ((localPos - pos).distance < 36) {
-              hit = id;
-              break;
+          if (_draggingNodeId != null) {
+            // Move the node
+            final canvasPos = (d.focalPoint - _panOffset) / _scale;
+            _nodePositions[_draggingNodeId!] = canvasPos;
+          } else {
+            // Pan canvas
+            _panOffset = d.focalPoint - _lastPanStart;
+            if (d.scale != 1.0) {
+              _scale = (_scale * d.scale).clamp(0.4, 2.5);
             }
           }
-        }
+        });
+      },
+      onScaleEnd: (_) {
+        _draggingNodeId = null;
+      },
+      onTapUp: (d) {
+        final hit = hitTestNode(d.localPosition);
         setState(() => _selectedNodeId = hit == _selectedNodeId ? null : hit);
       },
       child: Container(
@@ -568,6 +604,80 @@ class _NetworkTopologyScreenState extends State<NetworkTopologyScreen>
         ]),
       );
 
+  Future<void> _clearDeviceRisk(String deviceId) async {
+    try {
+      final api = context.read<AuthService>().api;
+      await api.post('/devices/$deviceId/clear-risk', {});
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Risk cleared & device unblocked'),
+            backgroundColor: Colors.green),
+      );
+      await _fetchTopology();
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  Future<void> _showRiskDetails(Map<String, dynamic> node) async {
+    final details = (node['risk_details'] as List? ?? [])
+        .whereType<Map>()
+        .map((e) => e.cast<String, dynamic>())
+        .toList();
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Risk details - ${node['ip'] ?? ''}'),
+        content: SizedBox(
+          width: 520,
+          child: details.isEmpty
+              ? const Text('No recent threat events explain this risk score.')
+              : SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: details
+                        .map((detail) => Padding(
+                              padding: const EdgeInsets.only(bottom: 14),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    '${detail['threat_type'] ?? 'unknown'}  •  ${((detail['risk_score'] as num? ?? 0) * 100).toStringAsFixed(0)}%',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  ...((detail['reasons'] as List? ?? [])
+                                      .map((reason) => Padding(
+                                            padding: const EdgeInsets.only(
+                                                bottom: 3),
+                                            child: Text(
+                                              '- $reason',
+                                              style:
+                                                  const TextStyle(fontSize: 12),
+                                            ),
+                                          ))),
+                                ],
+                              ),
+                            ))
+                        .toList(),
+                  ),
+                ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _nodeDetailCard(Map<String, dynamic> node, ThemeData theme) {
     final type = node['type'] as String? ?? '';
     final live = node['live'] as Map<String, dynamic>? ?? {};
@@ -577,6 +687,8 @@ class _NetworkTopologyScreenState extends State<NetworkTopologyScreen>
         : riskScore > 0.5
             ? Colors.orange
             : theme.colorScheme.primary;
+    final deviceId = node['device_id']?.toString();
+    final openPorts = node['open_ports'] as List? ?? [];
 
     return GlassyContainer(
       padding: const EdgeInsets.all(12),
@@ -591,9 +703,15 @@ class _NetworkTopologyScreenState extends State<NetworkTopologyScreen>
         if (node['country'] != null)
           _infoRow('Country', node['country'].toString(), theme),
         _infoRow('Type', type, theme),
+        if (openPorts.isNotEmpty)
+          _infoRow('Open Ports', openPorts.join(', '), theme),
         if (type == 'device') ...[
           _infoRow('Trusted', node['is_trusted'] == true ? 'Yes' : 'No', theme),
           _infoRow('Blocked', node['is_blocked'] == true ? 'Yes' : 'No', theme),
+          if (node['is_throttled'] == true)
+            _infoRow('Rate limited', 'Yes', theme),
+          if (node['is_redirected'] == true)
+            _infoRow('Redirected', 'Yes', theme),
           const SizedBox(height: 6),
           Text('Risk Score',
               style: TextStyle(
@@ -612,6 +730,40 @@ class _NetworkTopologyScreenState extends State<NetworkTopologyScreen>
           Text('${(riskScore * 100).toInt()}%',
               style: TextStyle(
                   color: riskColor, fontSize: 11, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              icon: const Icon(Icons.info_outline, size: 14),
+              label: const Text('Risk Details', style: TextStyle(fontSize: 11)),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8)),
+              ),
+              onPressed: () => _showRiskDetails(node),
+            ),
+          ),
+          // Clear Risk / Unblock button
+          if (riskScore > 0 && deviceId != null) ...[
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                icon: const Icon(Icons.shield_outlined, size: 14),
+                label: const Text('Clear Risk & Unblock',
+                    style: TextStyle(fontSize: 11)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green.shade700,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8)),
+                ),
+                onPressed: () => _clearDeviceRisk(deviceId),
+              ),
+            ),
+          ],
         ],
         if (type == 'honeypot') ...[
           _infoRow('Active Sessions', '${node['active_sessions'] ?? 0}', theme),

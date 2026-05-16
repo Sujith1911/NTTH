@@ -1,131 +1,101 @@
-# Packet Sniffing And Attack Detection
+# Packet Sniffing & Attack Detection
 
-This file explains how the app observes traffic, extracts features, and turns them into threat events.
+> Last updated: 2026-05-02
 
-## 1. Main Files
+## Traffic Capture Pipeline
 
-- `backend/app/monitor/packet_sniffer.py`
-- `backend/app/monitor/feature_extractor.py`
-- `backend/app/monitor/device_registry.py`
-- `backend/app/ids/rule_engine.py`
-- `backend/app/ids/anomaly_model.py`
-- `backend/app/ids/risk_calculator.py`
-- `backend/app/agents/threat_agent.py`
+### Main NIC Sniffer (`app/monitor/packet_sniffer.py`)
+- **Interface**: `wlp0s20f3` (main WiFi, managed mode)
+- **Mode**: Promiscuous (`promisc=True`)
+- **BPF Filter**: `ip` (all IP traffic)
+- **Engine**: Scapy `AsyncSniffer` — runs in thread-pool executor
+- **Callback**: Each packet → `extract_features()` → `device_seen` event
 
-## 2. Packet Sniffing Purpose
+### AR9271 WiFi Sniffer (`app/wireless/wifi_sniffer.py`)
+- **Interface**: `wlx24ec99bfe292` (USB adapter, monitor mode)
+- **Mode**: 802.11 raw frame capture
+- **Captures**: Beacons, probe requests, deauth frames
+- **Channel Hopping**: Cycles channels 1-13 every 0.5s
 
-The sniffer is the first live input point for the system.
+### Network Scanner (`app/monitor/network_scanner.py`)
+- **Method**: ICMP ping sweep → ARP cache → hostname resolution
+- **Frequency**: Every 60 seconds
+- **Subnet**: `10.223.251.0/24` (auto-detected)
+- **Port Scanning**: 28 common ports per discovered device
+- **Ports Scanned**: 21, 22, 23, 25, 53, 80, 110, 111, 135, 139, 143, 443, 445, 993, 995, 1433, 1723, 3306, 3389, 5432, 5900, 5985, 6379, 8080, 8443, 8888, 9200, 27017
 
-Its job is to:
+## Feature Extraction (`app/monitor/feature_extractor.py`)
 
-- capture packets
-- normalize useful fields
-- update live device state
-- publish packet-derived events into the event bus
+Each packet is parsed into 8 features:
 
-## 3. Sniffer Flow
+| Feature | Type | Description |
+|---------|------|-------------|
+| `src_ip` | str | Source IP address |
+| `dst_ip` | str | Destination IP address |
+| `pkt_len` | int | Packet length in bytes |
+| `protocol` | str | tcp / udp / icmp / other |
+| `dst_port` | int | Destination port |
+| `src_port` | int | Source port |
+| `flags` | str | TCP flags (SYN, ACK, RST, etc.) |
+| `is_syn` / `is_ack` / `is_rst` | bool | Flag decomposition |
 
-```mermaid
-flowchart LR
-    A[Scapy packet capture] --> B[extract_features]
-    B --> C[update_live_stats]
-    B --> D[device_registry.update]
-    B --> E[event_bus.publish device_seen]
-    E --> F[Threat Agent]
+## IDS Rule Engine (`app/ids/rule_engine.py`)
+
+### Port Scan Detection
+- **Window**: 15 seconds sliding
+- **Threshold**: 4+ unique destination ports from same source
+- **Score**: 0.6-0.9 based on port count
+
+### SYN Flood Detection
+- **Window**: 1 second
+- **Threshold**: 30+ SYN packets/second from same source
+- **Score**: 0.8-1.0 based on rate
+
+### Brute Force Detection
+- **Window**: 120 seconds
+- **Threshold**: 3+ connection attempts to auth ports (21, 22, 23, 3389, 5900)
+- **Score**: 0.7-0.95 based on attempt count
+
+## ML Anomaly Model (`app/ids/anomaly_model.py`)
+
+- **Algorithm**: Isolation Forest (scikit-learn)
+- **Trees**: 200 estimators
+- **Training**: Auto-trains on first 500 normal packets
+- **Features**: pkt_len, dst_port, is_syn, is_ack, is_rst, protocol_encoded
+- **Output**: Anomaly score 0.0-1.0
+
+## Risk Calculation (`app/ids/risk_calculator.py`)
+
+```
+risk_score = 0.6 × rule_score + 0.4 × ml_score
 ```
 
-## 4. How The Sniffer Starts
+| Risk Score | Action |
+|-----------|--------|
+| < 0.2 | Allow (no action) |
+| 0.2 - 0.35 | Log |
+| 0.35 - 0.45 | Rate Limit |
+| 0.45 - 0.95 | Honeypot Redirect |
+| ≥ 0.95 | Block |
 
-The sniffer is started by `backend/app/main.py` during application startup.
+## Data Flow
 
-It tries to:
-
-- import Scapy
-- check whether capture is supported
-- choose an interface
-- run an `AsyncSniffer`
-
-## 5. Interface Selection
-
-The sniffer uses:
-
-- the configured `NETWORK_INTERFACE`, or
-- a detected best interface if needed
-
-On Windows, the code tries to avoid virtual-only interfaces and prefers private active interfaces.
-
-On Ubuntu gateway mode, you should explicitly set the protected or relevant interface.
-
-## 6. Packet Feature Extraction
-
-Even though not every packet field is stored directly, the project extracts the fields needed for:
-
-- source IP
-- destination IP
-- destination port
-- protocol
-- timing and behavior patterns
-
-These become the `features` object passed through the rest of the pipeline.
-
-## 7. Rule-Based Detection
-
-The rule engine looks for suspicious behavior such as:
-
-- port scanning
-- brute-force style repeated access
-- heavy connection bursts
-
-This gives a `rule_score` and `threat_type`.
-
-## 8. ML-Based Detection
-
-The anomaly model adds an ML score on top of the rule score.
-
-This is useful for:
-
-- spotting abnormal patterns not fully covered by fixed rules
-- improving sensitivity over time
-
-## 9. Risk Calculation
-
-The risk calculator combines:
-
-- rule score
-- ML score
-
-Then it chooses a base action:
-
-- allow
-- log
-- rate_limit
-- honeypot
-- block
-
-## 10. Threat Agent Role
-
-The Threat Agent is the first real "security brain" after raw packet capture.
-
-It:
-
-- receives `device_seen`
-- updates registry state
-- runs the IDS pipeline
-- enriches with GeoIP when possible
-- publishes `threat_detected`
-
-## 11. Catching Attackers In Practice
-
-The system "catches attackers" in layers:
-
-1. it sees source and destination behavior
-2. it recognizes suspicious patterns
-3. it scores the threat
-4. it records the event
-5. it can redirect or block the source
-
-## 12. Important Deployment Note
-
-Packet capture alone does not guarantee transparent defense.
-
-To both detect and actively divert attackers, the enforcement host must sit in the network path.
+```
+Packet → Feature Extractor → Threat Agent (IDS + ML + GeoIP)
+                                    │
+                                    ▼ risk > 0.2
+                              Decision Agent
+                                    │
+                    ┌───────────────┼──────────────┐
+                    ▼               ▼              ▼
+              Rate Limit      Honeypot          Block
+              (nftables)    (redirect +       (nftables
+                           auto-deploy)        drop)
+                                    │
+                                    ▼
+                            Reporting Agent
+                            (DB + WebSocket)
+                                    │
+                                    ▼
+                            Flutter Dashboard
+```

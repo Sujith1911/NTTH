@@ -5,12 +5,14 @@ These are thin data-access functions — business logic stays in agents/routes.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta
+from datetime import datetime
+from ipaddress import ip_address, ip_network
 from typing import Optional, Sequence
 
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.time_utils import utc_now_naive
 from app.database.models import (
     CapturedPacket, Device, DeviceStat, FirewallRule, HoneypotSession,
     SystemLog, ThreatEvent, User,
@@ -39,7 +41,7 @@ async def create_user(db: AsyncSession, username: str, hashed_password: str, rol
 
 async def update_last_login(db: AsyncSession, user_id: str) -> None:
     await db.execute(
-        update(User).where(User.id == user_id).values(last_login=datetime.utcnow())
+        update(User).where(User.id == user_id).values(last_login=utc_now_naive())
     )
 
 
@@ -50,7 +52,7 @@ async def get_or_create_device(db: AsyncSession, ip_address: str) -> tuple[Devic
     result = await db.execute(select(Device).where(Device.ip_address == ip_address))
     device = result.scalar_one_or_none()
     if device:
-        device.last_seen = datetime.utcnow()
+        device.last_seen = utc_now_naive()
         return device, False
     device = Device(ip_address=ip_address)
     db.add(device)
@@ -67,10 +69,12 @@ async def upsert_device_details(
     hostname: Optional[str] = None,
     vendor: Optional[str] = None,
     risk_score: Optional[float] = None,
+    open_ports: Optional[list[int]] = None,
 ) -> tuple[Device, bool]:
     """Create or update a device row with the latest discovered metadata."""
+    import json
     device, created = await get_or_create_device(db, ip_address)
-    device.last_seen = datetime.utcnow()
+    device.last_seen = utc_now_naive()
     if mac_address:
         device.mac_address = mac_address
     if hostname:
@@ -79,13 +83,28 @@ async def upsert_device_details(
         device.vendor = vendor
     if risk_score is not None:
         device.risk_score = risk_score
+    if open_ports is not None:
+        device.open_ports = json.dumps(open_ports)
     return device, created
 
 
 async def list_devices(db: AsyncSession, page: int = 1, page_size: int = 50) -> tuple[int, Sequence[Device]]:
-    count_q = select(func.count()).select_from(Device)
+    valid_host_filters = (
+        ~Device.ip_address.like("%.255"),
+        ~Device.ip_address.like("%.0"),
+        ~Device.ip_address.like("224.%"),
+        ~Device.ip_address.like("239.%"),
+        ~Device.ip_address.like("127.%"),
+    )
+    count_q = select(func.count()).select_from(Device).where(*valid_host_filters)
     total = (await db.execute(count_q)).scalar_one()
-    q = select(Device).offset((page - 1) * page_size).limit(page_size).order_by(Device.last_seen.desc())
+    q = (
+        select(Device)
+        .where(*valid_host_filters)
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .order_by(Device.last_seen.desc())
+    )
     rows = (await db.execute(q)).scalars().all()
     return total, rows
 
@@ -296,14 +315,30 @@ async def deactivate_firewall_rule(db: AsyncSession, rule_id: str) -> Optional[F
     rule = result.scalar_one_or_none()
     if rule:
         rule.is_active = False
-        rule.removed_at = datetime.utcnow()
+        rule.removed_at = utc_now_naive()
     return rule
 
 
 async def deactivate_all_firewall_rules(db: AsyncSession) -> int:
     result = await db.execute(select(FirewallRule).where(FirewallRule.is_active == True))  # noqa: E712
     rules = result.scalars().all()
-    now = datetime.utcnow()
+    now = utc_now_naive()
+    for rule in rules:
+        rule.is_active = False
+        rule.removed_at = now
+    return len(rules)
+
+
+async def deactivate_firewall_rules_for_ip(db: AsyncSession, target_ip: str) -> int:
+    """Mark every active firewall rule for an IP inactive."""
+    result = await db.execute(
+        select(FirewallRule).where(
+            FirewallRule.target_ip == target_ip,
+            FirewallRule.is_active == True,  # noqa: E712
+        )
+    )
+    rules = result.scalars().all()
+    now = utc_now_naive()
     for rule in rules:
         rule.is_active = False
         rule.removed_at = now
@@ -311,7 +346,7 @@ async def deactivate_all_firewall_rules(db: AsyncSession) -> int:
 
 
 async def get_expired_firewall_rules(db: AsyncSession) -> Sequence[FirewallRule]:
-    now = datetime.utcnow()
+    now = utc_now_naive()
     result = await db.execute(
         select(FirewallRule).where(
             FirewallRule.is_active == True,  # noqa: E712
@@ -499,8 +534,6 @@ async def get_containment_summary(db: AsyncSession) -> dict:
 
 
 async def purge_devices_outside_subnet(db: AsyncSession, subnet: str) -> int:
-    from ipaddress import ip_address, ip_network
-
     try:
         network = ip_network(subnet, strict=False)
     except ValueError:
@@ -511,6 +544,85 @@ async def purge_devices_outside_subnet(db: AsyncSession, subnet: str) -> int:
     for device_id, ip in result.all():
         try:
             if ip_address(ip) not in network:
+                stale_ids.append(device_id)
+        except ValueError:
+            stale_ids.append(device_id)
+
+    if not stale_ids:
+        return 0
+
+    await db.execute(
+        update(ThreatEvent)
+        .where(ThreatEvent.device_id.in_(stale_ids))
+        .values(device_id=None)
+    )
+    await db.execute(delete(DeviceStat).where(DeviceStat.device_id.in_(stale_ids)))
+    await db.execute(delete(Device).where(Device.id.in_(stale_ids)))
+    return len(stale_ids)
+
+
+async def purge_invalid_devices(db: AsyncSession, subnet: Optional[str] = None) -> int:
+    """Remove broadcast/network/multicast device rows that cannot be real hosts."""
+    network = None
+    if subnet:
+        try:
+            network = ip_network(subnet, strict=False)
+        except ValueError:
+            network = None
+
+    result = await db.execute(select(Device.id, Device.ip_address))
+    invalid_ids: list[str] = []
+    for device_id, ip in result.all():
+        try:
+            parsed = ip_address(ip)
+            invalid = (
+                parsed.is_multicast
+                or parsed.is_unspecified
+                or parsed.is_loopback
+                or str(parsed).endswith(".255")
+                or str(parsed).endswith(".0")
+            )
+            if network is not None:
+                invalid = invalid or parsed == network.network_address or parsed == network.broadcast_address
+            if invalid:
+                invalid_ids.append(device_id)
+        except ValueError:
+            invalid_ids.append(device_id)
+
+    if not invalid_ids:
+        return 0
+
+    await db.execute(
+        update(ThreatEvent)
+        .where(ThreatEvent.device_id.in_(invalid_ids))
+        .values(device_id=None)
+    )
+    await db.execute(delete(DeviceStat).where(DeviceStat.device_id.in_(invalid_ids)))
+    await db.execute(delete(Device).where(Device.id.in_(invalid_ids)))
+    return len(invalid_ids)
+
+
+async def purge_unseen_devices_in_subnet(
+    db: AsyncSession,
+    subnet: str,
+    live_ips: set[str],
+    preserve_ips: set[str] | None = None,
+) -> int:
+    """Remove stale non-live device rows from the scanned subnet."""
+    try:
+        network = ip_network(subnet, strict=False)
+    except ValueError:
+        return 0
+
+    preserve = preserve_ips or set()
+    result = await db.execute(select(Device.id, Device.ip_address, Device.is_trusted))
+    stale_ids: list[str] = []
+    for device_id, ip, is_trusted in result.all():
+        if ip in live_ips or ip in preserve or is_trusted:
+            continue
+        try:
+            parsed = ip_address(ip)
+            if parsed in network:
                 stale_ids.append(device_id)
         except ValueError:
             stale_ids.append(device_id)
@@ -545,7 +657,11 @@ async def list_captured_packets(
     src_ip: Optional[str] = None,
     dst_ip: Optional[str] = None,
     protocol: Optional[str] = None,
+    service_ports: Optional[Sequence[int]] = None,
+    direction: Optional[str] = None,
     threat_type: Optional[str] = None,
+    captured_from: Optional[datetime] = None,
+    captured_to: Optional[datetime] = None,
     only_threats: bool = False,
 ) -> tuple[int, Sequence[CapturedPacket]]:
     """List captured packets with optional filters for inspection."""
@@ -556,8 +672,19 @@ async def list_captured_packets(
         q = q.where(CapturedPacket.dst_ip == dst_ip)
     if protocol:
         q = q.where(CapturedPacket.protocol == protocol)
+    if service_ports:
+        q = q.where(
+            (CapturedPacket.src_port.in_(service_ports))
+            | (CapturedPacket.dst_port.in_(service_ports))
+        )
+    if direction:
+        q = q.where(CapturedPacket.direction == direction)
     if threat_type:
         q = q.where(CapturedPacket.threat_type == threat_type)
+    if captured_from:
+        q = q.where(CapturedPacket.captured_at >= captured_from)
+    if captured_to:
+        q = q.where(CapturedPacket.captured_at <= captured_to)
     if only_threats:
         q = q.where(CapturedPacket.threat_type.isnot(None))
 
@@ -566,6 +693,363 @@ async def list_captured_packets(
     q = q.order_by(CapturedPacket.captured_at.desc()).offset((page - 1) * page_size).limit(page_size)
     rows = (await db.execute(q)).scalars().all()
     return total, rows
+
+
+async def get_captured_packet(db: AsyncSession, packet_id: int) -> Optional[CapturedPacket]:
+    return await db.get(CapturedPacket, packet_id)
+
+
+async def delete_captured_packet(db: AsyncSession, packet_id: int) -> bool:
+    result = await db.execute(delete(CapturedPacket).where(CapturedPacket.id == packet_id))
+    return bool(result.rowcount)
+
+
+async def delete_captured_packets(
+    db: AsyncSession,
+    *,
+    src_ip: Optional[str] = None,
+    dst_ip: Optional[str] = None,
+    protocol: Optional[str] = None,
+    service_ports: Optional[Sequence[int]] = None,
+    direction: Optional[str] = None,
+    threat_type: Optional[str] = None,
+    captured_from: Optional[datetime] = None,
+    captured_to: Optional[datetime] = None,
+    only_threats: bool = False,
+) -> int:
+    q = delete(CapturedPacket)
+    if src_ip:
+        q = q.where(CapturedPacket.src_ip == src_ip)
+    if dst_ip:
+        q = q.where(CapturedPacket.dst_ip == dst_ip)
+    if protocol:
+        q = q.where(CapturedPacket.protocol == protocol)
+    if service_ports:
+        q = q.where(
+            (CapturedPacket.src_port.in_(service_ports))
+            | (CapturedPacket.dst_port.in_(service_ports))
+        )
+    if direction:
+        q = q.where(CapturedPacket.direction == direction)
+    if threat_type:
+        q = q.where(CapturedPacket.threat_type == threat_type)
+    if captured_from:
+        q = q.where(CapturedPacket.captured_at >= captured_from)
+    if captured_to:
+        q = q.where(CapturedPacket.captured_at <= captured_to)
+    if only_threats:
+        q = q.where(CapturedPacket.threat_type.isnot(None))
+    result = await db.execute(q)
+    return int(result.rowcount or 0)
+
+
+async def latest_threat_events_for_ips(
+    db: AsyncSession,
+    ips: Sequence[str],
+    limit_per_ip: int = 5,
+) -> dict[str, list[ThreatEvent]]:
+    if not ips:
+        return {}
+    result = await db.execute(
+        select(ThreatEvent)
+        .where(ThreatEvent.src_ip.in_(ips))
+        .order_by(ThreatEvent.src_ip.asc(), ThreatEvent.detected_at.desc())
+    )
+    grouped: dict[str, list[ThreatEvent]] = {ip: [] for ip in ips}
+    for event in result.scalars().all():
+        bucket = grouped.setdefault(event.src_ip, [])
+        if len(bucket) < limit_per_ip:
+            bucket.append(event)
+    return grouped
+
+
+async def purge_packet_noise(db: AsyncSession) -> int:
+    """Remove synthetic scan packets and impossible broadcast rows from packet history."""
+    result = await db.execute(
+        delete(CapturedPacket).where(
+            (CapturedPacket.protocol == "arp_scan")
+            | CapturedPacket.src_ip.like("%.255")
+            | CapturedPacket.dst_ip.like("%.255")
+            | CapturedPacket.src_ip.like("%.0")
+            | CapturedPacket.dst_ip.like("%.0")
+        )
+    )
+    return int(result.rowcount or 0)
+
+
+async def purge_synthetic_demo_data(db: AsyncSession) -> dict[str, int]:
+    """Remove rows produced by bundled demo/simulation helpers."""
+    demo_ips = {
+        "1.2.3.4",
+        "5.6.7.8",
+        "10.142.204.55",
+        "10.142.204.88",
+        "45.33.32.156",
+        "91.108.56.100",
+        "103.203.57.12",
+        "185.220.101.42",
+        "185.220.101.50",
+        "198.51.100.25",
+    }
+    demo_victims = {"10.142.204.241", "192.168.1.1"}
+    packet_result = await db.execute(
+        delete(CapturedPacket).where(
+            CapturedPacket.src_ip.in_(demo_ips)
+            | CapturedPacket.dst_ip.in_(demo_ips)
+            | CapturedPacket.dst_ip.in_(demo_victims)
+        )
+    )
+    threat_result = await db.execute(
+        delete(ThreatEvent).where(
+            ThreatEvent.src_ip.in_(demo_ips)
+            | ThreatEvent.dst_ip.in_(demo_ips)
+            | ThreatEvent.dst_ip.in_(demo_victims)
+        )
+    )
+    rule_result = await db.execute(delete(FirewallRule).where(FirewallRule.target_ip.in_(demo_ips)))
+    session_result = await db.execute(delete(HoneypotSession).where(HoneypotSession.attacker_ip.in_(demo_ips)))
+    return {
+        "packets": int(packet_result.rowcount or 0),
+        "threats": int(threat_result.rowcount or 0),
+        "rules": int(rule_result.rowcount or 0),
+        "sessions": int(session_result.rowcount or 0),
+    }
+
+
+async def purge_benign_web_false_positives(db: AsyncSession) -> dict[str, int]:
+    """Clear low-risk common web/DNS/VPN flows that were over-classified."""
+    common_ports = {
+        53, 80, 123, 443, 500, 853, 8080, 8443, 8888, 4500,
+        5222, 5223, 5228, 5229, 5230,
+    }
+    packet_result = await db.execute(
+        update(CapturedPacket)
+        .where(
+            CapturedPacket.threat_type == "suspicious",
+            CapturedPacket.risk_score <= 0.5,
+            (
+                CapturedPacket.src_port.in_(common_ports)
+                | CapturedPacket.dst_port.in_(common_ports)
+            ),
+        )
+        .values(threat_type=None, risk_score=None, action_taken=None)
+    )
+    threat_result = await db.execute(
+        delete(ThreatEvent).where(
+            ThreatEvent.threat_type == "suspicious",
+            ThreatEvent.risk_score <= 0.5,
+            (
+                ThreatEvent.dst_port.in_(common_ports)
+            ),
+        )
+    )
+    return {
+        "packets": int(packet_result.rowcount or 0),
+        "threats": int(threat_result.rowcount or 0),
+    }
+
+
+async def purge_scanner_false_positive_for_ip(
+    db: AsyncSession,
+    *,
+    device_ip: str,
+    server_ip: str,
+) -> dict[str, int]:
+    """Clear false positives caused by our own TCP connect scan replies."""
+    scanner_ports = {
+        21, 22, 23, 25, 53, 80, 110, 111, 135, 139, 143, 443, 445,
+        993, 995, 1433, 1723, 3306, 3389, 5432, 5900, 5985, 6379,
+        8080, 8443, 8888, 9200, 27017,
+    }
+    packets = await db.execute(
+        delete(CapturedPacket).where(
+            (
+                (CapturedPacket.src_ip == server_ip)
+                & (CapturedPacket.dst_ip == device_ip)
+                & CapturedPacket.dst_port.in_(scanner_ports)
+            )
+            | (
+                (CapturedPacket.src_ip == device_ip)
+                & (CapturedPacket.dst_ip == server_ip)
+                & CapturedPacket.src_port.in_(scanner_ports)
+            )
+        )
+    )
+    threats = await db.execute(
+        delete(ThreatEvent).where(
+            ThreatEvent.src_ip == device_ip,
+            ThreatEvent.dst_ip == server_ip,
+        )
+    )
+    rules = await deactivate_firewall_rules_for_ip(db, device_ip)
+    device = await get_device_by_ip(db, device_ip)
+    if device:
+        device.risk_score = 0.0
+    return {
+        "packets": int(packets.rowcount or 0),
+        "threats": int(threats.rowcount or 0),
+        "rules": rules,
+        "devices": 1 if device else 0,
+    }
+
+
+async def purge_low_risk_normal_events_for_ip(db: AsyncSession, ip: str) -> dict[str, int]:
+    """Delete old ML-noise 'normal' events that should not have become incidents."""
+    threats = await db.execute(
+        delete(ThreatEvent).where(
+            (ThreatEvent.src_ip == ip) | (ThreatEvent.dst_ip == ip),
+            ThreatEvent.threat_type == "normal",
+            ThreatEvent.risk_score <= 0.3,
+        )
+    )
+    packets = await db.execute(
+        delete(CapturedPacket).where(
+            (CapturedPacket.src_ip == ip) | (CapturedPacket.dst_ip == ip),
+            CapturedPacket.threat_type == "normal",
+            CapturedPacket.risk_score <= 0.3,
+        )
+    )
+    return {
+        "threats": int(threats.rowcount or 0),
+        "packets": int(packets.rowcount or 0),
+    }
+
+
+async def purge_lan_broadcast_events_for_ip(db: AsyncSession, ip: str) -> dict[str, int]:
+    """Delete broadcast/multicast LAN chatter that is not an attack."""
+    threats = await db.execute(
+        delete(ThreatEvent).where(
+            ThreatEvent.src_ip == ip,
+            (
+                ThreatEvent.dst_ip.like("224.%")
+                | ThreatEvent.dst_ip.like("239.%")
+                | ThreatEvent.dst_ip.like("%.255")
+            ),
+            ThreatEvent.risk_score <= 0.4,
+        )
+    )
+    packets = await db.execute(
+        delete(CapturedPacket).where(
+            CapturedPacket.src_ip == ip,
+            (
+                CapturedPacket.dst_ip.like("224.%")
+                | CapturedPacket.dst_ip.like("239.%")
+                | CapturedPacket.dst_ip.like("%.255")
+            ),
+        )
+    )
+    return {
+        "threats": int(threats.rowcount or 0),
+        "packets": int(packets.rowcount or 0),
+    }
+
+
+async def purge_scanner_false_positives(
+    db: AsyncSession,
+    *,
+    server_ip: str,
+    subnet: Optional[str] = None,
+) -> dict[str, int]:
+    """Clear false positives for all devices caused by our own port scanner."""
+    if not server_ip:
+        return {"packets": 0, "threats": 0, "rules": 0, "devices": 0}
+
+    scanner_ports = {
+        21, 22, 23, 25, 53, 80, 110, 111, 135, 139, 143, 443, 445,
+        993, 995, 1433, 1723, 3306, 3389, 5432, 5900, 5985, 6379,
+        8080, 8443, 8888, 9200, 27017,
+    }
+    network = None
+    if subnet:
+        try:
+            network = ip_network(subnet, strict=False)
+        except ValueError:
+            network = None
+
+    result = await db.execute(select(Device.id, Device.ip_address))
+    affected_ips: set[str] = set()
+    affected_ids: list[str] = []
+    for device_id, ip in result.all():
+        if ip == server_ip:
+            continue
+        try:
+            parsed = ip_address(ip)
+            if network is not None and parsed not in network:
+                continue
+        except ValueError:
+            continue
+        affected_ips.add(ip)
+        affected_ids.append(device_id)
+
+    rule_rows = await db.execute(select(FirewallRule.target_ip).where(FirewallRule.target_ip != server_ip))
+    for (ip,) in rule_rows.all():
+        try:
+            parsed = ip_address(ip)
+            if network is not None and parsed not in network:
+                continue
+            affected_ips.add(ip)
+        except ValueError:
+            continue
+
+    packet_rows = await db.execute(
+        select(CapturedPacket.src_ip, CapturedPacket.dst_ip).where(
+            (CapturedPacket.src_ip == server_ip) | (CapturedPacket.dst_ip == server_ip)
+        )
+    )
+    for src_ip, dst_ip in packet_rows.all():
+        candidate = dst_ip if src_ip == server_ip else src_ip
+        try:
+            parsed = ip_address(candidate)
+            if network is not None and parsed not in network:
+                continue
+            affected_ips.add(candidate)
+        except ValueError:
+            continue
+
+    if not affected_ips:
+        return {"packets": 0, "threats": 0, "rules": 0, "devices": 0}
+
+    affected_ip_list = list(affected_ips)
+    packet_result = await db.execute(
+        delete(CapturedPacket).where(
+            (
+                (CapturedPacket.src_ip == server_ip)
+                & CapturedPacket.dst_ip.in_(affected_ip_list)
+                & CapturedPacket.dst_port.in_(scanner_ports)
+            )
+            | (
+                CapturedPacket.src_ip.in_(affected_ip_list)
+                & (CapturedPacket.dst_ip == server_ip)
+                & CapturedPacket.src_port.in_(scanner_ports)
+            )
+        )
+    )
+    threat_result = await db.execute(
+        delete(ThreatEvent).where(
+            ThreatEvent.src_ip.in_(affected_ip_list),
+            ThreatEvent.dst_ip == server_ip,
+            ThreatEvent.dst_port >= 1024,
+        )
+    )
+    rule_result = await db.execute(
+        update(FirewallRule)
+        .where(
+            FirewallRule.target_ip.in_(affected_ip_list),
+            FirewallRule.is_active == True,  # noqa: E712
+        )
+        .values(is_active=False, removed_at=utc_now_naive())
+    )
+    device_result = await db.execute(
+        update(Device)
+        .where(Device.id.in_(affected_ids), Device.risk_score < 0.9)
+        .values(risk_score=0.0)
+    )
+    return {
+        "packets": int(packet_result.rowcount or 0),
+        "threats": int(threat_result.rowcount or 0),
+        "rules": int(rule_result.rowcount or 0),
+        "devices": int(device_result.rowcount or 0),
+    }
 
 
 async def get_captured_packet_stats(db: AsyncSession) -> dict:

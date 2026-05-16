@@ -103,6 +103,35 @@ class _DevicesScreenState extends State<DevicesScreen> {
     }
   }
 
+  Future<void> _clearRisk(DeviceModel device) async {
+    final isAdmin = context.read<AuthService>().isAdmin;
+    if (!isAdmin) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Admin access required'),
+            backgroundColor: Colors.red),
+      );
+      return;
+    }
+    try {
+      final api = context.read<AuthService>().api;
+      await api.post('/devices/${device.id}/clear-risk', {});
+      await _fetchDevices();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Risk cleared and device unblocked'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
   Future<void> _triggerScan() async {
     final messenger = ScaffoldMessenger.of(context);
     final theme = Theme.of(context);
@@ -295,6 +324,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
                             child: DeviceTile(
                               device: _devices[i],
                               onToggleTrust: () => _toggleTrust(_devices[i]),
+                              onClearRisk: () => _clearRisk(_devices[i]),
                             ),
                           ),
                         ),
