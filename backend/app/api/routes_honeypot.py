@@ -14,7 +14,10 @@ Endpoints:
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+import csv
+import io
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 
 from app.database import crud
 from app.database.schemas import HoneypotSessionRead, PaginatedResponse
@@ -37,6 +40,49 @@ async def list_sessions(
     return PaginatedResponse(
         total=total, page=page, page_size=page_size,
         items=[HoneypotSessionRead.model_validate(s) for s in sessions],
+    )
+
+
+@router.get("/sessions/export")
+async def export_sessions(
+    format: str = Query("csv", pattern="^(csv)$"),
+    db=Depends(get_db),
+    _user=Depends(get_current_user),
+):
+    """Export recent honeypot sessions for reporting."""
+    _, sessions = await crud.list_honeypot_sessions(db, 1, 1000)
+    output = io.StringIO()
+    writer = csv.DictWriter(
+        output,
+        fieldnames=[
+            "session_id", "attacker_ip", "observed_attacker_ip", "victim_ip",
+            "victim_port", "honeypot_type", "username_tried",
+            "password_tried", "commands_run", "duration_seconds",
+            "country", "org", "started_at", "ended_at",
+        ],
+    )
+    writer.writeheader()
+    for session in sessions:
+        writer.writerow({
+            "session_id": session.session_id,
+            "attacker_ip": session.attacker_ip,
+            "observed_attacker_ip": session.observed_attacker_ip,
+            "victim_ip": session.victim_ip,
+            "victim_port": session.victim_port,
+            "honeypot_type": session.honeypot_type,
+            "username_tried": session.username_tried,
+            "password_tried": session.password_tried,
+            "commands_run": session.commands_run,
+            "duration_seconds": session.duration_seconds,
+            "country": session.country,
+            "org": session.org,
+            "started_at": session.started_at.isoformat() if session.started_at else None,
+            "ended_at": session.ended_at.isoformat() if session.ended_at else None,
+        })
+    return Response(
+        output.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=ntth_honeypot_sessions.csv"},
     )
 
 

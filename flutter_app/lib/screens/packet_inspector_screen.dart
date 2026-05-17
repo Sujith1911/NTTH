@@ -1,6 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
+// ignore: avoid_web_libraries_in_flutter
+import 'dart:html' as html;
 import 'package:flutter/material.dart';
+import 'package:dio/dio.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
@@ -37,6 +40,7 @@ class _PacketInspectorScreenState extends State<PacketInspectorScreen> {
 
   final _srcIpController = TextEditingController();
   final _dstIpController = TextEditingController();
+  final _searchController = TextEditingController();
   final _dateFromController = TextEditingController();
   final _dateToController = TextEditingController();
 
@@ -57,6 +61,7 @@ class _PacketInspectorScreenState extends State<PacketInspectorScreen> {
     _refreshTimer?.cancel();
     _srcIpController.dispose();
     _dstIpController.dispose();
+    _searchController.dispose();
     _dateFromController.dispose();
     _dateToController.dispose();
     super.dispose();
@@ -98,6 +103,8 @@ class _PacketInspectorScreenState extends State<PacketInspectorScreen> {
         params['captured_to'] = _filterDateTo;
       }
       if (_onlyThreats) params['only_threats'] = true;
+      final search = _searchController.text.trim();
+      if (search.isNotEmpty) params['search'] = search;
 
       final resp = await api.get('/packets', params: params);
       if (!mounted) return;
@@ -135,6 +142,7 @@ class _PacketInspectorScreenState extends State<PacketInspectorScreen> {
     _dstIpController.clear();
     _dateFromController.clear();
     _dateToController.clear();
+    _searchController.clear();
     _filterSrcIp = null;
     _filterDstIp = null;
     _filterProtocol = null;
@@ -177,7 +185,40 @@ class _PacketInspectorScreenState extends State<PacketInspectorScreen> {
       if ((_filterDateFrom ?? '').isNotEmpty) 'captured_from': _filterDateFrom,
       if ((_filterDateTo ?? '').isNotEmpty) 'captured_to': _filterDateTo,
       if (_onlyThreats) 'only_threats': true,
+      if (_searchController.text.trim().isNotEmpty)
+        'search': _searchController.text.trim(),
     };
+  }
+
+  Future<void> _exportPackets(String format) async {
+    try {
+      final api = context.read<AuthService>().api;
+      final resp = await api.dio.post(
+        '/packets/export',
+        queryParameters: {'format': format},
+        data: _currentFilterPayload(),
+        options: Options(responseType: ResponseType.bytes),
+      );
+      final bytes = (resp.data as List<int>);
+      final mime = switch (format) {
+        'pcap' => 'application/vnd.tcpdump.pcap',
+        'json' => 'application/json',
+        _ => 'text/csv',
+      };
+      final ext = format == 'pcap' ? 'pcap' : format;
+      final blob = html.Blob([bytes], mime);
+      final url = html.Url.createObjectUrlFromBlob(blob);
+      html.AnchorElement(href: url)
+        ..download = 'ntth_packets.$ext'
+        ..click();
+      html.Url.revokeObjectUrl(url);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text('Export failed: $e'), backgroundColor: Colors.red),
+      );
+    }
   }
 
   Future<void> _deletePacket(int packetId) async {
@@ -481,6 +522,22 @@ class _PacketInspectorScreenState extends State<PacketInspectorScreen> {
                 ),
               ),
               SizedBox(
+                width: 220,
+                child: TextField(
+                  controller: _searchController,
+                  decoration: InputDecoration(
+                    labelText: 'Payload / domain search',
+                    isDense: true,
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10)),
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 10),
+                  ),
+                  style: const TextStyle(fontSize: 13),
+                  onSubmitted: (_) => _applyFilters(),
+                ),
+              ),
+              SizedBox(
                 width: 160,
                 child: TextField(
                   controller: _dstIpController,
@@ -627,6 +684,21 @@ class _PacketInspectorScreenState extends State<PacketInspectorScreen> {
                 icon: const Icon(Icons.delete_sweep_outlined),
                 onPressed: _deleteFiltered,
                 tooltip: 'Delete filtered packets',
+              ),
+              IconButton(
+                icon: const Icon(Icons.table_chart_outlined),
+                onPressed: () => _exportPackets('csv'),
+                tooltip: 'Export filtered CSV',
+              ),
+              IconButton(
+                icon: const Icon(Icons.data_object),
+                onPressed: () => _exportPackets('json'),
+                tooltip: 'Export filtered JSON',
+              ),
+              IconButton(
+                icon: const Icon(Icons.file_download_outlined),
+                onPressed: () => _exportPackets('pcap'),
+                tooltip: 'Export filtered PCAP',
               ),
             ],
           ),
@@ -987,6 +1059,15 @@ class _PacketDetailView extends StatelessWidget {
               ),
             ],
           ),
+          if ((packet['flow_id'] ?? '').toString().isNotEmpty)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                icon: const Icon(Icons.account_tree_outlined, size: 16),
+                label: const Text('Open conversation'),
+                onPressed: () => _openConversation(context),
+              ),
+            ),
           const SizedBox(height: 8),
           Text(
             '${packet['captured_at'] ?? ''}  ·  ${packet['direction'] ?? 'unknown'}',
@@ -1026,6 +1107,14 @@ class _PacketDetailView extends StatelessWidget {
                     'UDP length': packet['udp_len'],
                     'ICMP type': packet['icmp_type'],
                     'ICMP code': packet['icmp_code'],
+                    'Flow ID': packet['flow_id'],
+                  }),
+                  _section('TLS / QUIC', {
+                    'SNI / domain': packet['tls_sni'],
+                    'ALPN': packet['tls_alpn'],
+                    'TLS version': packet['tls_version'],
+                    'TLS record type': packet['tls_record_type'],
+                    'QUIC hint': packet['quic_hint'],
                   }),
                   _section('Detection', {
                     'Threat': packet['threat_type'] ?? 'none',
@@ -1044,6 +1133,60 @@ class _PacketDetailView extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Future<void> _openConversation(BuildContext context) async {
+    final flowId = packet['flow_id']?.toString();
+    if (flowId == null || flowId.isEmpty) return;
+    try {
+      final resp = await context.read<AuthService>().api.get(
+        '/packets/flows/${Uri.encodeComponent(flowId)}',
+        params: {'limit': 200},
+      );
+      final items = ((resp.data as Map<String, dynamic>)['items'] as List)
+          .cast<Map<String, dynamic>>();
+      if (!context.mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Conversation'),
+          content: SizedBox(
+            width: 760,
+            height: 460,
+            child: ListView.separated(
+              itemCount: items.length,
+              separatorBuilder: (_, __) => const Divider(height: 1),
+              itemBuilder: (context, index) {
+                final pkt = items[index];
+                return ListTile(
+                  dense: true,
+                  title: Text(
+                    '${pkt['src_ip']}:${pkt['src_port']} -> ${pkt['dst_ip']}:${pkt['dst_port']}',
+                    style: GoogleFonts.jetBrainsMono(fontSize: 12),
+                  ),
+                  subtitle: Text(
+                    '${pkt['captured_at']}  ${pkt['protocol']}  ${pkt['flags'] ?? ''}  ${pkt['pkt_len']}B',
+                  ),
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text('Conversation failed: $e'),
+            backgroundColor: Colors.red),
+      );
+    }
   }
 
   Widget _section(String title, Map<String, dynamic> rows) {
@@ -1086,7 +1229,10 @@ class _PacketDetailView extends StatelessWidget {
   Widget _payloadSection(dynamic payloadPreview) {
     final text = payloadPreview?.toString();
     if (text == null || text.isEmpty) return const SizedBox.shrink();
-    return _section('Payload Preview', {'First bytes (hex)': text});
+    return _section('Payload Preview', {
+      'Hex': _spacedHex(text),
+      'ASCII': _hexToAscii(text),
+    });
   }
 
   Widget _httpSection(Map<String, dynamic> packet) {
@@ -1115,5 +1261,27 @@ class _PacketDetailView extends StatelessWidget {
       }
     } catch (_) {}
     return text;
+  }
+
+  String _spacedHex(String hex) {
+    final clean = hex.replaceAll(RegExp(r'\s+'), '');
+    final chunks = <String>[];
+    for (var i = 0; i < clean.length; i += 2) {
+      chunks
+          .add(clean.substring(i, i + 2 > clean.length ? clean.length : i + 2));
+    }
+    return chunks.join(' ');
+  }
+
+  String _hexToAscii(String hex) {
+    final clean = hex.replaceAll(RegExp(r'\s+'), '');
+    final buffer = StringBuffer();
+    for (var i = 0; i + 1 < clean.length; i += 2) {
+      final value = int.tryParse(clean.substring(i, i + 2), radix: 16);
+      if (value == null) continue;
+      buffer.write(
+          value >= 32 && value <= 126 ? String.fromCharCode(value) : '.');
+    }
+    return buffer.toString();
   }
 }

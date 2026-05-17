@@ -68,10 +68,10 @@ def _prune_stale_keys() -> None:
 
 # ── Detectors ────────────────────────────────────────────────────────────────
 
-def _detect_port_scan(src_ip: str, dst_port: int | None) -> float:
+def _detect_port_scan(src_ip: str, dst_port: int | None) -> tuple[float, dict]:
     """Score = 1.0 if >N unique ports in window, else 0."""
     if dst_port is None:
-        return 0.0
+        return 0.0, {"rule": "port_scan", "matched": False, "reason": "No destination port"}
     now = time.monotonic()
     window = _port_windows[src_ip]
     # Prune old entries
@@ -79,17 +79,26 @@ def _detect_port_scan(src_ip: str, dst_port: int | None) -> float:
     while window and window[0][0] < cutoff:
         window.popleft()
     window.append((now, dst_port))
-    unique_ports = len({p for _, p in window})
+    ports = sorted({p for _, p in window})
+    unique_ports = len(ports)
+    detail = {
+        "rule": "port_scan",
+        "matched": unique_ports >= THRESHOLDS.port_scan_unique_ports,
+        "unique_ports": unique_ports,
+        "threshold": THRESHOLDS.port_scan_unique_ports,
+        "window_seconds": THRESHOLDS.port_scan_window_seconds,
+        "ports": ports[-20:],
+    }
     if unique_ports >= THRESHOLDS.port_scan_unique_ports:
         log.warning("ids.port_scan", src_ip=src_ip, unique_ports=unique_ports)
-        return 1.0
-    return min(unique_ports / THRESHOLDS.port_scan_unique_ports, 0.8)
+        return 1.0, detail
+    return min(unique_ports / THRESHOLDS.port_scan_unique_ports, 0.8), detail
 
 
-def _detect_syn_flood(src_ip: str, is_syn: bool) -> float:
+def _detect_syn_flood(src_ip: str, is_syn: bool) -> tuple[float, dict]:
     """Score = 1.0 if SYN rate > threshold per second."""
     if not is_syn:
-        return 0.0
+        return 0.0, {"rule": "syn_flood", "matched": False, "reason": "Packet is not SYN-only"}
     now = time.monotonic()
     window = _syn_windows[src_ip]
     window.append(now)
@@ -97,16 +106,23 @@ def _detect_syn_flood(src_ip: str, is_syn: bool) -> float:
     while window and window[0] < cutoff:
         window.popleft()
     rate = len(window)
+    detail = {
+        "rule": "syn_flood",
+        "matched": rate >= THRESHOLDS.syn_flood_per_second,
+        "syns_per_second": rate,
+        "threshold": THRESHOLDS.syn_flood_per_second,
+        "window_seconds": 1,
+    }
     if rate >= THRESHOLDS.syn_flood_per_second:
         log.warning("ids.syn_flood", src_ip=src_ip, rate=rate)
-        return 1.0
-    return min(rate / THRESHOLDS.syn_flood_per_second, 0.8)
+        return 1.0, detail
+    return min(rate / THRESHOLDS.syn_flood_per_second, 0.8), detail
 
 
-def _detect_brute_force(src_ip: str, dst_port: int | None) -> float:
+def _detect_brute_force(src_ip: str, dst_port: int | None) -> tuple[float, dict]:
     """Score = 1.0 if auth port hit rate > threshold in window."""
     if dst_port not in _AUTH_PORTS:
-        return 0.0
+        return 0.0, {"rule": "brute_force", "matched": False, "reason": "Not an auth service port"}
     now = time.monotonic()
     window = _brute_windows[src_ip]
     window.append(now)
@@ -114,10 +130,18 @@ def _detect_brute_force(src_ip: str, dst_port: int | None) -> float:
     while window and window[0] < cutoff:
         window.popleft()
     attempts = len(window)
+    detail = {
+        "rule": "brute_force",
+        "matched": attempts >= THRESHOLDS.brute_force_attempts,
+        "attempts": attempts,
+        "threshold": THRESHOLDS.brute_force_attempts,
+        "window_seconds": THRESHOLDS.brute_force_window_seconds,
+        "port": dst_port,
+    }
     if attempts >= THRESHOLDS.brute_force_attempts:
         log.warning("ids.brute_force", src_ip=src_ip, port=dst_port, attempts=attempts)
-        return 1.0
-    return min(attempts / THRESHOLDS.brute_force_attempts, 0.8)
+        return 1.0, detail
+    return min(attempts / THRESHOLDS.brute_force_attempts, 0.8), detail
 
 
 # ── Public interface ──────────────────────────────────────────────────────────
@@ -134,9 +158,9 @@ def evaluate(features: dict) -> dict:
     dst_port = features.get("dst_port")
     is_syn = features.get("is_syn", False)
 
-    port_score = _detect_port_scan(src_ip, dst_port)
-    syn_score = _detect_syn_flood(src_ip, is_syn)
-    brute_score = _detect_brute_force(src_ip, dst_port)
+    port_score, port_detail = _detect_port_scan(src_ip, dst_port)
+    syn_score, syn_detail = _detect_syn_flood(src_ip, is_syn)
+    brute_score, brute_detail = _detect_brute_force(src_ip, dst_port)
 
     rule_score = max(port_score, syn_score, brute_score)
 
@@ -157,4 +181,15 @@ def evaluate(features: dict) -> dict:
         "port_score": round(port_score, 4),
         "syn_score": round(syn_score, 4),
         "brute_score": round(brute_score, 4),
+        "rule_details": {
+            "port_scan": port_detail,
+            "syn_flood": syn_detail,
+            "brute_force": brute_detail,
+            "winning_rule": (
+                "port_scan" if port_score == rule_score and rule_score > 0 else
+                "syn_flood" if syn_score == rule_score and rule_score > 0 else
+                "brute_force" if brute_score == rule_score and rule_score > 0 else
+                "none"
+            ),
+        },
     }

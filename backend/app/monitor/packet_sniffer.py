@@ -29,6 +29,8 @@ _sniffer: Any | None = None
 def is_running() -> bool:
     """Return whether the underlying sniffer thread is alive."""
     global _running, _sniffer
+    if bool(_running and _sniffer and getattr(_sniffer, "running", False)):
+        return True
     thread = getattr(_sniffer, "thread", None)
     alive = bool(_running and thread and thread.is_alive())
     if _running and not alive:
@@ -182,39 +184,48 @@ async def start_sniffer() -> None:
     if iface:
         sniffer_kwargs["iface"] = iface
 
-    sniffer = None
-    try:
-        sniffer = AsyncSniffer(**sniffer_kwargs)
-        sniffer.start()
-        _sniffer = sniffer
-        await asyncio.sleep(0.25)
-        thread = getattr(sniffer, "thread", None)
-        if not thread or not thread.is_alive():
-            raise RuntimeError("Packet capture backend exited immediately after startup")
-        _running = True
-        log.info("sniffer.started", iface=iface or "auto")
-
-        while is_running():
-            await asyncio.sleep(1)
-
-    except PermissionError:
-        log.warning(
-            "sniffer.permission_denied",
-            hint="Run as Administrator (Windows) or root (Linux) with Npcap installed"
-        )
-    except OSError as exc:
-        log.warning("sniffer.interface_error", error=str(exc))
-    except Exception as exc:
-        log.warning("sniffer.error", error=str(exc))
-    finally:
+    for attempt in range(1, 8):
+        sniffer = None
         try:
-            if sniffer and getattr(sniffer, "running", False):
-                sniffer.stop()
-        except Exception:
-            pass
-        _running = False
-        _sniffer = None
-        log.info("sniffer.stopped")
+            iface = _detect_interface()
+            sniffer_kwargs.pop("iface", None)
+            if iface:
+                sniffer_kwargs["iface"] = iface
+            sniffer = AsyncSniffer(**sniffer_kwargs)
+            sniffer.start()
+            _sniffer = sniffer
+            await asyncio.sleep(0.5)
+            thread = getattr(sniffer, "thread", None)
+            if not thread or not thread.is_alive():
+                raise RuntimeError("Packet capture backend exited immediately after startup")
+            _running = True
+            log.info("sniffer.started", iface=iface or "auto", attempt=attempt)
+
+            while is_running():
+                await asyncio.sleep(1)
+            break
+
+        except PermissionError:
+            log.warning(
+                "sniffer.permission_denied",
+                hint="Run as Administrator (Windows) or root (Linux) with Npcap installed"
+            )
+            break
+        except OSError as exc:
+            log.warning("sniffer.interface_error", error=str(exc), attempt=attempt)
+        except Exception as exc:
+            log.warning("sniffer.error", error=str(exc), attempt=attempt)
+        finally:
+            try:
+                if sniffer and getattr(sniffer, "running", False):
+                    sniffer.stop()
+            except Exception:
+                pass
+            _running = False
+            _sniffer = None
+            if attempt >= 7:
+                log.info("sniffer.stopped")
+        await asyncio.sleep(min(2 * attempt, 10))
 
 
 def stop_sniffer() -> None:

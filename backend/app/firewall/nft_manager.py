@@ -18,6 +18,7 @@ settings = get_settings()
 _FILTER_TABLE_FAMILY = "inet"
 _FILTER_TABLE_NAME = "ntth_filter"
 _FILTER_CHAIN = "ntth_input"
+_FORWARD_CHAIN = "ntth_forward"
 _NAT_TABLE_FAMILY = "ip"
 _NAT_TABLE_NAME = "ntth_nat"
 _NAT_CHAIN = "ntth_prerouting"
@@ -59,6 +60,12 @@ class NFTManager:
             "chain",
             *_chain_ref(_FILTER_TABLE_FAMILY, _FILTER_TABLE_NAME, _FILTER_CHAIN),
             "{ type filter hook input priority 0; }",
+        )
+        await _run_nft(
+            "add",
+            "chain",
+            *_chain_ref(_FILTER_TABLE_FAMILY, _FILTER_TABLE_NAME, _FORWARD_CHAIN),
+            "{ type filter hook forward priority -10; }",
         )
         await _run_nft("add", "table", *_table_ref(_NAT_TABLE_FAMILY, _NAT_TABLE_NAME))
         await _run_nft(
@@ -117,33 +124,38 @@ class NFTManager:
         persist: bool = True,
         created_by: str = "system",
         reason: Optional[str] = None,
+        ttl_seconds: Optional[int] = 0,
     ) -> Optional[str]:
-        """Drop all traffic from src_ip."""
+        """Drop forwarded internet traffic from src_ip while keeping Wi-Fi/local gateway access."""
+        if src_ip in {settings.gateway_ip, settings.server_display_ip, "127.0.0.1"}:
+            log.warning("nft_manager.block_refused_infrastructure_ip", ip=src_ip)
+            return None
         await self.ensure_infra()
         rule = f"ip saddr {src_ip} drop"
         rc, _, stderr = await _run_nft(
             "add",
             "rule",
-            *_chain_ref(_FILTER_TABLE_FAMILY, _FILTER_TABLE_NAME, _FILTER_CHAIN),
+            *_chain_ref(_FILTER_TABLE_FAMILY, _FILTER_TABLE_NAME, _FORWARD_CHAIN),
             *rule.split(),
         )
         if rc == 0:
             handle = await self._get_rule_handle(
                 _FILTER_TABLE_FAMILY,
                 _FILTER_TABLE_NAME,
-                _FILTER_CHAIN,
+                _FORWARD_CHAIN,
                 rule,
             )
             if persist:
                 await track_rule(
                     src_ip,
                     "block",
-                    f"filter:{handle}",
+                    f"forward:{handle}",
                     created_by=created_by,
                     reason=reason,
+                    ttl_seconds=ttl_seconds,
                 )
             log.warning("nft_manager.blocked", ip=src_ip, handle=handle)
-            return f"filter:{handle}"
+            return f"forward:{handle}"
         log.error("nft_manager.block_failed", ip=src_ip, error=stderr)
         return None
 
@@ -194,11 +206,12 @@ class NFTManager:
     async def delete_rule(self, handle: str) -> bool:
         """Delete a rule by its handle."""
         zone, raw_handle = self._split_handle(handle)
-        family, table, chain = (
-            (_NAT_TABLE_FAMILY, _NAT_TABLE_NAME, _NAT_CHAIN)
-            if zone == "nat"
-            else (_FILTER_TABLE_FAMILY, _FILTER_TABLE_NAME, _FILTER_CHAIN)
-        )
+        if zone == "nat":
+            family, table, chain = (_NAT_TABLE_FAMILY, _NAT_TABLE_NAME, _NAT_CHAIN)
+        elif zone == "forward":
+            family, table, chain = (_FILTER_TABLE_FAMILY, _FILTER_TABLE_NAME, _FORWARD_CHAIN)
+        else:
+            family, table, chain = (_FILTER_TABLE_FAMILY, _FILTER_TABLE_NAME, _FILTER_CHAIN)
         rc, _, stderr = await _run_nft("delete", "rule", family, table, chain, "handle", raw_handle)
         success = rc == 0
         if success:
@@ -215,12 +228,17 @@ class NFTManager:
             "chain",
             *_chain_ref(_FILTER_TABLE_FAMILY, _FILTER_TABLE_NAME, _FILTER_CHAIN),
         )
+        forward_rc, _, _ = await _run_nft(
+            "flush",
+            "chain",
+            *_chain_ref(_FILTER_TABLE_FAMILY, _FILTER_TABLE_NAME, _FORWARD_CHAIN),
+        )
         nat_rc, _, _ = await _run_nft(
             "flush",
             "chain",
             *_chain_ref(_NAT_TABLE_FAMILY, _NAT_TABLE_NAME, _NAT_CHAIN),
         )
-        success = filter_rc == 0 and nat_rc == 0
+        success = filter_rc == 0 and forward_rc == 0 and nat_rc == 0
         log.warning("nft_manager.chain_flushed", success=success)
         return success
 
@@ -239,7 +257,13 @@ class NFTManager:
             "chain",
             *_chain_ref(_NAT_TABLE_FAMILY, _NAT_TABLE_NAME, _NAT_CHAIN),
         )
-        return f"{filter_stdout}\n{nat_stdout}".strip()
+        _, forward_stdout, _ = await _run_nft(
+            "-a",
+            "list",
+            "chain",
+            *_chain_ref(_FILTER_TABLE_FAMILY, _FILTER_TABLE_NAME, _FORWARD_CHAIN),
+        )
+        return f"{filter_stdout}\n{forward_stdout}\n{nat_stdout}".strip()
 
     async def _get_rule_handle(self, family: str, table: str, chain: str, rule_fragment: str) -> str:
         """Parse the handle of a specific rule from the chain listing."""
@@ -257,6 +281,7 @@ class NFTManager:
         removed = 0
         for family, table, chain in [
             (_FILTER_TABLE_FAMILY, _FILTER_TABLE_NAME, _FILTER_CHAIN),
+            (_FILTER_TABLE_FAMILY, _FILTER_TABLE_NAME, _FORWARD_CHAIN),
             (_NAT_TABLE_FAMILY, _NAT_TABLE_NAME, _NAT_CHAIN),
         ]:
             _, stdout, _ = await _run_nft("-a", "list", "chain", family, table, chain)
@@ -283,5 +308,8 @@ class NFTManager:
     @staticmethod
     def _split_handle(handle: str) -> tuple[str, str]:
         if ":" in handle:
-            return tuple(handle.split(":", 1))  # type: ignore[return-value]
+            zone, raw_handle = handle.split(":", 1)
+            if zone == "forward":
+                return "forward", raw_handle
+            return zone, raw_handle
         return "filter", handle

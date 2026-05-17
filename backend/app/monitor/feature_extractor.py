@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from ipaddress import ip_address, ip_network
 import json
+import re
 from typing import Optional
 from urllib.parse import parse_qsl
 
@@ -106,6 +107,72 @@ def _http_details(payload: bytes, src_port: int | None, dst_port: int | None) ->
     }
 
 
+def _tls_details(payload: bytes, src_port: int | None, dst_port: int | None) -> dict:
+    tls_ports = {443, 8443, 853}
+    if src_port not in tls_ports and dst_port not in tls_ports:
+        return {}
+    if len(payload) < 6:
+        return {}
+
+    # TLS ClientHello starts with record type 0x16, version, length, handshake type 0x01.
+    is_tls_client_hello = payload[0] == 0x16 and len(payload) > 43 and payload[5] == 0x01
+    text = _decode_payload(payload) or ""
+    sni = None
+    alpn: list[str] = []
+
+    if is_tls_client_hello:
+        try:
+            idx = 5
+            idx += 4  # handshake type + 3 byte length
+            idx += 2  # client version
+            idx += 32  # random
+            session_len = payload[idx]
+            idx += 1 + session_len
+            cipher_len = int.from_bytes(payload[idx:idx + 2], "big")
+            idx += 2 + cipher_len
+            compression_len = payload[idx]
+            idx += 1 + compression_len
+            extensions_len = int.from_bytes(payload[idx:idx + 2], "big")
+            idx += 2
+            end = min(len(payload), idx + extensions_len)
+            while idx + 4 <= end:
+                ext_type = int.from_bytes(payload[idx:idx + 2], "big")
+                ext_len = int.from_bytes(payload[idx + 2:idx + 4], "big")
+                ext_data = payload[idx + 4:idx + 4 + ext_len]
+                if ext_type == 0 and len(ext_data) >= 5:
+                    name_len = int.from_bytes(ext_data[3:5], "big")
+                    sni = ext_data[5:5 + name_len].decode("idna", errors="ignore") or None
+                elif ext_type == 16 and len(ext_data) >= 2:
+                    pos = 2
+                    while pos < len(ext_data):
+                        name_len = ext_data[pos]
+                        pos += 1
+                        name = ext_data[pos:pos + name_len].decode("ascii", errors="ignore")
+                        if name:
+                            alpn.append(name)
+                        pos += name_len
+                idx += 4 + ext_len
+        except Exception:
+            pass
+
+    # QUIC initial packets are encrypted, but TLS SNI often appears in first UDP/443 payload bytes.
+    if not sni and dst_port == 443 and payload:
+        match = re.search(rb"([a-z0-9-]+\.)+[a-z]{2,}", payload[:1500], re.IGNORECASE)
+        if match:
+            try:
+                sni = match.group(0).decode("ascii", errors="ignore")
+            except Exception:
+                sni = None
+
+    return {
+        "tls_sni": sni,
+        "tls_alpn": json.dumps(alpn) if alpn else None,
+        "tls_version": f"0x{payload[1]:02x}{payload[2]:02x}" if payload and payload[0] == 0x16 else None,
+        "tls_record_type": payload[0] if payload else None,
+        "quic_hint": bool(dst_port == 443 and payload and payload[0] & 0xC0),
+    }
+
+
 def _json_safe(value):
     if isinstance(value, bytes):
         return value.hex()
@@ -141,6 +208,7 @@ def extract_features(pkt) -> Optional[dict]:
         "payload_len": payload_len,
         "payload_preview": payload_hex,
         "payload_text": payload_text,
+        "flow_id": None,
         "direction": _direction(ip_layer.src, ip_layer.dst),
         "src_mac": pkt[Ether].src if pkt.haslayer(Ether) else None,
         "dst_mac": pkt[Ether].dst if pkt.haslayer(Ether) else None,
@@ -175,6 +243,7 @@ def extract_features(pkt) -> Optional[dict]:
         features["is_ack"] = bool(flags & 0x10)
         features["is_rst"] = bool(flags & 0x04)
         features.update(_http_details(payload, tcp.sport, tcp.dport))
+        features.update(_tls_details(payload, tcp.sport, tcp.dport))
 
     elif pkt.haslayer(UDP):
         udp = pkt[UDP]
@@ -182,11 +251,18 @@ def extract_features(pkt) -> Optional[dict]:
         features["dst_port"] = udp.dport
         features["src_port"] = udp.sport
         features["udp_len"] = udp.len
+        features.update(_tls_details(payload, udp.sport, udp.dport))
 
     elif pkt.haslayer(ICMP):
         features["protocol"] = "icmp"
         icmp = pkt[ICMP]
         features["icmp_type"] = icmp.type
         features["icmp_code"] = icmp.code
+
+    if features.get("src_port") is not None and features.get("dst_port") is not None:
+        left = f"{features['src_ip']}:{features['src_port']}"
+        right = f"{features['dst_ip']}:{features['dst_port']}"
+        a, b = sorted([left, right])
+        features["flow_id"] = f"{features['protocol']}|{a}|{b}"
 
     return features

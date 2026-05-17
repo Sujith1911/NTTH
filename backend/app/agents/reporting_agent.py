@@ -65,6 +65,8 @@ def _should_persist_packet(payload: dict, *, threat: bool = False) -> bool:
 
 async def _handle_report_event(payload: dict) -> None:
     try:
+        from app.config import get_settings
+        settings = get_settings()
         incident_context = payload.get("incident_context", {})
         victim_ip = (
             incident_context.get("victim_ip")
@@ -72,6 +74,13 @@ async def _handle_report_event(payload: dict) -> None:
             or payload.get("src_ip")
         )
         src_ip = payload.get("src_ip", "")
+        try:
+            from app.ids.risk_clearance import should_suppress
+            if should_suppress(src_ip, payload.get("timestamp")):
+                log.info("reporting_agent.risk_update_suppressed_after_clear", ip=src_ip)
+                return
+        except Exception:
+            pass
         managed_asset_ip = None
         if isinstance(src_ip, str) and is_managed_asset_ip(src_ip):
             managed_asset_ip = src_ip
@@ -169,6 +178,27 @@ async def _handle_report_event(payload: dict) -> None:
             "timestamp": payload.get("timestamp"),
         })
 
+        risk_score = float(payload.get("risk_score") or 0.0)
+        if (
+            risk_score >= settings.risk_block_threshold
+            and payload.get("action") != "block"
+            and managed_asset_ip == src_ip
+            and src_ip not in {settings.gateway_ip, settings.server_display_ip}
+        ):
+            await event_bus.publish("enforcement_action", {
+                **payload,
+                "action": "block",
+                "base_action": payload.get("action"),
+                "incident_context": {
+                    **incident_context,
+                    "response_mode": "quarantine_source",
+                    "decision_reason": (
+                        f"risk_score={risk_score:.2f}; final_action=block; "
+                        f"threshold={settings.risk_block_threshold:.2f}; source=reporting_agent"
+                    ),
+                },
+            })
+
     except Exception as exc:
         log.error("reporting_agent.error", error=str(exc))
 
@@ -260,6 +290,12 @@ async def _persist_packet(payload: dict, threat_type: str | None = None,
                 http_content_type=payload.get("http_content_type"),
                 http_body_preview=payload.get("http_body_preview"),
                 http_form_fields=payload.get("http_form_fields"),
+                tls_sni=payload.get("tls_sni"),
+                tls_alpn=payload.get("tls_alpn"),
+                tls_version=payload.get("tls_version"),
+                tls_record_type=payload.get("tls_record_type"),
+                quic_hint=payload.get("quic_hint", False),
+                flow_id=payload.get("flow_id"),
                 is_syn=payload.get("is_syn", False),
                 is_ack=payload.get("is_ack", False),
                 is_rst=payload.get("is_rst", False),

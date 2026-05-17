@@ -28,7 +28,7 @@ async def track_rule(
 ) -> None:
     """Persist a new firewall rule in the DB."""
     ttl = ttl_seconds or settings.firewall_rule_ttl_seconds
-    expires_at = utc_now_naive() + timedelta(seconds=ttl)
+    expires_at = None if ttl_seconds == 0 else utc_now_naive() + timedelta(seconds=ttl)
 
     async with AsyncSessionLocal() as db:
         await create_firewall_rule(

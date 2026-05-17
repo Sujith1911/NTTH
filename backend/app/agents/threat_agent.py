@@ -30,6 +30,12 @@ async def _handle_device_seen(features: dict) -> None:
     _settings = get_settings()
     src_ip = features.get("src_ip", "")
     dst_ip = features.get("dst_ip", "")
+    try:
+        from app.ids.risk_clearance import should_suppress
+        if should_suppress(src_ip, features.get("timestamp")):
+            return
+    except Exception:
+        pass
 
     # Skip traffic from our own IP (our scanner probes ports and triggers false positives)
     _skip_ips = {_settings.server_display_ip, _settings.gateway_ip}
@@ -130,6 +136,7 @@ async def _handle_device_seen(features: dict) -> None:
             f"port_scan={rule_result.get('port_score', 0):.2f}",
             f"syn_flood={rule_result.get('syn_score', 0):.2f}",
             f"brute_force={rule_result.get('brute_score', 0):.2f}",
+            f"winning_rule={rule_result.get('rule_details', {}).get('winning_rule', 'none')}",
             f"action={action}",
         ],
         "device_state": device_state,

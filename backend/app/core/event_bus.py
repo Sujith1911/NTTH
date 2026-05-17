@@ -27,6 +27,9 @@ def subscribe(topic: str, handler: Callable[..., Coroutine]) -> None:
 
 async def publish(topic: str, payload: Any) -> None:
     """Put an event onto the queue (non-blocking if space available)."""
+    if topic == "device_seen" and _queue.qsize() > int(settings.event_bus_queue_size * 0.8):
+        log.warning("event_bus.dropped_low_priority", topic=topic, queue_size=_queue.qsize())
+        return
     try:
         _queue.put_nowait({"topic": topic, "payload": payload})
     except asyncio.QueueFull:

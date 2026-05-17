@@ -6,7 +6,12 @@ All endpoints require User-level JWT authentication.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
+import csv
+import io
+import json
+import struct
+
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import crud
@@ -41,6 +46,22 @@ def _service_ports(service: str | None) -> list[int] | None:
         return None
     normalized = service.strip().lower().replace("-", "_")
     return SERVICE_PORTS.get(normalized)
+
+
+def _filter_args(payload: dict | None) -> dict:
+    payload = payload or {}
+    return {
+        "src_ip": (payload.get("src_ip") or "").strip() or None,
+        "dst_ip": (payload.get("dst_ip") or "").strip() or None,
+        "protocol": (payload.get("protocol") or "").strip() or None,
+        "service_ports": _service_ports(payload.get("service")),
+        "direction": (payload.get("direction") or "").strip() or None,
+        "threat_type": (payload.get("threat_type") or "").strip() or None,
+        "captured_from": local_input_to_utc_naive(payload.get("captured_from")),
+        "captured_to": local_input_to_utc_naive(payload.get("captured_to"), end_of_day=True),
+        "only_threats": bool(payload.get("only_threats", False)),
+        "search": (payload.get("search") or "").strip() or None,
+    }
 
 
 def _packet_payload(pkt) -> dict:
@@ -79,6 +100,12 @@ def _packet_payload(pkt) -> dict:
         "http_content_type": pkt.http_content_type,
         "http_body_preview": pkt.http_body_preview,
         "http_form_fields": pkt.http_form_fields,
+        "tls_sni": pkt.tls_sni,
+        "tls_alpn": pkt.tls_alpn,
+        "tls_version": pkt.tls_version,
+        "tls_record_type": pkt.tls_record_type,
+        "quic_hint": pkt.quic_hint,
+        "flow_id": pkt.flow_id,
         "is_syn": pkt.is_syn,
         "is_ack": pkt.is_ack,
         "is_rst": pkt.is_rst,
@@ -99,6 +126,7 @@ async def list_packets(
     service: str = Query(None, description="Filter by service: http, https, dns, ssh, ..."),
     direction: str = Query(None, description="Filter by direction: inbound, outbound, local, unknown"),
     threat_type: str = Query(None, description="Filter by threat type"),
+    search: str = Query(None, description="Search endpoints, HTTP fields, TLS SNI, or payload text"),
     captured_from: str = Query(None, description="Local date/datetime lower bound"),
     captured_to: str = Query(None, description="Local date/datetime upper bound"),
     only_threats: bool = Query(False, description="Show only threat-flagged packets"),
@@ -123,6 +151,7 @@ async def list_packets(
         captured_from=local_input_to_utc_naive(captured_from),
         captured_to=local_input_to_utc_naive(captured_to, end_of_day=True),
         only_threats=only_threats,
+        search=search,
     )
     return {
         "total": total,
@@ -148,6 +177,110 @@ async def packet_stats(
     return await crud.get_captured_packet_stats(db)
 
 
+@router.get("/flows/{flow_id}")
+async def packet_flow(
+    flow_id: str,
+    limit: int = Query(200, ge=1, le=500),
+    db: AsyncSession = Depends(get_db),
+    _user=Depends(get_current_user),
+):
+    packets = await crud.packets_by_flow(db, flow_id, limit=limit)
+    return {
+        "flow_id": flow_id,
+        "total_returned": len(packets),
+        "items": [_packet_payload(pkt) for pkt in packets],
+    }
+
+
+def _pcap_bytes(packets) -> bytes:
+    out = io.BytesIO()
+    out.write(struct.pack("<IHHIIII", 0xA1B2C3D4, 2, 4, 0, 0, 65535, 101))
+    for pkt in packets:
+        try:
+            src = bytes(int(part) for part in pkt.src_ip.split("."))
+            dst = bytes(int(part) for part in pkt.dst_ip.split("."))
+        except Exception:
+            continue
+        payload = bytes.fromhex(pkt.payload_preview or "")
+        proto = {"icmp": 1, "tcp": 6, "udp": 17}.get(pkt.protocol, 0)
+        ip_header = bytearray(20)
+        ip_header[0] = 0x45
+        ip_header[8] = pkt.ip_ttl or 64
+        ip_header[9] = proto
+        ip_header[12:16] = src
+        ip_header[16:20] = dst
+        transport = b""
+        if pkt.protocol == "tcp":
+            flags = 0
+            flag_text = pkt.flags or ""
+            for marker, bit in (("F", 0x01), ("S", 0x02), ("R", 0x04), ("P", 0x08), ("A", 0x10)):
+                if marker in flag_text:
+                    flags |= bit
+            transport = struct.pack(
+                "!HHIIBBHHH",
+                pkt.src_port or 0,
+                pkt.dst_port or 0,
+                pkt.tcp_seq or 0,
+                pkt.tcp_ack or 0,
+                5 << 4,
+                flags,
+                pkt.tcp_window or 0,
+                0,
+                0,
+            )
+        elif pkt.protocol == "udp":
+            transport = struct.pack("!HHHH", pkt.src_port or 0, pkt.dst_port or 0, 8 + len(payload), 0)
+        elif pkt.protocol == "icmp":
+            transport = struct.pack("!BBH", pkt.icmp_type or 0, pkt.icmp_code or 0, 0)
+        total_len = 20 + len(transport) + len(payload)
+        ip_header[2:4] = total_len.to_bytes(2, "big")
+        data = bytes(ip_header) + transport + payload
+        ts = pkt.captured_at.timestamp() if pkt.captured_at else 0
+        sec = int(ts)
+        usec = int((ts - sec) * 1_000_000)
+        out.write(struct.pack("<IIII", sec, usec, len(data), len(data)))
+        out.write(data)
+    return out.getvalue()
+
+
+@router.post("/export")
+async def export_packets(
+    payload: dict | None = Body(default=None),
+    format: str = Query("csv", pattern="^(csv|json|pcap)$"),
+    db: AsyncSession = Depends(get_db),
+    _user=Depends(get_current_user),
+):
+    filters = _filter_args(payload)
+    packets = await crud.export_captured_packets(db, limit=5000, **filters)
+    if format == "json":
+        body = json.dumps([_packet_payload(pkt) for pkt in packets], default=str)
+        return Response(body, media_type="application/json")
+    if format == "pcap":
+        return Response(
+            _pcap_bytes(packets),
+            media_type="application/vnd.tcpdump.pcap",
+            headers={"Content-Disposition": "attachment; filename=ntth_packets.pcap"},
+        )
+    output = io.StringIO()
+    writer = csv.DictWriter(
+        output,
+        fieldnames=[
+            "id", "captured_at", "direction", "protocol", "src_ip", "src_port",
+            "dst_ip", "dst_port", "pkt_len", "payload_len", "flags", "tls_sni",
+            "http_host", "http_path", "threat_type", "risk_score", "action_taken",
+        ],
+    )
+    writer.writeheader()
+    for pkt in packets:
+        row = _packet_payload(pkt)
+        writer.writerow({key: row.get(key) for key in writer.fieldnames})
+    return Response(
+        output.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=ntth_packets.csv"},
+    )
+
+
 @router.post("/delete-filtered")
 async def delete_filtered_packets(
     payload: dict | None = Body(default=None),
@@ -155,18 +288,9 @@ async def delete_filtered_packets(
     _admin=Depends(require_admin),
 ):
     """Admin-only: delete all packets matching the current filters."""
-    payload = payload or {}
     deleted = await crud.delete_captured_packets(
         db,
-        src_ip=(payload.get("src_ip") or "").strip() or None,
-        dst_ip=(payload.get("dst_ip") or "").strip() or None,
-        protocol=(payload.get("protocol") or "").strip() or None,
-        service_ports=_service_ports(payload.get("service")),
-        direction=(payload.get("direction") or "").strip() or None,
-        threat_type=(payload.get("threat_type") or "").strip() or None,
-        captured_from=local_input_to_utc_naive(payload.get("captured_from")),
-        captured_to=local_input_to_utc_naive(payload.get("captured_to"), end_of_day=True),
-        only_threats=bool(payload.get("only_threats", False)),
+        **_filter_args(payload),
     )
     await db.commit()
     return {"deleted": deleted}

@@ -89,6 +89,20 @@ def _should_hide_ip(ip: str) -> bool:
     return any(parsed in network for network in _IGNORED_DISPLAY_NETWORKS)
 
 
+def _is_local_managed_ip(ip: str) -> bool:
+    try:
+        parsed = ip_address(ip)
+    except ValueError:
+        return False
+    subnet = settings.scan_subnet or ""
+    if subnet:
+        try:
+            return parsed in ip_network(subnet, strict=False)
+        except ValueError:
+            pass
+    return parsed.is_private
+
+
 def _risk_details(events) -> list[dict]:
     details = []
     for event in events:
@@ -104,6 +118,7 @@ def _risk_details(events) -> list[dict]:
             f"ML anomaly score: {event.ml_score:.2f}" if event.ml_score is not None else None,
             f"Action: {event.action_taken or 'observe'}",
             f"Destination: {event.dst_ip or '-'}:{event.dst_port or '-'}",
+            notes.get("decision_reason"),
             notes.get("response_mode"),
         ]
         details.append({
@@ -139,12 +154,6 @@ async def get_topology(
         raise
     stats_map = {s["ip"]: s for s in get_live_stats()}
     scan_state = get_scan_state()
-    risk_events = await crud.latest_threat_events_for_ips(
-        db,
-        [device.ip_address for device in devices],
-        limit_per_ip=5,
-    )
-
     gateway_ip = _get_gateway()
     local_ip = _display_local_ip(request, devices)
 
@@ -192,6 +201,22 @@ async def get_topology(
     blocked_ips = {r.target_ip for r in firewall_rules if r.is_active and r.rule_type in {"block", "drop"}}
     redirected_ips = {r.target_ip for r in firewall_rules if r.is_active and r.rule_type == "redirect"}
     throttled_ips = {r.target_ip for r in firewall_rules if r.is_active and r.rule_type == "rate_limit"}
+    known_device_ips = {device.ip_address for device in devices}
+    local_session_ips = {
+        session.attacker_ip
+        for session in honeypot_sessions
+        if _is_local_managed_ip(session.attacker_ip)
+    }
+    local_candidate_ips = (
+        known_device_ips
+        | local_session_ips
+        | {ip for ip in blocked_ips | redirected_ips | throttled_ips if _is_local_managed_ip(ip)}
+    )
+    risk_events = await crud.latest_threat_events_for_ips(
+        db,
+        list(local_candidate_ips),
+        limit_per_ip=5,
+    )
 
     # Devices (skip gateway/server — they have dedicated nodes above)
     _infrastructure_ips = {gateway_ip, local_ip}
@@ -245,9 +270,42 @@ async def get_topology(
             })
 
     # Honeypot sessions from external (non-local) IPs
-    known_ips = {d.ip_address for d in devices}
+    known_ips = set(known_device_ips)
+    synthetic_local_ips = sorted(
+        ip
+        for ip in local_session_ips | blocked_ips | redirected_ips | throttled_ips
+        if ip not in known_ips and ip not in _infrastructure_ips and _is_local_managed_ip(ip)
+    )
+    for ip in synthetic_local_ips:
+        node_id = f"dev_{ip.replace('.', '_')}"
+        latest_events = risk_events.get(ip, [])
+        latest_risk = max([event.risk_score or 0 for event in latest_events] or [0.0])
+        session_count = len([s for s in honeypot_sessions if s.attacker_ip == ip])
+        nodes.append({
+            "id": node_id,
+            "device_id": None,
+            "ip": ip,
+            "label": ip,
+            "type": "device",
+            "is_trusted": False,
+            "risk_score": max(latest_risk, 1.0 if ip in blocked_ips else (0.75 if session_count else 0.0)),
+            "risk_details": _risk_details(latest_events),
+            "is_blocked": ip in blocked_ips,
+            "is_redirected": ip in redirected_ips,
+            "is_throttled": ip in throttled_ips,
+            "source": "honeypot_or_firewall",
+            "honeypot_sessions": session_count,
+            "live": stats_map.get(ip, {}),
+        })
+        edges.append({"from": "gateway", "to": node_id, "risk_score": latest_risk})
+        if ip in redirected_ips or session_count:
+            edges.append({"from": node_id, "to": "honeypot", "type": "attack"})
+        known_ips.add(ip)
+
     for session in honeypot_sessions[:20]:
         if _should_hide_ip(session.attacker_ip):
+            continue
+        if _is_local_managed_ip(session.attacker_ip):
             continue
         if session.attacker_ip not in known_ips:
             node_id = f"ext_{session.attacker_ip.replace('.', '_')}"

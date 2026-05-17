@@ -9,6 +9,7 @@ import asyncio
 import json
 import os
 from datetime import datetime
+from pathlib import Path
 from typing import TextIO
 
 from app.config import get_settings
@@ -17,6 +18,9 @@ from app.honeypot.session_logger import log_cowrie_session
 
 log = get_logger("cowrie_watcher")
 settings = get_settings()
+_BACKEND_DIR = Path(__file__).resolve().parents[2]
+_LOCAL_COWRIE_LOG = _BACKEND_DIR / "cowrie" / "logs" / "cowrie.json"
+_BACKFILL_LINES = 1000
 
 
 def _normalize_timestamp(raw: str | None) -> datetime:
@@ -42,18 +46,33 @@ def _normalize_duration(value) -> float | None:
 
 async def watch_cowrie_log() -> None:
     """Tail the Cowrie JSON log file and process new events."""
-    log_path = settings.cowrie_log_path
+    configured_path = Path(settings.cowrie_log_path)
+    fallback_paths = [
+        configured_path,
+        _LOCAL_COWRIE_LOG,
+        Path.cwd() / "cowrie" / "logs" / "cowrie.json",
+    ]
+    log_path = _resolve_log_path(fallback_paths)
 
     # Wait for log file to appear
     waited = 0
-    while not os.path.exists(log_path):
+    while log_path is None:
         if waited == 0:
-            log.info("cowrie_watcher.waiting", path=log_path)
+            log.info(
+                "cowrie_watcher.waiting",
+                paths=[str(path) for path in fallback_paths],
+            )
         await asyncio.sleep(5)
         waited += 5
         if waited > 300:
-            log.warning("cowrie_watcher.timeout", path=log_path)
+            log.warning(
+                "cowrie_watcher.timeout",
+                paths=[str(path) for path in fallback_paths],
+            )
             return
+        log_path = _resolve_log_path(fallback_paths)
+
+    log.info("cowrie_watcher.path_selected", path=str(log_path))
 
     file_handle: TextIO | None = None
     current_inode: tuple[int, int] | None = None
@@ -68,6 +87,7 @@ async def watch_cowrie_log() -> None:
                     log.info("cowrie_watcher.reopened", path=log_path)
                 file_handle = open(log_path, "r", encoding="utf-8")
                 current_inode = inode
+                await _backfill_recent_events(log_path)
                 file_handle.seek(0, os.SEEK_END)
                 log.info("cowrie_watcher.started", path=log_path)
 
@@ -91,16 +111,7 @@ async def watch_cowrie_log() -> None:
                 continue
 
             try:
-                event = json.loads(line)
-                event_id = event.get("eventid", "")
-                if event_id in (
-                    "cowrie.login.failed",
-                    "cowrie.login.success",
-                    "cowrie.command.input",
-                ):
-                    await log_cowrie_session(event)
-                elif event_id == "cowrie.session.closed":
-                    await _close_cowrie_session(event)
+                await _process_event_line(line)
             except json.JSONDecodeError:
                 log.debug("cowrie_watcher.json_decode_skipped")
             except Exception as exc:
@@ -112,6 +123,56 @@ async def watch_cowrie_log() -> None:
         except Exception as exc:
             log.error("cowrie_watcher.loop_error", error=str(exc))
             await asyncio.sleep(1)
+
+
+def _resolve_log_path(paths: list[Path]) -> Path | None:
+    for path in paths:
+        try:
+            if path.exists():
+                return path
+        except OSError:
+            continue
+    return None
+
+
+async def _backfill_recent_events(log_path: Path) -> None:
+    """Process recent Cowrie events once on startup so sessions are not lost."""
+    try:
+        with open(log_path, "r", encoding="utf-8") as handle:
+            lines = handle.readlines()[-_BACKFILL_LINES:]
+    except OSError as exc:
+        log.warning("cowrie_watcher.backfill_read_failed", error=str(exc))
+        return
+
+    processed = 0
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            if await _process_event_line(line):
+                processed += 1
+        except json.JSONDecodeError:
+            continue
+        except Exception as exc:
+            log.warning("cowrie_watcher.backfill_event_failed", error=str(exc))
+    log.info("cowrie_watcher.backfilled", count=processed, path=str(log_path))
+
+
+async def _process_event_line(line: str) -> bool:
+    event = json.loads(line)
+    event_id = event.get("eventid", "")
+    if event_id in (
+        "cowrie.login.failed",
+        "cowrie.login.success",
+        "cowrie.command.input",
+    ):
+        await log_cowrie_session(event)
+        return True
+    if event_id == "cowrie.session.closed":
+        await _close_cowrie_session(event)
+        return True
+    return False
 
 
 async def _close_cowrie_session(event: dict) -> None:

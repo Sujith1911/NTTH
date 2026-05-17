@@ -74,6 +74,15 @@ if command -v docker &>/dev/null; then
   sudo docker stop ntth_defense ntth_cowrie ntth_backend ntth_postgres 2>/dev/null || true
   sudo docker rm ntth_defense ntth_cowrie ntth_backend ntth_postgres 2>/dev/null || true
   echo "   ✅ Docker containers cleared"
+
+  echo "   🐝 Starting Cowrie SSH honeypot..."
+  mkdir -p "$BACKEND_DIR/cowrie/logs"
+  sudo chmod 777 "$BACKEND_DIR/cowrie/logs" 2>/dev/null || true
+  if sudo docker compose -f "$BACKEND_DIR/docker-compose.yml" up -d cowrie; then
+    echo "   ✅ Cowrie ready on :30022"
+  else
+    echo "   ⚠️ Cowrie did not start; backend will retry via controller"
+  fi
 else
   echo "   ⚠️ Docker not installed — skipping"
 fi

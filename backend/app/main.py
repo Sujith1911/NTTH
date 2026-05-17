@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import asynccontextmanager
+from datetime import timedelta
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -18,7 +19,7 @@ from app.core.event_bus import start_event_bus, stop_event_bus
 from app.core.logger import get_logger, setup_logging
 from app.core.scheduler import start_scheduler, stop_scheduler
 from app.core.security import hash_password
-from app.core.time_utils import local_now_iso
+from app.core.time_utils import local_now_iso, utc_now_naive
 from app.database import crud
 from app.database.crud import create_user, get_user_by_username
 from app.database.session import AsyncSessionLocal, engine, init_db
@@ -89,6 +90,12 @@ async def lifespan(app: FastAPI):
             ("captured_packets", "http_content_type", "VARCHAR(255)"),
             ("captured_packets", "http_body_preview", "TEXT"),
             ("captured_packets", "http_form_fields", "TEXT"),
+            ("captured_packets", "tls_sni", "VARCHAR(255)"),
+            ("captured_packets", "tls_alpn", "TEXT"),
+            ("captured_packets", "tls_version", "VARCHAR(16)"),
+            ("captured_packets", "tls_record_type", "INTEGER"),
+            ("captured_packets", "quic_hint", "BOOLEAN DEFAULT 0 NOT NULL"),
+            ("captured_packets", "flow_id", "VARCHAR(255)"),
         ]
         async with engine.begin() as conn:
             for table, column, column_type in migration_columns:
@@ -97,6 +104,15 @@ async def lifespan(app: FastAPI):
                     log.info("ntth.db_migrated", column=f"{table}.{column}")
                 except Exception:
                     pass  # Column already exists.
+            for stmt in (
+                "CREATE INDEX IF NOT EXISTS ix_captured_packets_flow_id ON captured_packets(flow_id)",
+                "CREATE INDEX IF NOT EXISTS ix_captured_packets_ports ON captured_packets(src_port, dst_port)",
+                "CREATE INDEX IF NOT EXISTS ix_captured_packets_tls_sni ON captured_packets(tls_sni)",
+            ):
+                try:
+                    await conn.execute(sa_text(stmt))
+                except Exception:
+                    pass
 
     # 2. Seed admin user
     async with AsyncSessionLocal() as db:
@@ -120,6 +136,12 @@ async def lifespan(app: FastAPI):
                 server_ip=settings.server_display_ip,
                 subnet=effective_scan_subnet,
             )
+            packet_retention_cleanup = 0
+            if settings.packet_retention_days > 0:
+                packet_retention_cleanup = await crud.purge_old_captured_packets(
+                    db,
+                    utc_now_naive() - timedelta(days=settings.packet_retention_days),
+                )
             await db.commit()
             if removed:
                 log.info("ntth.device_cleanup", removed=removed, subnet=effective_scan_subnet)
@@ -131,6 +153,8 @@ async def lifespan(app: FastAPI):
                 log.info("ntth.benign_web_cleanup", **benign_cleanup)
             if any(scanner_cleanup.values()):
                 log.info("ntth.scanner_false_positive_cleanup", **scanner_cleanup)
+            if packet_retention_cleanup:
+                log.info("ntth.packet_retention_cleanup", removed=packet_retention_cleanup)
 
     # 3. Start event bus
     await start_event_bus()

@@ -82,10 +82,14 @@ class _HoneypotScreenState extends State<HoneypotScreen>
       final latest = ws.events.first;
       if (latest['type'] == 'honeypot_session') {
         final session = HoneypotModel.fromJson(latest);
-        final idx = _sessions.indexWhere((s) => s.sessionId == session.sessionId);
+        final idx =
+            _sessions.indexWhere((s) => s.sessionId == session.sessionId);
         setState(() {
-          if (idx >= 0) _sessions[idx] = session;
-          else _sessions = [session, ..._sessions];
+          if (idx >= 0) {
+            _sessions[idx] = session;
+          } else {
+            _sessions = [session, ..._sessions];
+          }
           _lastSyncedAt = DateTime.now();
         });
       }
@@ -98,10 +102,13 @@ class _HoneypotScreenState extends State<HoneypotScreen>
     final isAdmin = context.read<AuthService>().isAdmin;
     final theme = Theme.of(context);
     final cowrieStatus = _status?['status'] as String? ?? '?';
-    final multiInfo = _status?['multi_honeypots'] as Map<String, dynamic>? ?? {};
-    final activePorts = multiInfo['total_active'] as int? ?? _activeHoneypots.length;
+    final multiInfo =
+        _status?['multi_honeypots'] as Map<String, dynamic>? ?? {};
+    final activePorts =
+        multiInfo['total_active'] as int? ?? _activeHoneypots.length;
     final multiTotal = multiInfo['total_sessions'] as int? ?? 0;
-    final byProto = multiInfo['sessions_by_protocol'] as Map<String, dynamic>? ?? {};
+    final byProto =
+        multiInfo['sessions_by_protocol'] as Map<String, dynamic>? ?? {};
 
     return Scaffold(
       drawer: const AppShellDrawer(),
@@ -120,11 +127,14 @@ class _HoneypotScreenState extends State<HoneypotScreen>
         ),
       ),
       body: _loading
-          ? Center(child: CircularProgressIndicator(color: theme.colorScheme.primary))
+          ? Center(
+              child:
+                  CircularProgressIndicator(color: theme.colorScheme.primary))
           : TabBarView(
               controller: _tabController,
               children: [
-                _buildOverview(theme, cowrieStatus, activePorts, multiTotal, byProto, isAdmin),
+                _buildOverview(theme, cowrieStatus, activePorts, multiTotal,
+                    byProto, isAdmin),
                 _buildCowrieSessions(theme),
                 _buildMultiSessions(theme, isAdmin),
               ],
@@ -154,21 +164,28 @@ class _HoneypotScreenState extends State<HoneypotScreen>
               Text(
                 'All active honeypots lure, trap, and log attacker activity in real-time. '
                 'Any attacked port is automatically covered.',
-                style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.6), height: 1.5),
+                style: TextStyle(
+                    color: theme.colorScheme.onSurface.withOpacity(0.6),
+                    height: 1.5),
               ),
               const SizedBox(height: 16),
               Wrap(spacing: 10, runSpacing: 10, children: [
                 _pill(theme, 'Cowrie SSH',
                     cowrieStatus == 'running' ? 'Running' : 'Offline',
-                    color: cowrieStatus == 'running' ? Colors.green : Colors.red),
+                    color:
+                        cowrieStatus == 'running' ? Colors.green : Colors.red),
                 _pill(theme, 'Active Honeypots', '$activePorts',
                     color: theme.colorScheme.primary),
                 _pill(theme, 'Multi-Protocol Sessions', '$multiTotal',
                     color: Colors.orange),
                 _pill(theme, 'Cowrie Sessions', '${_sessions.length}',
                     color: Colors.purple),
-                _pill(theme, 'Last sync',
-                    _lastSyncedAt == null ? 'Never' : timeago.format(_lastSyncedAt!),
+                _pill(
+                    theme,
+                    'Last sync',
+                    _lastSyncedAt == null
+                        ? 'Never'
+                        : timeago.format(_lastSyncedAt!),
                     color: theme.colorScheme.primary),
               ]),
             ],
@@ -185,23 +202,32 @@ class _HoneypotScreenState extends State<HoneypotScreen>
               Icon(Icons.terminal, color: Colors.purple.shade300, size: 32),
               const SizedBox(width: 16),
               Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('Cowrie SSH Honeypot',
-                      style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
-                  Text('Port 30022 · Status: $cowrieStatus',
-                      style: TextStyle(
-                          color: cowrieStatus == 'running' ? Colors.green : Colors.red,
-                          fontSize: 13)),
-                ]),
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Cowrie SSH Honeypot',
+                          style: TextStyle(
+                              fontWeight: FontWeight.w700, fontSize: 16)),
+                      Text('Port 30022 · Status: $cowrieStatus',
+                          style: TextStyle(
+                              color: cowrieStatus == 'running'
+                                  ? Colors.green
+                                  : Colors.red,
+                              fontSize: 13)),
+                    ]),
               ),
               if (isAdmin) ...[
                 OutlinedButton.icon(
                   icon: const Icon(Icons.play_arrow, size: 16),
                   label: const Text('Start'),
-                  style: OutlinedButton.styleFrom(foregroundColor: Colors.green,
+                  style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.green,
                       side: const BorderSide(color: Colors.green)),
                   onPressed: () async {
-                    await context.read<AuthService>().api.post('/honeypot/start', {});
+                    await context
+                        .read<AuthService>()
+                        .api
+                        .post('/honeypot/start', {});
                     _fetchAll();
                   },
                 ),
@@ -209,10 +235,14 @@ class _HoneypotScreenState extends State<HoneypotScreen>
                 OutlinedButton.icon(
                   icon: const Icon(Icons.stop, size: 16),
                   label: const Text('Stop'),
-                  style: OutlinedButton.styleFrom(foregroundColor: Colors.red,
+                  style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.red,
                       side: const BorderSide(color: Colors.red)),
                   onPressed: () async {
-                    await context.read<AuthService>().api.post('/honeypot/stop', {});
+                    await context
+                        .read<AuthService>()
+                        .api
+                        .post('/honeypot/stop', {});
                     _fetchAll();
                   },
                 ),
@@ -226,7 +256,8 @@ class _HoneypotScreenState extends State<HoneypotScreen>
           Padding(
             padding: const EdgeInsets.only(bottom: 10),
             child: Text('Active Multi-Protocol Honeypots',
-                style: GoogleFonts.spaceGrotesk(fontWeight: FontWeight.w700, fontSize: 16)),
+                style: GoogleFonts.spaceGrotesk(
+                    fontWeight: FontWeight.w700, fontSize: 16)),
           ),
           GridView.builder(
             shrinkWrap: true,
@@ -242,7 +273,8 @@ class _HoneypotScreenState extends State<HoneypotScreen>
               final hp = _activeHoneypots[i];
               final port = hp['port'] as int;
               final proto = (hp['protocol'] as String? ?? 'tcp').toUpperCase();
-              final sessions = byProto[(hp['protocol'] as String?) ?? ''] as int? ?? 0;
+              final sessions =
+                  byProto[(hp['protocol'] as String?) ?? ''] as int? ?? 0;
               return GlassyContainer(
                 padding: const EdgeInsets.all(12),
                 borderRadius: 14,
@@ -251,7 +283,9 @@ class _HoneypotScreenState extends State<HoneypotScreen>
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Row(children: [
-                      Container(width: 8, height: 8,
+                      Container(
+                          width: 8,
+                          height: 8,
                           decoration: const BoxDecoration(
                               color: Colors.green, shape: BoxShape.circle)),
                       const SizedBox(width: 6),
@@ -260,9 +294,11 @@ class _HoneypotScreenState extends State<HoneypotScreen>
                               fontWeight: FontWeight.w700, fontSize: 13)),
                     ]),
                     const SizedBox(height: 4),
-                    Text(proto, style: TextStyle(
-                        color: theme.colorScheme.primary,
-                        fontWeight: FontWeight.w600, fontSize: 12)),
+                    Text(proto,
+                        style: TextStyle(
+                            color: theme.colorScheme.primary,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 12)),
                     Text('$sessions sessions',
                         style: TextStyle(
                             color: theme.colorScheme.onSurface.withOpacity(0.5),
@@ -281,9 +317,11 @@ class _HoneypotScreenState extends State<HoneypotScreen>
             child: Row(children: [
               Icon(Icons.info_outline, color: theme.colorScheme.primary),
               const SizedBox(width: 12),
-              Expanded(child: Text(
+              Expanded(
+                  child: Text(
                 'No multi-protocol honeypots active yet. They auto-deploy when an attack is detected on any port.',
-                style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.7)),
+                style: TextStyle(
+                    color: theme.colorScheme.onSurface.withOpacity(0.7)),
               )),
             ]),
           ),
@@ -293,25 +331,30 @@ class _HoneypotScreenState extends State<HoneypotScreen>
           Padding(
             padding: const EdgeInsets.only(bottom: 10),
             child: Text('Sessions by Protocol',
-                style: GoogleFonts.spaceGrotesk(fontWeight: FontWeight.w700, fontSize: 16)),
+                style: GoogleFonts.spaceGrotesk(
+                    fontWeight: FontWeight.w700, fontSize: 16)),
           ),
           GlassyContainer(
             padding: const EdgeInsets.all(16),
             borderRadius: 16,
             child: Column(
-              children: byProto.entries.map((e) => Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Row(children: [
-                  Text(e.key.toUpperCase(),
-                      style: TextStyle(
-                          color: theme.colorScheme.primary,
-                          fontWeight: FontWeight.w700, fontSize: 13)),
-                  const Spacer(),
-                  Text('${e.value} sessions',
-                      style: TextStyle(
-                          color: theme.colorScheme.onSurface.withOpacity(0.7))),
-                ]),
-              )).toList(),
+              children: byProto.entries
+                  .map((e) => Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Row(children: [
+                          Text(e.key.toUpperCase(),
+                              style: TextStyle(
+                                  color: theme.colorScheme.primary,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 13)),
+                          const Spacer(),
+                          Text('${e.value} sessions',
+                              style: TextStyle(
+                                  color: theme.colorScheme.onSurface
+                                      .withOpacity(0.7))),
+                        ]),
+                      ))
+                  .toList(),
             ),
           ),
         ],
@@ -325,14 +368,17 @@ class _HoneypotScreenState extends State<HoneypotScreen>
     if (_sessions.isEmpty) {
       return Center(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Icon(Icons.terminal, size: 48, color: theme.colorScheme.onSurface.withOpacity(0.3)),
+          Icon(Icons.terminal,
+              size: 48, color: theme.colorScheme.onSurface.withOpacity(0.3)),
           const SizedBox(height: 12),
           Text('No Cowrie sessions yet',
-              style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.5))),
+              style: TextStyle(
+                  color: theme.colorScheme.onSurface.withOpacity(0.5))),
           const SizedBox(height: 6),
           Text('SSH to port 30022 to trigger a session',
               style: TextStyle(
-                  fontSize: 12, color: theme.colorScheme.onSurface.withOpacity(0.35))),
+                  fontSize: 12,
+                  color: theme.colorScheme.onSurface.withOpacity(0.35))),
         ]),
       );
     }
@@ -348,8 +394,10 @@ class _HoneypotScreenState extends State<HoneypotScreen>
             child: ExpansionTile(
               backgroundColor: Colors.transparent,
               collapsedBackgroundColor: Colors.transparent,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-              collapsedShape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(18)),
+              collapsedShape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(18)),
               leading: Icon(Icons.terminal, color: Colors.purple.shade300),
               title: Text(session.attackerIp,
                   style: TextStyle(fontWeight: FontWeight.w600)),
@@ -358,31 +406,41 @@ class _HoneypotScreenState extends State<HoneypotScreen>
                       ? 'Active now'
                       : 'Ended ${timeago.format(session.endedAt!)}',
                   style: TextStyle(
-                      color: theme.colorScheme.onSurface.withOpacity(0.55), fontSize: 12)),
+                      color: theme.colorScheme.onSurface.withOpacity(0.55),
+                      fontSize: 12)),
               trailing: _typeBadge('SSH', Colors.purple.shade300),
               children: [
                 Padding(
                   padding: const EdgeInsets.all(16),
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Divider(color: theme.dividerColor),
-                    const SizedBox(height: 8),
-                    if (session.usernameTried != null)
-                      _infoRow('Username', session.usernameTried!, theme),
-                    if (session.passwordTried != null)
-                      _infoRow('Password', session.passwordTried!, theme),
-                    if (session.victimIp != null)
-                      _infoRow('Target',
-                          session.victimPort != null
-                              ? '${session.victimIp}:${session.victimPort}'
-                              : session.victimIp!,
-                          theme),
-                    if (session.commandsRun != null)
-                      _infoRow('Commands', _formatCommands(session.commandsRun!), theme),
-                    if (session.durationSeconds != null)
-                      _infoRow('Duration', '${session.durationSeconds!.toStringAsFixed(1)}s', theme),
-                    if (session.org != null) _infoRow('Org', session.org!, theme),
-                    if (session.country != null) _infoRow('Country', session.country!, theme),
-                  ]),
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Divider(color: theme.dividerColor),
+                        const SizedBox(height: 8),
+                        if (session.usernameTried != null)
+                          _infoRow('Username', session.usernameTried!, theme),
+                        if (session.passwordTried != null)
+                          _infoRow('Password', session.passwordTried!, theme),
+                        if (session.victimIp != null)
+                          _infoRow(
+                              'Target',
+                              session.victimPort != null
+                                  ? '${session.victimIp}:${session.victimPort}'
+                                  : session.victimIp!,
+                              theme),
+                        if (session.commandsRun != null)
+                          _infoRow('Commands',
+                              _formatCommands(session.commandsRun!), theme),
+                        if (session.durationSeconds != null)
+                          _infoRow(
+                              'Duration',
+                              '${session.durationSeconds!.toStringAsFixed(1)}s',
+                              theme),
+                        if (session.org != null)
+                          _infoRow('Org', session.org!, theme),
+                        if (session.country != null)
+                          _infoRow('Country', session.country!, theme),
+                      ]),
                 ),
               ],
             ),
@@ -403,11 +461,13 @@ class _HoneypotScreenState extends State<HoneypotScreen>
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             borderRadius: 14,
             child: Row(children: [
-              Icon(Icons.add_circle_outline, color: theme.colorScheme.primary, size: 20),
+              Icon(Icons.add_circle_outline,
+                  color: theme.colorScheme.primary, size: 20),
               const SizedBox(width: 10),
               Text('Tap a port below or attacks auto-deploy honeypots',
                   style: TextStyle(
-                      color: theme.colorScheme.onSurface.withOpacity(0.65), fontSize: 13)),
+                      color: theme.colorScheme.onSurface.withOpacity(0.65),
+                      fontSize: 13)),
             ]),
           ),
         ),
@@ -415,16 +475,19 @@ class _HoneypotScreenState extends State<HoneypotScreen>
         child: _multiSessions.isEmpty
             ? Center(
                 child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(Icons.shield_outlined, size: 48,
+                  Icon(Icons.shield_outlined,
+                      size: 48,
                       color: theme.colorScheme.onSurface.withOpacity(0.3)),
                   const SizedBox(height: 12),
                   Text('No multi-protocol sessions yet',
-                      style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.5))),
+                      style: TextStyle(
+                          color: theme.colorScheme.onSurface.withOpacity(0.5))),
                   const SizedBox(height: 6),
                   Text('Honeypots auto-deploy when any port is attacked',
                       style: TextStyle(
                           fontSize: 12,
-                          color: theme.colorScheme.onSurface.withOpacity(0.35))),
+                          color:
+                              theme.colorScheme.onSurface.withOpacity(0.35))),
                 ]),
               )
             : ListView.builder(
@@ -445,43 +508,67 @@ class _HoneypotScreenState extends State<HoneypotScreen>
                       child: ExpansionTile(
                         backgroundColor: Colors.transparent,
                         collapsedBackgroundColor: Colors.transparent,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                        collapsedShape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                        leading: Icon(_protoIcon(proto), color: _protoColor(proto)),
-                        title: Text(ip, style: TextStyle(fontWeight: FontWeight.w600)),
-                        subtitle: Text('Port $port · ${duration.toStringAsFixed(1)}s',
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16)),
+                        collapsedShape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16)),
+                        leading:
+                            Icon(_protoIcon(proto), color: _protoColor(proto)),
+                        title: Text(ip,
+                            style: TextStyle(fontWeight: FontWeight.w600)),
+                        subtitle: Text(
+                            'Port $port · ${duration.toStringAsFixed(1)}s',
                             style: TextStyle(
-                                color: theme.colorScheme.onSurface.withOpacity(0.55),
+                                color: theme.colorScheme.onSurface
+                                    .withOpacity(0.55),
                                 fontSize: 12)),
-                        trailing: _typeBadge(proto.toUpperCase(), _protoColor(proto)),
+                        trailing:
+                            _typeBadge(proto.toUpperCase(), _protoColor(proto)),
                         children: [
                           Padding(
                             padding: const EdgeInsets.all(16),
-                            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                              Divider(color: theme.dividerColor),
-                              const SizedBox(height: 8),
-                              _infoRow('IP', ip, theme),
-                              _infoRow('Port', '$port', theme),
-                              _infoRow('Protocol', proto.toUpperCase(), theme),
-                              _infoRow('Connected', connected, theme),
-                              _infoRow('Duration', '${duration.toStringAsFixed(2)}s', theme),
-                              if (data.isNotEmpty)
-                                _infoRow('Data captured', data.length > 300 ? '${data.substring(0, 300)}…' : data, theme),
-                              if (s['credentials_captured'] == true)
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 6),
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                                    decoration: BoxDecoration(
-                                      color: Colors.red.withOpacity(0.1),
-                                      borderRadius: BorderRadius.circular(8),
-                                      border: Border.all(color: Colors.red.withOpacity(0.4)),
+                            child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Divider(color: theme.dividerColor),
+                                  const SizedBox(height: 8),
+                                  _infoRow('IP', ip, theme),
+                                  _infoRow('Port', '$port', theme),
+                                  _infoRow(
+                                      'Protocol', proto.toUpperCase(), theme),
+                                  _infoRow('Connected', connected, theme),
+                                  _infoRow('Duration',
+                                      '${duration.toStringAsFixed(2)}s', theme),
+                                  if (data.isNotEmpty)
+                                    _infoRow(
+                                        'Data captured',
+                                        data.length > 300
+                                            ? '${data.substring(0, 300)}…'
+                                            : data,
+                                        theme),
+                                  if (s['credentials_captured'] == true)
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 6),
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 10, vertical: 5),
+                                        decoration: BoxDecoration(
+                                          color: Colors.red.withOpacity(0.1),
+                                          borderRadius:
+                                              BorderRadius.circular(8),
+                                          border: Border.all(
+                                              color:
+                                                  Colors.red.withOpacity(0.4)),
+                                        ),
+                                        child: const Text(
+                                            '⚠ Credentials captured',
+                                            style: TextStyle(
+                                                color: Colors.red,
+                                                fontWeight: FontWeight.w700,
+                                                fontSize: 12)),
+                                      ),
                                     ),
-                                    child: const Text('⚠ Credentials captured',
-                                        style: TextStyle(color: Colors.red, fontWeight: FontWeight.w700, fontSize: 12)),
-                                  ),
-                                ),
-                            ]),
+                                ]),
                           ),
                         ],
                       ),
@@ -495,18 +582,23 @@ class _HoneypotScreenState extends State<HoneypotScreen>
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
-  Widget _pill(ThemeData theme, String label, String value, {required Color color}) {
+  Widget _pill(ThemeData theme, String label, String value,
+      {required Color color}) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-          color: color.withOpacity(0.10), borderRadius: BorderRadius.circular(999)),
+          color: color.withOpacity(0.10),
+          borderRadius: BorderRadius.circular(999)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(label,
-            style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.55),
-                fontSize: 11, fontWeight: FontWeight.w600)),
+            style: TextStyle(
+                color: theme.colorScheme.onSurface.withOpacity(0.55),
+                fontSize: 11,
+                fontWeight: FontWeight.w600)),
         const SizedBox(height: 2),
         Text(value,
-            style: GoogleFonts.spaceGrotesk(color: color, fontWeight: FontWeight.w700)),
+            style: GoogleFonts.spaceGrotesk(
+                color: color, fontWeight: FontWeight.w700)),
       ]),
     );
   }
@@ -520,7 +612,8 @@ class _HoneypotScreenState extends State<HoneypotScreen>
         border: Border.all(color: color.withOpacity(0.5)),
       ),
       child: Text(label,
-          style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w800)),
+          style: TextStyle(
+              color: color, fontSize: 10, fontWeight: FontWeight.w800)),
     );
   }
 
@@ -532,12 +625,14 @@ class _HoneypotScreenState extends State<HoneypotScreen>
             width: 80,
             child: Text(label,
                 style: TextStyle(
-                    color: theme.colorScheme.onSurface.withOpacity(0.5), fontSize: 12))),
+                    color: theme.colorScheme.onSurface.withOpacity(0.5),
+                    fontSize: 12))),
         Expanded(
             child: Text(value,
                 style: TextStyle(
                     color: theme.colorScheme.onSurface.withOpacity(0.9),
-                    fontSize: 12, fontFamily: 'monospace'))),
+                    fontSize: 12,
+                    fontFamily: 'monospace'))),
       ]),
     );
   }
@@ -545,37 +640,70 @@ class _HoneypotScreenState extends State<HoneypotScreen>
   String _formatCommands(String raw) {
     try {
       final decoded = jsonDecode(raw);
-      if (decoded is List) return decoded.map((e) => e.toString()).join('\n');
-      if (decoded is Map) return decoded.entries.map((e) => '${e.key}: ${e.value}').join('\n');
+      if (decoded is List) {
+        return decoded.map((e) => e.toString()).join('\n');
+      }
+      if (decoded is Map) {
+        return decoded.entries.map((e) => '${e.key}: ${e.value}').join('\n');
+      }
     } catch (_) {}
     return raw;
   }
 
   IconData _protoIcon(String proto) {
     switch (proto) {
-      case 'http': case 'https': case 'http-alt': return Icons.language;
-      case 'ftp': return Icons.folder_open;
-      case 'telnet': case 'ssh': return Icons.terminal;
-      case 'mysql': case 'postgres': case 'mssql': return Icons.storage;
-      case 'rdp': return Icons.desktop_windows;
-      case 'smb': return Icons.share;
-      case 'redis': case 'mongodb': return Icons.dns;
-      case 'vnc': return Icons.screen_share;
-      default: return Icons.electrical_services;
+      case 'http':
+      case 'https':
+      case 'http-alt':
+        return Icons.language;
+      case 'ftp':
+        return Icons.folder_open;
+      case 'telnet':
+      case 'ssh':
+        return Icons.terminal;
+      case 'mysql':
+      case 'postgres':
+      case 'mssql':
+        return Icons.storage;
+      case 'rdp':
+        return Icons.desktop_windows;
+      case 'smb':
+        return Icons.share;
+      case 'redis':
+      case 'mongodb':
+        return Icons.dns;
+      case 'vnc':
+        return Icons.screen_share;
+      default:
+        return Icons.electrical_services;
     }
   }
 
   Color _protoColor(String proto) {
     switch (proto) {
-      case 'http': case 'https': case 'http-alt': return Colors.blue;
-      case 'ftp': return Colors.orange;
-      case 'ssh': case 'telnet': return Colors.purple;
-      case 'mysql': case 'postgres': case 'mssql': return Colors.teal;
-      case 'rdp': return Colors.indigo;
-      case 'smb': return Colors.brown;
-      case 'redis': return Colors.red;
-      case 'mongodb': return Colors.green;
-      default: return Colors.grey;
+      case 'http':
+      case 'https':
+      case 'http-alt':
+        return Colors.blue;
+      case 'ftp':
+        return Colors.orange;
+      case 'ssh':
+      case 'telnet':
+        return Colors.purple;
+      case 'mysql':
+      case 'postgres':
+      case 'mssql':
+        return Colors.teal;
+      case 'rdp':
+        return Colors.indigo;
+      case 'smb':
+        return Colors.brown;
+      case 'redis':
+        return Colors.red;
+      case 'mongodb':
+        return Colors.green;
+      default:
+        return Colors.grey;
     }
   }
 }

@@ -59,7 +59,7 @@ class Settings(BaseSettings):
     risk_log_threshold: float = 0.2
     risk_rate_limit_threshold: float = 0.6
     risk_honeypot_threshold: float = 0.85
-    risk_block_threshold: float = 0.95
+    risk_block_threshold: float = 0.75
 
     # ── Rule engine ───────────────────────────────────────────────
     port_scan_window_seconds: int = 10
@@ -73,6 +73,10 @@ class Settings(BaseSettings):
     nft_chain: str = "ntth_input"
     firewall_enabled: bool = True
     firewall_rule_ttl_seconds: int = 3600  # 1 hour default TTL
+
+    # ── Packet retention / performance ────────────────────────────
+    packet_retention_days: int = 7
+    packet_export_limit: int = 5000
     cowrie_redirect_port: int = 2222
 
     event_bus_queue_size: int = 5000

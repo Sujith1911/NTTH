@@ -23,6 +23,91 @@ class _FirewallScreenState extends State<FirewallScreen> {
   String _query = '';
   DateTime? _lastSyncedAt;
 
+  Future<void> _showAddRuleDialog() async {
+    final ipCtrl = TextEditingController();
+    final portCtrl = TextEditingController();
+    final reasonCtrl = TextEditingController();
+    String ruleType = 'block';
+    final created = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Add Firewall Rule'),
+          content: SizedBox(
+            width: 420,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButtonFormField<String>(
+                  value: ruleType,
+                  decoration: const InputDecoration(labelText: 'Action'),
+                  items: const [
+                    DropdownMenuItem(value: 'block', child: Text('Block')),
+                    DropdownMenuItem(
+                        value: 'rate_limit', child: Text('Rate limit')),
+                    DropdownMenuItem(
+                        value: 'redirect', child: Text('Redirect to honeypot')),
+                  ],
+                  onChanged: (value) =>
+                      setDialogState(() => ruleType = value ?? 'block'),
+                ),
+                TextField(
+                  controller: ipCtrl,
+                  decoration: const InputDecoration(labelText: 'Target IP'),
+                ),
+                TextField(
+                  controller: portCtrl,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    labelText: ruleType == 'redirect'
+                        ? 'Original destination port'
+                        : 'Target port optional',
+                  ),
+                ),
+                TextField(
+                  controller: reasonCtrl,
+                  decoration: const InputDecoration(labelText: 'Reason'),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel')),
+            FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Create')),
+          ],
+        ),
+      ),
+    );
+    if (created != true) return;
+    try {
+      final data = {
+        'rule_type': ruleType,
+        'target_ip': ipCtrl.text.trim(),
+        if (portCtrl.text.trim().isNotEmpty)
+          'target_port': int.tryParse(portCtrl.text.trim()),
+        if (reasonCtrl.text.trim().isNotEmpty) 'reason': reasonCtrl.text.trim(),
+      };
+      await context.read<AuthService>().api.post('/firewall/rules', data);
+      await _fetchRules();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Firewall rule added'),
+            backgroundColor: Colors.green),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text('Add rule failed: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -171,6 +256,12 @@ class _FirewallScreenState extends State<FirewallScreen> {
         actions: [
           if (isAdmin)
             IconButton(
+              icon: const Icon(Icons.add_circle_outline),
+              tooltip: 'Add rule',
+              onPressed: _showAddRuleDialog,
+            ),
+          if (isAdmin)
+            IconButton(
               icon: const Icon(Icons.warning_amber, color: Colors.red),
               tooltip: 'Emergency Flush',
               onPressed: _emergencyFlush,
@@ -229,10 +320,11 @@ class _FirewallScreenState extends State<FirewallScreen> {
                               children: [
                                 _summaryPill(theme, 'Blocks', '$blockCount',
                                     color: Colors.red),
-                                _summaryPill(theme, 'Active redirects', '$redirectCount',
-                                    color: Colors.blue),
                                 _summaryPill(
-                                    theme, 'Active rate limits', '$rateLimitCount',
+                                    theme, 'Active redirects', '$redirectCount',
+                                    color: Colors.blue),
+                                _summaryPill(theme, 'Active rate limits',
+                                    '$rateLimitCount',
                                     color: Colors.orange),
                                 _summaryPill(
                                   theme,
@@ -254,9 +346,11 @@ class _FirewallScreenState extends State<FirewallScreen> {
                         onChanged: (value) => setState(() => _query = value),
                         style: TextStyle(color: theme.colorScheme.onSurface),
                         decoration: InputDecoration(
-                          hintText: 'Filter by attacker IP, victim IP, rule type, or reason',
+                          hintText:
+                              'Filter by attacker IP, victim IP, rule type, or reason',
                           hintStyle: TextStyle(
-                            color: theme.colorScheme.onSurface.withOpacity(0.45),
+                            color:
+                                theme.colorScheme.onSurface.withOpacity(0.45),
                           ),
                           prefixIcon: const Icon(Icons.search),
                           suffixIcon: _query.isEmpty
@@ -279,8 +373,10 @@ class _FirewallScreenState extends State<FirewallScreen> {
                               runSpacing: 10,
                               children: [
                                 _metaChip(theme, 'Block = drop all traffic'),
-                                _metaChip(theme, 'Redirect = send source to honeypot'),
-                                _metaChip(theme, 'Rate limit = slow noisy traffic'),
+                                _metaChip(theme,
+                                    'Redirect = send source to honeypot'),
+                                _metaChip(
+                                    theme, 'Rate limit = slow noisy traffic'),
                                 _metaChip(
                                   theme,
                                   'Attempts can increase even when active rules stay at zero.',

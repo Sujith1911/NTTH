@@ -84,6 +84,24 @@ def _choose_response_action(payload: dict, base_action: str) -> tuple[str, str, 
     return "rate_limit", "observe_and_throttle", None
 
 
+def _decision_reason(payload: dict, base_action: str, action: str, response_mode: str) -> str:
+    risk_score = float(payload.get("risk_score") or 0.0)
+    rule_details = payload.get("rule_details") or {}
+    winning_rule = rule_details.get("winning_rule", "none")
+    reasons = [
+        f"risk_score={risk_score:.2f}",
+        f"base_action={base_action}",
+        f"final_action={action}",
+        f"response_mode={response_mode}",
+        f"winning_rule={winning_rule}",
+    ]
+    if base_action == "honeypot" and action == "rate_limit":
+        reasons.append("honeypot_redirect_suppressed_until_risk>=0.85")
+    if action == "block":
+        reasons.append("block_threshold_met")
+    return "; ".join(reasons)
+
+
 async def _handle_threat_detected(payload: dict) -> None:
     src_ip = payload.get("src_ip", "")
     risk_score = payload.get("risk_score", 0.0)
@@ -118,6 +136,9 @@ async def _handle_threat_detected(payload: dict) -> None:
         "honeypot_port": honeypot_port,
         "tracked_commands": True,
         "response_priority": "aggressive",
+        "decision_reason": _decision_reason(payload, base_action, action, response_mode),
+        "risk_reasons": payload.get("risk_reasons", []),
+        "rule_details": payload.get("rule_details", {}),
     }
 
     log.info(

@@ -35,6 +35,77 @@ async def list_devices(
     )
 
 
+@router.post("/by-ip/{ip_address}/clear-risk")
+async def clear_device_risk_by_ip(
+    ip_address: str,
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(require_admin),
+):
+    """Admin-only: reset risk/containment for an IP, even if the device row is stale/missing."""
+    try:
+        from ipaddress import ip_address as parse_ip
+        parsed = str(parse_ip(ip_address))
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid IP address")
+
+    if parsed in {settings.gateway_ip, settings.server_display_ip, "127.0.0.1"}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Refusing to modify gateway/server IP")
+
+    device = await crud.get_device_by_ip(db, parsed)
+    if device:
+        device.risk_score = 0.0
+
+    deactivated_rules = await crud.deactivate_firewall_rules_for_ip(db, parsed)
+    risk_history_cleanup = await crud.clear_risk_history_for_ip(db, parsed)
+    scanner_cleanup = await crud.purge_scanner_false_positive_for_ip(
+        db,
+        device_ip=parsed,
+        server_ip=settings.server_display_ip,
+    )
+    normal_cleanup = await crud.purge_low_risk_normal_events_for_ip(db, parsed)
+    broadcast_cleanup = await crud.purge_lan_broadcast_events_for_ip(db, parsed)
+
+    removed_rules = 0
+    try:
+        from app.firewall.nft_manager import NFTManager
+        removed_rules = await NFTManager().remove_rules_for_ip(parsed, update_db=False)
+    except Exception:
+        pass
+
+    try:
+        from app.ids.risk_clearance import register_clear
+        register_clear(parsed)
+    except Exception:
+        pass
+
+    await db.commit()
+    if device:
+        await db.refresh(device)
+
+    await broadcast({
+        "type": "device_updated",
+        "ip": parsed,
+        "risk_score": 0.0,
+        "unblocked": True,
+        "removed_rules": removed_rules,
+        "deactivated_rules": deactivated_rules,
+        "scanner_cleanup": scanner_cleanup,
+        "normal_cleanup": normal_cleanup,
+        "broadcast_cleanup": broadcast_cleanup,
+        "risk_history_cleanup": risk_history_cleanup,
+    })
+
+    return {
+        "ip": parsed,
+        "device_id": device.id if device else None,
+        "risk_score": 0.0,
+        "unblocked": True,
+        "removed_rules": removed_rules,
+        "deactivated_rules": deactivated_rules,
+        "risk_history_cleanup": risk_history_cleanup,
+    }
+
+
 @router.get("/{device_id}", response_model=DeviceRead)
 async def get_device(
     device_id: str,
@@ -95,6 +166,7 @@ async def clear_device_risk(
     # Reset risk score and mark any DB-tracked containment rules inactive.
     device.risk_score = 0.0
     deactivated_rules = await crud.deactivate_firewall_rules_for_ip(db, device.ip_address)
+    risk_history_cleanup = await crud.clear_risk_history_for_ip(db, device.ip_address)
     scanner_cleanup = await crud.purge_scanner_false_positive_for_ip(
         db,
         device_ip=device.ip_address,
@@ -112,6 +184,12 @@ async def clear_device_risk(
     except Exception:
         pass  # Firewall may not be active
 
+    try:
+        from app.ids.risk_clearance import register_clear
+        register_clear(device.ip_address)
+    except Exception:
+        pass
+
     await db.commit()
     await db.refresh(device)
 
@@ -125,6 +203,7 @@ async def clear_device_risk(
         "scanner_cleanup": scanner_cleanup,
         "normal_cleanup": normal_cleanup,
         "broadcast_cleanup": broadcast_cleanup,
+        "risk_history_cleanup": risk_history_cleanup,
     })
 
     return DeviceRead.model_validate(device)

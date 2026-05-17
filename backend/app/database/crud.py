@@ -10,6 +10,7 @@ from ipaddress import ip_address, ip_network
 from typing import Optional, Sequence
 
 from sqlalchemy import delete, func, select, update
+from sqlalchemy import or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.time_utils import utc_now_naive
@@ -663,6 +664,7 @@ async def list_captured_packets(
     captured_from: Optional[datetime] = None,
     captured_to: Optional[datetime] = None,
     only_threats: bool = False,
+    search: Optional[str] = None,
 ) -> tuple[int, Sequence[CapturedPacket]]:
     """List captured packets with optional filters for inspection."""
     q = select(CapturedPacket)
@@ -687,6 +689,20 @@ async def list_captured_packets(
         q = q.where(CapturedPacket.captured_at <= captured_to)
     if only_threats:
         q = q.where(CapturedPacket.threat_type.isnot(None))
+    if search:
+        like = f"%{search}%"
+        q = q.where(or_(
+            CapturedPacket.src_ip.like(like),
+            CapturedPacket.dst_ip.like(like),
+            CapturedPacket.payload_text.like(like),
+            CapturedPacket.http_host.like(like),
+            CapturedPacket.http_path.like(like),
+            CapturedPacket.http_user_agent.like(like),
+            CapturedPacket.http_body_preview.like(like),
+            CapturedPacket.http_form_fields.like(like),
+            CapturedPacket.tls_sni.like(like),
+            CapturedPacket.flow_id.like(like),
+        ))
 
     count_q = select(func.count()).select_from(q.subquery())
     total = (await db.execute(count_q)).scalar_one()
@@ -716,6 +732,7 @@ async def delete_captured_packets(
     captured_from: Optional[datetime] = None,
     captured_to: Optional[datetime] = None,
     only_threats: bool = False,
+    search: Optional[str] = None,
 ) -> int:
     q = delete(CapturedPacket)
     if src_ip:
@@ -739,7 +756,41 @@ async def delete_captured_packets(
         q = q.where(CapturedPacket.captured_at <= captured_to)
     if only_threats:
         q = q.where(CapturedPacket.threat_type.isnot(None))
+    if search:
+        like = f"%{search}%"
+        q = q.where(or_(
+            CapturedPacket.src_ip.like(like),
+            CapturedPacket.dst_ip.like(like),
+            CapturedPacket.payload_text.like(like),
+            CapturedPacket.http_host.like(like),
+            CapturedPacket.http_path.like(like),
+            CapturedPacket.http_user_agent.like(like),
+            CapturedPacket.http_body_preview.like(like),
+            CapturedPacket.http_form_fields.like(like),
+            CapturedPacket.tls_sni.like(like),
+            CapturedPacket.flow_id.like(like),
+        ))
     result = await db.execute(q)
+    return int(result.rowcount or 0)
+
+
+async def packets_by_flow(db: AsyncSession, flow_id: str, limit: int = 200) -> Sequence[CapturedPacket]:
+    rows = await db.execute(
+        select(CapturedPacket)
+        .where(CapturedPacket.flow_id == flow_id)
+        .order_by(CapturedPacket.captured_at.asc())
+        .limit(limit)
+    )
+    return rows.scalars().all()
+
+
+async def export_captured_packets(db: AsyncSession, limit: int = 5000, **filters) -> Sequence[CapturedPacket]:
+    _, packets = await list_captured_packets(db, page=1, page_size=min(limit, 5000), **filters)
+    return packets
+
+
+async def purge_old_captured_packets(db: AsyncSession, older_than: datetime) -> int:
+    result = await db.execute(delete(CapturedPacket).where(CapturedPacket.captured_at < older_than))
     return int(result.rowcount or 0)
 
 
@@ -908,6 +959,24 @@ async def purge_low_risk_normal_events_for_ip(db: AsyncSession, ip: str) -> dict
             CapturedPacket.threat_type == "normal",
             CapturedPacket.risk_score <= 0.3,
         )
+    )
+    return {
+        "threats": int(threats.rowcount or 0),
+        "packets": int(packets.rowcount or 0),
+    }
+
+
+async def clear_risk_history_for_ip(db: AsyncSession, ip: str) -> dict[str, int]:
+    """Remove risk history/annotations for an IP when an admin clears risk."""
+    threats = await db.execute(
+        delete(ThreatEvent).where(
+            (ThreatEvent.src_ip == ip) | (ThreatEvent.dst_ip == ip)
+        )
+    )
+    packets = await db.execute(
+        update(CapturedPacket)
+        .where((CapturedPacket.src_ip == ip) | (CapturedPacket.dst_ip == ip))
+        .values(threat_type=None, risk_score=None, action_taken=None)
     )
     return {
         "threats": int(threats.rowcount or 0),

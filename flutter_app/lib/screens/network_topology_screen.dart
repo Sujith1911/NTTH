@@ -48,9 +48,9 @@ class _NetworkTopologyScreenState extends State<NetworkTopologyScreen>
       _fetchTopology();
       _listenWS();
     });
-    // Refresh every 30s
+    // Keep topology fresh even when websocket reconnects after hotspot restarts.
     _refreshTimer =
-        Timer.periodic(const Duration(seconds: 30), (_) => _fetchTopology());
+        Timer.periodic(const Duration(seconds: 5), (_) => _fetchTopology());
   }
 
   @override
@@ -621,6 +621,23 @@ class _NetworkTopologyScreenState extends State<NetworkTopologyScreen>
     }
   }
 
+  Future<void> _clearDeviceRiskByIp(String ip) async {
+    try {
+      final api = context.read<AuthService>().api;
+      await api.post('/devices/by-ip/$ip/clear-risk', {});
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Risk cleared & device unblocked'),
+            backgroundColor: Colors.green),
+      );
+      await _fetchTopology();
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
   Future<void> _showRiskDetails(Map<String, dynamic> node) async {
     final details = (node['risk_details'] as List? ?? [])
         .whereType<Map>()
@@ -688,6 +705,7 @@ class _NetworkTopologyScreenState extends State<NetworkTopologyScreen>
             ? Colors.orange
             : theme.colorScheme.primary;
     final deviceId = node['device_id']?.toString();
+    final ip = node['ip']?.toString();
     final openPorts = node['open_ports'] as List? ?? [];
 
     return GlassyContainer(
@@ -745,7 +763,7 @@ class _NetworkTopologyScreenState extends State<NetworkTopologyScreen>
             ),
           ),
           // Clear Risk / Unblock button
-          if (riskScore > 0 && deviceId != null) ...[
+          if (riskScore > 0 && (deviceId != null || ip != null)) ...[
             const SizedBox(height: 10),
             SizedBox(
               width: double.infinity,
@@ -760,7 +778,13 @@ class _NetworkTopologyScreenState extends State<NetworkTopologyScreen>
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8)),
                 ),
-                onPressed: () => _clearDeviceRisk(deviceId),
+                onPressed: () {
+                  if (deviceId != null) {
+                    _clearDeviceRisk(deviceId);
+                  } else if (ip != null) {
+                    _clearDeviceRiskByIp(ip);
+                  }
+                },
               ),
             ),
           ],
