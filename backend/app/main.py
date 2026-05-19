@@ -43,6 +43,7 @@ from app.api import (
     routes_topology,
     routes_tracker,
     routes_packets,
+    routes_research,
 )
 from app.websocket.live_updates import router as ws_router
 
@@ -279,6 +280,7 @@ def create_app() -> FastAPI:
     app.include_router(routes_topology.router, prefix=f"{prefix}/network",  tags=["Network"])
     app.include_router(routes_tracker.router,  prefix=f"{prefix}/tracker",  tags=["Tracker"])
     app.include_router(routes_packets.router,  prefix=f"{prefix}/packets",  tags=["Packets"])
+    app.include_router(routes_research.router, prefix=f"{prefix}/research", tags=["Research"])
     app.include_router(ws_router,              prefix="/ws",                tags=["WebSocket"])
 
     # ── Serve Flutter Web App (SPA) ────────────────────────────────────────────

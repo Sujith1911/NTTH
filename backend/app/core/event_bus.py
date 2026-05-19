@@ -17,6 +17,12 @@ settings = get_settings()
 # Internal registry: topic → list of async handler coroutines
 _subscribers: dict[str, list[Callable[..., Coroutine]]] = defaultdict(list)
 _queue: asyncio.Queue = asyncio.Queue(maxsize=settings.event_bus_queue_size)
+_metrics = {
+    "published_events": 0,
+    "dispatched_events": 0,
+    "dropped_events": 0,
+    "handler_errors": 0,
+}
 
 
 def subscribe(topic: str, handler: Callable[..., Coroutine]) -> None:
@@ -29,11 +35,14 @@ async def publish(topic: str, payload: Any) -> None:
     """Put an event onto the queue (non-blocking if space available)."""
     if topic == "device_seen" and _queue.qsize() > int(settings.event_bus_queue_size * 0.8):
         log.warning("event_bus.dropped_low_priority", topic=topic, queue_size=_queue.qsize())
+        _metrics["dropped_events"] += 1
         return
     try:
         _queue.put_nowait({"topic": topic, "payload": payload})
+        _metrics["published_events"] += 1
     except asyncio.QueueFull:
         log.warning("event_bus.queue_full", topic=topic)
+        _metrics["dropped_events"] += 1
 
 
 async def _dispatch_loop() -> None:
@@ -48,6 +57,8 @@ async def _dispatch_loop() -> None:
                 await handler(payload)
             except Exception as exc:
                 log.error("event_bus.handler_error", topic=topic, handler=handler.__name__, error=str(exc))
+                _metrics["handler_errors"] += 1
+        _metrics["dispatched_events"] += 1
         _queue.task_done()
 
 
@@ -62,6 +73,7 @@ def get_metrics() -> dict[str, int]:
         "queue_size": _queue.qsize(),
         "subscriber_topics": len(_subscribers),
         "subscriber_handlers": sum(len(handlers) for handlers in _subscribers.values()),
+        **_metrics,
     }
 
 

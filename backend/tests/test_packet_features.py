@@ -1,4 +1,4 @@
-from scapy.all import Ether, IP, TCP, Raw
+from scapy.all import ARP, Ether, IP, TCP, Raw
 
 from app.monitor.feature_extractor import extract_features
 
@@ -58,3 +58,19 @@ def test_extracts_tls_sni_from_client_hello_like_payload():
 
     assert features["tls_sni"] == "example.com"
     assert features["tls_version"] == "0x0301"
+
+
+def test_extracts_arp_request_features():
+    pkt = (
+        Ether(src="aa:bb:cc:dd:ee:ff", dst="ff:ff:ff:ff:ff:ff")
+        / ARP(op=1, hwsrc="aa:bb:cc:dd:ee:ff", psrc="192.168.4.95", pdst="192.168.4.10")
+    )
+
+    features = extract_features(pkt)
+
+    assert features["protocol"] == "arp"
+    assert features["src_ip"] == "192.168.4.95"
+    assert features["dst_ip"] == "192.168.4.10"
+    assert features["arp_target_ip"] == "192.168.4.10"
+    assert features["is_arp_request"] is True
+    assert features["flow_id"] == "arp|192.168.4.95|192.168.4.10"

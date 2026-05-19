@@ -64,6 +64,9 @@ class Settings(BaseSettings):
     # ── Rule engine ───────────────────────────────────────────────
     port_scan_window_seconds: int = 10
     port_scan_unique_ports: int = 8
+    host_sweep_unique_targets: int = 8
+    arp_sweep_unique_targets: int = 8
+    stealth_scan_attempts: int = 3
     syn_flood_per_second: int = 80
     brute_force_window_seconds: int = 60
     brute_force_attempts: int = 5

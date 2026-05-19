@@ -134,6 +134,9 @@ async def _handle_device_seen(features: dict) -> None:
             f"rule_score={rule_result.get('rule_score', 0):.2f}",
             f"ml_score={ml_score:.2f}",
             f"port_scan={rule_result.get('port_score', 0):.2f}",
+            f"host_sweep={rule_result.get('host_score', 0):.2f}",
+            f"arp_sweep={rule_result.get('arp_score', 0):.2f}",
+            f"stealth_scan={rule_result.get('stealth_score', 0):.2f}",
             f"syn_flood={rule_result.get('syn_score', 0):.2f}",
             f"brute_force={rule_result.get('brute_score', 0):.2f}",
             f"winning_rule={rule_result.get('rule_details', {}).get('winning_rule', 'none')}",
@@ -142,6 +145,12 @@ async def _handle_device_seen(features: dict) -> None:
         "device_state": device_state,
         **geo_info,
     }
+
+    try:
+        from app.research.metrics import mark_threat_scored
+        mark_threat_scored(threat_payload)
+    except Exception:
+        pass
 
     await event_bus.publish("threat_detected", threat_payload)
 

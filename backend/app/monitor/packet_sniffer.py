@@ -163,6 +163,11 @@ async def start_sniffer() -> None:
         features = extract_features(pkt)
         if not features:
             return
+        try:
+            from app.research.metrics import mark_packet_observed
+            mark_packet_observed(features)
+        except Exception:
+            pass
 
         # Update in-memory live stats (no DB needed)
         update_live_stats(features)
@@ -178,7 +183,7 @@ async def start_sniffer() -> None:
     sniffer_kwargs: dict = {
         "prn": _packet_callback,
         "store": False,
-        "filter": "ip",
+        "filter": "ip or arp",
         "promisc": True,  # Capture traffic for ALL devices on the segment
     }
     if iface:

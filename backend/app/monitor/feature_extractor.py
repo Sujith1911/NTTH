@@ -186,9 +186,45 @@ def extract_features(pkt) -> Optional[dict]:
     """
     try:
         from scapy.layers.inet import IP, TCP, UDP, ICMP  # type: ignore
-        from scapy.layers.l2 import Ether  # type: ignore
+        from scapy.layers.l2 import ARP, Ether  # type: ignore
     except ImportError:
         return None
+
+    if pkt.haslayer(ARP):
+        arp = pkt[ARP]
+        src_ip = str(getattr(arp, "psrc", "") or "")
+        dst_ip = str(getattr(arp, "pdst", "") or "")
+        if not src_ip or _should_ignore(src_ip):
+            return None
+        return {
+            "src_ip": src_ip,
+            "dst_ip": dst_ip or None,
+            "pkt_len": len(pkt),
+            "payload_len": 0,
+            "payload_preview": None,
+            "payload_text": None,
+            "flow_id": f"arp|{src_ip}|{dst_ip}" if dst_ip else None,
+            "direction": _direction(src_ip, dst_ip) if dst_ip else "internal",
+            "src_mac": getattr(arp, "hwsrc", None) or (pkt[Ether].src if pkt.haslayer(Ether) else None),
+            "dst_mac": getattr(arp, "hwdst", None) or (pkt[Ether].dst if pkt.haslayer(Ether) else None),
+            "ip_version": None,
+            "ip_ttl": None,
+            "ip_tos": None,
+            "ip_id": None,
+            "ip_flags": None,
+            "frag_offset": None,
+            "protocol": "arp",
+            "dst_port": None,
+            "src_port": None,
+            "flags": None,
+            "is_syn": False,
+            "is_ack": False,
+            "is_rst": False,
+            "arp_op": int(getattr(arp, "op", 0) or 0),
+            "arp_target_ip": dst_ip or None,
+            "is_arp_request": int(getattr(arp, "op", 0) or 0) == 1,
+            "timestamp": local_now_iso(),
+        }
 
     if not pkt.haslayer(IP):
         return None

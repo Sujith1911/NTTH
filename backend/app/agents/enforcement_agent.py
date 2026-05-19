@@ -24,6 +24,12 @@ async def _handle_enforcement_action(payload: dict) -> None:
     if action == "allow":
         return
 
+    try:
+        from app.research.metrics import mark_report
+        mark_report(payload)
+    except Exception:
+        pass
+
     await event_bus.publish("report_event", payload)
 
     if action == "log":
@@ -39,9 +45,19 @@ async def _apply_enforcement(payload: dict) -> None:
     dst_port = payload.get("dst_port")
     protocol = payload.get("protocol", "tcp")
     incident_context = payload.get("incident_context", {})
+    try:
+        from app.research.metrics import mark_enforcement_start
+        mark_enforcement_start(payload)
+    except Exception:
+        pass
 
     if not settings.firewall_enabled:
         log.info("enforcement_agent.firewall_disabled", action=action, ip=src_ip)
+        try:
+            from app.research.metrics import mark_enforcement_done
+            mark_enforcement_done(payload, success=False, error="firewall_disabled")
+        except Exception:
+            pass
         return
 
     try:
@@ -121,9 +137,19 @@ async def _apply_enforcement(payload: dict) -> None:
                     reason=incident_context.get("response_summary") or "Automatic responder blocked a high-risk source.",
                 )
                 log.warning("enforcement_agent.blocked", ip=src_ip, risk_score=payload.get("risk_score"))
+        try:
+            from app.research.metrics import mark_enforcement_done
+            mark_enforcement_done(payload, success=True)
+        except Exception:
+            pass
 
     except Exception as exc:
         log.error("enforcement_agent.error", action=action, ip=src_ip, error=str(exc))
+        try:
+            from app.research.metrics import mark_enforcement_done
+            mark_enforcement_done(payload, success=False, error=str(exc))
+        except Exception:
+            pass
 
 
 event_bus.subscribe("enforcement_action", _handle_enforcement_action)

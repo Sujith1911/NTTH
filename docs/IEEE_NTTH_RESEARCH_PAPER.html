@@ -1,0 +1,492 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NTTH IEEE Research Paper</title>
+  <style>
+    @page {
+      size: letter;
+      margin: 0.75in 0.62in 0.75in 0.62in;
+    }
+
+    :root {
+      --ink: #000;
+      --muted: #333;
+      --rule: #777;
+      --light: #f5f5f5;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: #d7d7d7;
+      color: var(--ink);
+      font-family: "Times New Roman", Times, serif;
+      font-size: 10pt;
+      line-height: 1.18;
+    }
+
+    .page {
+      width: 8.5in;
+      min-height: 11in;
+      margin: 24px auto;
+      padding: 0.75in 0.62in;
+      background: #fff;
+      box-shadow: 0 2px 18px rgba(0, 0, 0, 0.22);
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 10pt;
+    }
+
+    h1 {
+      margin: 0 0 10pt;
+      font-size: 24pt;
+      line-height: 1.08;
+      font-weight: 400;
+    }
+
+    .authors,
+    .affiliation,
+    .email {
+      font-size: 10.5pt;
+      line-height: 1.25;
+    }
+
+    .abstract,
+    .keywords {
+      max-width: 7.15in;
+      margin: 8pt auto 0;
+      text-align: justify;
+    }
+
+    .abstract-title,
+    .keywords-title {
+      font-weight: 700;
+      font-style: italic;
+    }
+
+    main {
+      column-count: 2;
+      column-gap: 0.24in;
+      column-rule: none;
+      text-align: justify;
+    }
+
+    h2 {
+      break-after: avoid;
+      column-span: none;
+      margin: 9pt 0 4pt;
+      font-size: 10pt;
+      font-weight: 700;
+      text-align: center;
+      text-transform: uppercase;
+    }
+
+    h3 {
+      break-after: avoid;
+      margin: 7pt 0 3pt;
+      font-size: 10pt;
+      font-style: italic;
+      font-weight: 700;
+    }
+
+    p {
+      margin: 0 0 5pt;
+      orphans: 2;
+      widows: 2;
+    }
+
+    ul,
+    ol {
+      margin: 4pt 0 6pt 14pt;
+      padding: 0;
+    }
+
+    li {
+      margin: 0 0 2pt;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 6pt 0 8pt;
+      font-size: 8.5pt;
+      break-inside: avoid;
+    }
+
+    th,
+    td {
+      border: 0.5pt solid #000;
+      padding: 3pt;
+      vertical-align: top;
+    }
+
+    th {
+      font-weight: 700;
+      text-align: center;
+      background: #f0f0f0;
+    }
+
+    code,
+    pre {
+      font-family: "Courier New", Courier, monospace;
+      font-size: 8.4pt;
+    }
+
+    pre {
+      margin: 5pt 0 7pt;
+      padding: 4pt;
+      white-space: pre-wrap;
+      border: 0.5pt solid var(--rule);
+      background: var(--light);
+      break-inside: avoid;
+    }
+
+    .figure {
+      margin: 7pt 0 8pt;
+      break-inside: avoid;
+    }
+
+    .figure-box {
+      height: 1.72in;
+      border: 0.8pt dashed #555;
+      background:
+        linear-gradient(45deg, transparent 49.4%, #ddd 49.5%, #ddd 50.5%, transparent 50.6%),
+        linear-gradient(-45deg, transparent 49.4%, #ddd 49.5%, #ddd 50.5%, transparent 50.6%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #444;
+      font-size: 9pt;
+      text-align: center;
+      padding: 8pt;
+    }
+
+    .caption {
+      margin-top: 3pt;
+      font-size: 8.5pt;
+      text-align: center;
+    }
+
+    .caption strong {
+      font-weight: 700;
+    }
+
+    .note {
+      border: 0.5pt solid #777;
+      padding: 4pt;
+      margin: 5pt 0 7pt;
+      background: #fafafa;
+      break-inside: avoid;
+    }
+
+    .references {
+      font-size: 8.6pt;
+      text-align: left;
+    }
+
+    .references p {
+      padding-left: 14pt;
+      text-indent: -14pt;
+      margin-bottom: 4pt;
+    }
+
+    .no-break {
+      break-inside: avoid;
+    }
+
+    @media print {
+      body {
+        background: #fff;
+      }
+
+      .page {
+        width: auto;
+        min-height: auto;
+        margin: 0;
+        padding: 0;
+        box-shadow: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <article class="page">
+    <header>
+      <h1>NTTH: A Real-Time Gateway-Based Autonomous Defense Architecture with Risk-Aware Containment and Honeypot Intelligence</h1>
+      <div class="authors">[Your Name], [Team Member 2], [Team Member 3]</div>
+      <div class="affiliation">Department of [Department Name], [University Name], [City], [Country]</div>
+      <div class="email">[email1]@[domain], [email2]@[domain], [email3]@[domain]</div>
+
+      <p class="abstract"><span class="abstract-title">Abstract--</span>
+        Small campus, laboratory, home, and Internet-of-Things networks often lack a practical security gateway that can observe device traffic, detect attacks, apply containment, and preserve evidence without requiring enterprise hardware or a full security operations team. Existing intrusion detection systems are strong at packet inspection and alert generation, while honeypots are strong at attacker interaction capture; however, these components are commonly deployed as separate tools and do not form a simple closed-loop gateway for university-scale demonstration and controlled defense. This paper presents <strong>NTTH (No Time To Hack)</strong>, a real-time working lab prototype that converts an Ubuntu laptop into a protected Wi-Fi gateway. Devices connect to the <code>NTTH-Secure</code> hotspot, traffic is routed through the gateway, packets are inspected, device risk is scored, and enforcement is applied using Linux nftables. High-risk devices remain connected to Wi-Fi but lose Internet forwarding until an administrator clears risk and unblocks them. NTTH also integrates Cowrie SSH honeypot and multi-protocol honeypots to capture attempted credentials, commands, source device identity, and session timelines. The novelty of the work lies in the integrated gateway architecture: inline hotspot placement, asynchronous agent-inspired processing, explainable risk scoring, forward-chain containment, honeypot intelligence, and a live dashboard packaged as one deployable academic prototype. The system was validated in a controlled lab using mobile devices connected to the protected hotspot and attacks including SSH honeypot interaction, HTTP honeypot requests, ping/port scans, and controlled traffic bursts. Results show that NTTH functions as a real-time working prototype rather than a simulated dashboard, making it suitable for university project demonstration and research paper presentation.
+      </p>
+
+      <p class="keywords"><span class="keywords-title">Index Terms--</span>
+        Intrusion detection, autonomous defense, honeypot, Cowrie, nftables, packet inspection, Wi-Fi gateway, risk scoring, cybersecurity education, network topology.
+      </p>
+    </header>
+
+    <main>
+      <h2>I. Introduction</h2>
+      <p>Modern networks are increasingly composed of mobile phones, laptops, embedded devices, smart appliances, and laboratory systems. These devices often connect to open or lightly managed networks where attacks such as port scanning, weak credential attempts, brute force login trials, and denial-of-service traffic can occur with minimal setup. In enterprise environments, security monitoring may be handled by dedicated IDS/IPS appliances, centralized logging, endpoint agents, and security operations teams. In a university laboratory or final-year project environment, however, the challenge is different: the system must be understandable, demonstrable, low-cost, and capable of showing a full security workflow end to end.</p>
+
+      <p>Traditional IDS tools such as Snort and Suricata are widely used for network intrusion detection and prevention. Snort is described by its official project as an open-source IPS that uses rules to identify malicious packet activity and generate alerts or stop packets when deployed inline [1]. Suricata is documented as a high-performance network IDS, IPS, and network security monitoring engine [2]. These systems are mature, but building a student-demonstrable closed loop around them still requires deployment design, policy configuration, response automation, evidence capture, and visualization.</p>
+
+      <p>Honeypots solve a different problem. Cowrie is a medium to high interaction SSH/Telnet honeypot designed to log brute-force attacks and shell interactions [3]. Honeypots are excellent for observing attacker behavior, but by themselves they do not decide when a normal connected client should be contained, when Internet forwarding should be stopped, or how to present the security state of every protected device.</p>
+
+      <p>This paper presents NTTH, a gateway-based autonomous defense prototype designed for a controlled university demonstration. The key idea is to place the security system directly in the path of protected devices. NTTH creates a Wi-Fi hotspot using commodity Linux access point components such as hostapd [8], assigns client IP addresses, routes traffic, captures packets, scores device behavior, applies firewall policy, and displays topology, packet, firewall, and honeypot views in a browser dashboard. Unlike a purely simulated demo, the system handles real connected devices and real packets from the test network.</p>
+
+      <p>The main contributions of this work are: (1) an inline protected hotspot architecture; (2) an agent-inspired closed-loop pipeline; (3) risk-aware containment using nftables forward-chain rules; (4) honeypot intelligence integration; (5) explainable dashboard views; and (6) low-cost academic deployability on commodity Ubuntu hardware.</p>
+
+      <h2>II. Research Gap and Novelty Statement</h2>
+      <h3>A. Identified Research Gaps</h3>
+      <p>The project addresses five practical research gaps. First, many IDS deployments focus on alerting, while a university demo needs to show immediate containment and restoration. Second, IDS alerts and honeypot evidence are often separated, even though both describe the same defensive workflow [1]-[3]. Third, passive Wi-Fi capture does not reliably observe all unicast traffic between clients, so the system must become the actual gateway. Fourth, student prototypes often show a final alert without the reasoning path. Fifth, blocking by deauthentication hides the device from observation, while a forward-chain firewall block keeps the device associated and visible.</p>
+
+      <h3>B. Novelty Claim</h3>
+      <p>The novelty of NTTH is not that it invents packet capture, IDS rules, honeypots, or firewalls individually. The novelty is the integrated gateway-level closed-loop architecture: NTTH combines protected hotspot routing, real-time packet inspection, explainable risk scoring, nftables forward-chain containment, honeypot evidence capture, and a live dashboard into one low-cost working academic prototype. This is a defensible novelty claim because the system demonstrates the complete Observe-Analyze-Decide-Act-Report cycle on live connected devices, rather than presenting a static IDS alert or simulated dashboard.</p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Research Gap</th>
+            <th>NTTH Design Response</th>
+            <th>Demonstrable Evidence</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>IDS alerts do not always show response.</td>
+            <td>Risk score is mapped to firewall action.</td>
+            <td>Device risk crosses threshold and Internet forwarding stops.</td>
+          </tr>
+          <tr>
+            <td>IDS and honeypot evidence are separate.</td>
+            <td>Cowrie and HTTP honeypot events are shown in the same dashboard.</td>
+            <td>Honeypot Center shows credentials, commands, source IP, and timeline.</td>
+          </tr>
+          <tr>
+            <td>Passive Wi-Fi capture is unreliable.</td>
+            <td>NTTH becomes the hotspot gateway.</td>
+            <td>Connected device traffic appears in Packet Inspector.</td>
+          </tr>
+          <tr>
+            <td>Security demos often hide reasoning.</td>
+            <td>Risk details, packet rows, firewall reasons, and topology state are exposed.</td>
+            <td>Reviewer can inspect device, packet, firewall, and honeypot views.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h2>III. Related Work</h2>
+      <h3>A. Rule-Based IDS/IPS</h3>
+      <p>Snort and Suricata represent mature rule-based intrusion detection and prevention systems. Snort uses rules to detect malicious packet activity and can be deployed as a sniffer, packet logger, IDS, or inline IPS [1]. Suricata provides IDS, IPS, and network security monitoring capabilities [2]. These platforms are powerful but require careful integration with response policy, topology visualization, and honeypot evidence capture for a complete academic demo.</p>
+
+      <h3>B. Honeypot Systems</h3>
+      <p>Cowrie is a widely used SSH/Telnet honeypot that logs brute-force attempts and shell interaction [3]. It can emulate a UNIX-like system and capture typed commands. NTTH uses Cowrie as a deception and evidence component, but adds gateway placement, risk scoring, firewall action, and dashboard correlation.</p>
+
+      <h3>C. Machine Learning and Benchmark Datasets</h3>
+      <p>Isolation Forest was introduced by Liu, Ting, and Zhou as an anomaly detection method that isolates anomalies instead of profiling normal points [4]. Public datasets such as CICIDS2017 are useful for formal IDS benchmarking because they contain labeled benign and attack traffic [5]. NTTH's current validation is based on controlled real-device lab testing; future work can extend this with public benchmark evaluation rather than claiming unsupported accuracy values.</p>
+
+      <h3>D. Linux Firewall Enforcement</h3>
+      <p>nftables allows user-defined chains attached to Netfilter hooks such as input, forward, and prerouting [6]. NTTH uses this capability to create project-owned firewall chains. The important implementation decision is to block risky clients in the forward path, not by disconnecting them from Wi-Fi or blocking dashboard access.</p>
+
+      <h2>IV. Proposed System Architecture</h2>
+      <h3>A. Deployment Model</h3>
+      <p>NTTH is deployed on an Ubuntu laptop or desktop acting as a protected Wi-Fi gateway. The upstream interface provides Internet access. The protected interface hosts the <code>NTTH-Secure</code> hotspot. The gateway IP is <code>192.168.4.1</code>, and protected clients connect through this network. Since all protected client traffic passes through the Ubuntu gateway, NTTH can observe packet metadata, score behavior, and apply firewall control from a single machine.</p>
+
+      <div class="figure">
+        <div class="figure-box">Insert Fig. 1 image here:<br>Deployment architecture diagram</div>
+        <div class="caption"><strong>Fig. 1.</strong> NTTH deployment architecture showing Internet, Ubuntu gateway, hotspot, protected devices, packet capture, firewall, honeypots, database, and dashboard.</div>
+      </div>
+
+      <h3>B. Backend Processing Pipeline</h3>
+      <p>The backend is implemented using FastAPI and asynchronous Python services. Packet capture is performed from the protected interface and packet construction/parsing support follows the type of packet inspection enabled by libraries such as Scapy [7]. The pipeline extracts IPs, ports, protocol, TCP flags, packet size, HTTP fields, TLS hints, QUIC hints, and flow identifiers. A threat agent evaluates the packet using rule logic and risk scoring. A decision agent maps risk to action. An enforcement agent applies nftables rules. A reporting agent stores events and broadcasts live updates.</p>
+
+      <div class="figure">
+        <div class="figure-box">Insert Fig. 2 image here:<br>Agent-inspired event pipeline</div>
+        <div class="caption"><strong>Fig. 2.</strong> Packet capture to dashboard pipeline: capture, feature extraction, threat agent, decision agent, enforcement agent, reporting agent, and live dashboard.</div>
+      </div>
+
+      <h3>C. Data Storage and Dashboard</h3>
+      <p>The system stores devices, risk state, captured packet metadata, threat events, firewall rules, honeypot sessions, credentials, commands, timelines, and runtime health. The Flutter web dashboard provides overview, topology, packet inspector, firewall controls, honeypot center, device details, and system health. WebSocket updates are used for live events, while polling and manual refresh help the dashboard recover after hotspot restarts.</p>
+
+      <div class="figure">
+        <div class="figure-box">Insert Fig. 3 image here:<br>Database schema summary</div>
+        <div class="caption"><strong>Fig. 3.</strong> Suggested schema view: devices, captured packets, threat events, firewall rules, honeypot sessions, users, and health records.</div>
+      </div>
+
+      <div class="figure">
+        <div class="figure-box">Insert Fig. 4 image here:<br>Dashboard screenshots</div>
+        <div class="caption"><strong>Fig. 4.</strong> Dashboard screenshots showing topology, packet inspector, firewall rules, honeypot captured commands, and system health.</div>
+      </div>
+
+      <h2>V. Core Modules</h2>
+      <h3>A. Packet Inspector</h3>
+      <p>The packet inspector provides a Wireshark-inspired view of stored packet metadata. It supports protocol filters, source and destination filters, date filters, search, flow view, and export. Captured fields include IP addresses, ports, protocol, TCP flags, sequence and acknowledgement metadata, UDP length, ICMP fields, packet length, payload preview, HTTP method, host, path, user agent, content type, body preview, HTTP form fields, TLS SNI/ALPN hints where visible, QUIC hints, and flow ID. HTTPS payload content is not decrypted; only observable metadata is shown.</p>
+
+      <div class="figure">
+        <div class="figure-box">Insert Fig. 5 image here:<br>Packet inspector detail view</div>
+        <div class="caption"><strong>Fig. 5.</strong> Selected packet detail with protocol headers, HTTP fields, TLS metadata, hex/ASCII preview, and flow conversation.</div>
+      </div>
+
+      <h3>B. Risk Scoring</h3>
+      <p>The risk score is normalized between 0 and 1. Scores below 0.20 are treated as normal. Scores from 0.20 to 0.59 are logged. Scores from 0.60 to 0.74 are rate-limited. Scores at or above 0.75 are blocked. The threshold of 0.75 was selected for the university demo because it clearly demonstrates automatic containment while still avoiding immediate blocking for medium-risk noise.</p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Risk Range</th>
+            <th>Action</th>
+            <th>Meaning</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>&lt; 0.20</td><td>Allow</td><td>Normal traffic.</td></tr>
+          <tr><td>0.20-0.59</td><td>Log</td><td>Suspicious but not contained.</td></tr>
+          <tr><td>0.60-0.74</td><td>Rate-limit</td><td>Noisy or suspicious behavior.</td></tr>
+          <tr><td>&ge; 0.75</td><td>Block</td><td>High-risk device containment.</td></tr>
+        </tbody>
+      </table>
+
+      <h3>C. Firewall Containment</h3>
+      <p>The firewall uses nftables project-owned chains [6]. The central block behavior is an IP source drop rule attached to a forward-chain hook. Therefore, the device remains connected to Wi-Fi, appears in topology, and can still be administratively handled, while Internet forwarding is stopped. This is safer and more demonstrable than disconnecting the client from Wi-Fi.</p>
+
+      <pre>ip saddr &lt;blocked-device-ip&gt; drop</pre>
+
+      <div class="figure">
+        <div class="figure-box">Insert Fig. 6 image here:<br>Block and unblock flow</div>
+        <div class="caption"><strong>Fig. 6.</strong> High-risk device reaches 75 percent risk, nftables forward drop is installed, Internet stops, Clear Risk and Unblock removes the rule, and Internet is restored.</div>
+      </div>
+
+      <h3>D. Honeypot Intelligence</h3>
+      <p>Cowrie SSH honeypot captures source IP, username attempts, password attempts, commands typed after login, and session duration [3]. HTTP and multi-protocol honeypots capture service interactions and HTTP requests. This makes the demo stronger because the system does not merely block; it also gathers evidence of attacker behavior that can be reviewed from the dashboard.</p>
+
+      <div class="figure">
+        <div class="figure-box">Insert Fig. 7 image here:<br>Honeypot session evidence</div>
+        <div class="caption"><strong>Fig. 7.</strong> Captured SSH login attempt, password attempt, commands such as whoami and cat /etc/passwd, and session duration.</div>
+      </div>
+
+      <h3>E. Topology View</h3>
+      <p>The topology view represents gateway/router, NTTH server, connected devices, blocked/risky devices, honeypot node, and attack edges or honeypot session links. Recent implementation fixes ensure that local LAN attackers are shown as local devices rather than incorrectly appearing as external attackers when the device table is temporarily stale after hotspot restart.</p>
+
+      <div class="figure">
+        <div class="figure-box">Insert Fig. 8 image here:<br>Live network topology</div>
+        <div class="caption"><strong>Fig. 8.</strong> Gateway, NTTH server, connected phone, honeypot, risk color, attack edge, and blocked state.</div>
+      </div>
+
+      <h2>VI. Novel Architecture Comparison</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Feature</th>
+            <th>Snort/Suricata</th>
+            <th>Cowrie</th>
+            <th>Student Simulation</th>
+            <th>NTTH</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>Real connected clients</td><td>Deployment-dependent</td><td>No</td><td>Usually no</td><td>Yes</td></tr>
+          <tr><td>Protected hotspot gateway</td><td>No by default</td><td>No</td><td>Usually no</td><td>Yes</td></tr>
+          <tr><td>Packet inspection</td><td>Yes</td><td>No</td><td>Often mocked</td><td>Yes</td></tr>
+          <tr><td>Honeypot command capture</td><td>No</td><td>Yes</td><td>Often mocked</td><td>Yes</td></tr>
+          <tr><td>Automatic risk scoring</td><td>Rule alerts</td><td>No</td><td>Often simplified</td><td>Yes</td></tr>
+          <tr><td>Device-level Internet block</td><td>Inline possible</td><td>No</td><td>Usually simulated</td><td>Yes</td></tr>
+          <tr><td>Dashboard topology</td><td>External tools needed</td><td>No</td><td>Often static</td><td>Yes</td></tr>
+        </tbody>
+      </table>
+      <p>Compared with established IDS/IPS tools [1], [2], dedicated honeypots [3], and typical simulated student dashboards, NTTH contributes an integrated academic prototype that links detection, response, deception, and visualization in a single demonstrable system.</p>
+
+      <h2>VII. Methodology</h2>
+      <h3>A. Test Environment</h3>
+      <p>The test environment consists of an Ubuntu laptop or desktop running NTTH, a USB Wi-Fi adapter hosting <code>NTTH-Secure</code>, two mobile devices connected to the protected hotspot, Termux installed on Android devices for command-line testing, and the dashboard accessed from the Ubuntu browser or connected client. All tests are performed only on devices owned by the project team and connected to the isolated hotspot. No third-party network, public target, or unauthorized system is used during validation.</p>
+
+      <h3>B. Test Scenarios</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Test Case</th>
+            <th>Tool/Command</th>
+            <th>Expected Result</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>Normal browsing</td><td>Browser/curl</td><td>Device appears, risk remains low.</td></tr>
+          <tr><td>Ping test</td><td><code>ping 192.168.4.1</code></td><td>ICMP packets visible.</td></tr>
+          <tr><td>Port scan</td><td><code>nmap -sT -Pn ...</code></td><td>Risk increases and ports appear.</td></tr>
+          <tr><td>SSH honeypot</td><td><code>ssh -p 30022 root@192.168.4.1</code></td><td>Cowrie captures credentials and commands.</td></tr>
+          <tr><td>HTTP honeypot</td><td><code>curl http://192.168.4.1:8888</code></td><td>HTTP honeypot session logged.</td></tr>
+          <tr><td>Block test</td><td>Repeated controlled attack</td><td>Internet forwarding blocked at high risk.</td></tr>
+          <tr><td>Unblock test</td><td>Clear Risk and Unblock</td><td>Firewall rule removed and Internet restored.</td></tr>
+        </tbody>
+      </table>
+
+      <h3>C. Demo Commands</h3>
+      <pre>ssh-keygen -R '[192.168.4.1]:30022'
+ssh -p 30022 root@192.168.4.1</pre>
+      <pre>whoami
+ls
+cat /etc/passwd
+sudo su
+wget http://evil.com/malware.sh</pre>
+      <pre>nmap -sT -Pn -p 21,22,23,80,443,445,3306,3389,5900,6379,8888,30022 192.168.4.1</pre>
+      <pre>curl -I http://example.com</pre>
+      <p>The expected result is that the blocked device remains connected to Wi-Fi but Internet access fails until unblocked.</p>
+
+      <h2>VIII. Results and Discussion</h2>
+      <h3>A. Real-Time Working Behavior</h3>
+      <p>The system was verified as a real-time working lab prototype. Mobile devices connect to the NTTH hotspot; packets are captured from the protected gateway path; attack traffic appears in Packet Inspector; Cowrie captures SSH username, password, and typed commands; risk score increases during attack behavior; at high risk, the device is blocked; the blocked device remains associated with Wi-Fi; Internet forwarding stops; and Clear Risk and Unblock removes the firewall rule and resets risk history.</p>
+
+      <div class="figure">
+        <div class="figure-box">Insert Fig. 9 image here:<br>Blocked device evidence</div>
+        <div class="caption"><strong>Fig. 9.</strong> Phone remains connected to Wi-Fi, Internet request fails, dashboard shows blocked status, and firewall rule is active.</div>
+      </div>
+
+      <h3>B. Honeypot Evidence</h3>
+      <p>Cowrie successfully records command-level attacker behavior [3]. This is important because it converts an attack from a simple alert into evidence. Example captured fields include username, password attempt, commands such as <code>whoami</code>, <code>ls</code>, <code>cat /etc/passwd</code>, <code>sudo su</code>, and <code>wget</code>, plus session duration in seconds.</p>
+
+      <div class="figure">
+        <div class="figure-box">Insert Fig. 10 image here:<br>Captured Cowrie commands</div>
+        <div class="caption"><strong>Fig. 10.</strong> Honeypot Center view showing captured credentials, commands, source device, and session timeline.</div>
+      </div>
+
+      <h3>C. Topology Stability</h3>
+      <p>After hotspot restart, topology can temporarily lose live device data while the network interface and DHCP state recover. NTTH mitigates this with faster topology refresh, topology update events, local honeypot attacker classification, and clear-risk-by-IP support for stale topology nodes.</p>
+
+      <h3>D. Why This Is Not Merely a Simulation</h3>
+      <p>NTTH is not a simulated dashboard because Wi-Fi clients physically connect to the gateway, traffic is routed through Ubuntu, nftables rules are installed in the kernel firewall, Cowrie runs as a real honeypot container, SSH sessions and commands are captured from real clients, and Internet access is actually blocked and restored. The system should therefore be described as a real-time working lab prototype, not as a production commercial firewall.</p>
+
+      <h2>IX. Limitations</h2>
+      <p>The system is designed for controlled lab and university demonstration, not enterprise production deployment. HTTPS payloads are not decrypted. Only metadata such as IPs, ports, TLS SNI/ALPN hints, and QUIC hints may be visible. Detection is rule/risk based and not equivalent to a commercial IDS signature feed. Long-duration soak testing is still needed for continuous multi-day deployment. Full byte-for-byte PCAP storage is not the main design goal; stored packet export is based on captured metadata and previews. The hotspot depends on correct USB Wi-Fi adapter detection and Linux networking state. Blocking is IP-based, so if a device receives a new IP, the system must rediscover and reassess it. Current testing is controlled-lab testing; future research can add CICIDS2017 benchmark evaluation and larger traffic datasets [5].</p>
+
+      <h2>X. Future Work</h2>
+      <p>Future improvements include public benchmark validation using CICIDS2017 [5], longer live traffic testing with more devices, full PCAP capture and replay support, more protocol parsers, better TLS certificate metadata extraction, stronger dashboard HTTPS and secret rotation, database backup/restore workflow, more automated unit/API/UI tests, optional LLM-assisted honeypot response generation, and MAC-aware containment for devices that change IP.</p>
+
+      <h2>XI. Conclusion</h2>
+      <p>This paper presented NTTH, a real-time gateway-based autonomous defense prototype for university cybersecurity demonstration. NTTH creates a protected Wi-Fi hotspot, observes connected devices, analyzes packet metadata, assigns explainable risk, applies firewall containment, captures attacker behavior with honeypots, and displays the full workflow in a dashboard. The project fills a practical research and education gap by combining detection, response, deception, and visualization in one low-cost working system. The system is not positioned as a production commercial firewall; rather, it is a complete working lab prototype suitable for final-year project review, research presentation, and live demonstration to university project heads.</p>
+
+      <h2>References</h2>
+      <section class="references">
+        <p>[1] Snort, "Network Intrusion Detection &amp; Prevention System," Official project page. Available: https://www.snort.org/</p>
+        <p>[2] Suricata, "Suricata User Guide," Open Information Security Foundation. Available: https://docs.suricata.io/</p>
+        <p>[3] Cowrie, "Cowrie SSH/Telnet Honeypot," Official documentation and repository. Available: https://docs.cowrie.org/ and https://github.com/cowrie/cowrie</p>
+        <p>[4] F. T. Liu, K. M. Ting, and Z.-H. Zhou, "Isolation Forest," in <em>Proc. 8th IEEE International Conference on Data Mining</em>, 2008, pp. 413-422, doi: 10.1109/ICDM.2008.17.</p>
+        <p>[5] Canadian Institute for Cybersecurity, "CICIDS2017 Dataset." Available: https://www.unb.ca/cic/datasets/ids-2017.html</p>
+        <p>[6] Netfilter Project, "Configuring chains - nftables wiki." Available: https://wiki.netfilter.org/wiki-nftables/index.php/Configuring_chains</p>
+        <p>[7] Scapy Project, "Scapy Documentation." Available: https://scapy.readthedocs.io/</p>
+        <p>[8] hostapd, "Linux wireless host access point daemon." Available: https://w1.fi/hostapd/</p>
+      </section>
+
+      <h2>Appendix A: Suggested Figures</h2>
+      <p>Suggested figures for final submission include the system architecture diagram, dashboard overview screenshot, topology before attack, packet inspector during scan, Cowrie session screenshot, blocked device screenshot, phone Internet failure screenshot, and unblock/restored-access screenshot.</p>
+    </main>
+  </article>
+</body>
+</html>

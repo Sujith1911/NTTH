@@ -22,6 +22,9 @@ class ThresholdConfig:
     # Rule engine detectors
     port_scan_window_seconds: int = _s.port_scan_window_seconds
     port_scan_unique_ports: int = _s.port_scan_unique_ports
+    host_sweep_unique_targets: int = _s.host_sweep_unique_targets
+    arp_sweep_unique_targets: int = _s.arp_sweep_unique_targets
+    stealth_scan_attempts: int = _s.stealth_scan_attempts
     syn_flood_per_second: int = _s.syn_flood_per_second
     brute_force_window_seconds: int = _s.brute_force_window_seconds
     brute_force_attempts: int = _s.brute_force_attempts
