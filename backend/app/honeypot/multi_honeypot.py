@@ -181,6 +181,20 @@ async def _handle_connection(
         if len(_sessions) > _MAX_SESSIONS:
             _sessions.pop(0)
 
+        # Extract IOCs from attacker data
+        try:
+            from app.honeypot.ioc_extractor import extract_from_session
+            iocs = extract_from_session(
+                attacker_ip=attacker_ip,
+                honeypot_type=protocol,
+                data_received=session.get("data_received"),
+                commands="\n".join(session.get("commands", [])) if session.get("commands") else None,
+            )
+            if iocs:
+                session["iocs_extracted"] = len(iocs)
+        except Exception:
+            pass
+
         # Publish to event bus for reporting
         await publish("honeypot_interaction", {
             **session,

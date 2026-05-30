@@ -243,3 +243,47 @@ async def emergency_flush(_admin=Depends(require_admin)):
         "warning": "All dynamic firewall rules removed",
         "deactivated_rules": deactivated_rules,
     }
+
+
+@router.get("/iocs")
+async def list_iocs(
+    limit: int = Query(200, ge=1, le=1000),
+    _user=Depends(get_current_user),
+):
+    """Return extracted IOCs from honeypot sessions."""
+    try:
+        from app.honeypot.ioc_extractor import get_all_iocs
+        return {"items": get_all_iocs(limit)}
+    except Exception:
+        return {"items": []}
+
+
+@router.get("/iocs/summary")
+async def ioc_summary(_user=Depends(get_current_user)):
+    """Return IOC collection summary stats."""
+    try:
+        from app.honeypot.ioc_extractor import get_ioc_summary
+        return get_ioc_summary()
+    except Exception:
+        return {"total_iocs": 0, "by_type": {}, "unique_source_ips": 0}
+
+
+@router.get("/protocol-awareness")
+async def protocol_awareness(_user=Depends(get_current_user)):
+    """Return IPv6, fragment, and VPN traffic visibility counters."""
+    ipv6_stats = {"ipv6_packets_seen": 0, "fragment_packets_seen": 0}
+    try:
+        from app.monitor.packet_sniffer import get_ipv6_stats
+        ipv6_stats = get_ipv6_stats()
+    except Exception:
+        pass
+    feedback = {}
+    try:
+        from app.agents.feedback_agent import get_feedback_metrics
+        feedback = get_feedback_metrics()
+    except Exception:
+        pass
+    return {
+        **ipv6_stats,
+        "feedback_metrics": feedback,
+    }

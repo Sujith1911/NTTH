@@ -254,6 +254,10 @@ def extract_features(pkt) -> Optional[dict]:
         "ip_id": getattr(ip_layer, "id", None),
         "ip_flags": str(getattr(ip_layer, "flags", "")) or None,
         "frag_offset": getattr(ip_layer, "frag", None),
+        "is_fragment": bool(
+            (getattr(ip_layer, "frag", 0) or 0) > 0
+            or "MF" in str(getattr(ip_layer, "flags", ""))
+        ),
         "protocol": "other",
         "dst_port": None,
         "src_port": None,
@@ -287,6 +291,9 @@ def extract_features(pkt) -> Optional[dict]:
         features["dst_port"] = udp.dport
         features["src_port"] = udp.sport
         features["udp_len"] = udp.len
+        # Flag likely VPN/tunnel traffic based on known ports
+        _VPN_PORTS = {1194, 1195, 1196, 1197, 4500, 51820, 47, 1701, 500}
+        features["is_likely_vpn"] = bool(udp.dport in _VPN_PORTS or udp.sport in _VPN_PORTS)
         features.update(_tls_details(payload, udp.sport, udp.dport))
 
     elif pkt.haslayer(ICMP):

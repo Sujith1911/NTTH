@@ -24,6 +24,8 @@ settings = get_settings()
 
 _running = False
 _sniffer: Any | None = None
+_ipv6_packet_count: int = 0
+_fragment_packet_count: int = 0
 
 
 def is_running() -> bool:
@@ -160,9 +162,24 @@ async def start_sniffer() -> None:
 
     def _packet_callback(pkt: Any) -> None:
         """Called by Scapy for each captured packet (runs in executor thread)."""
+        global _ipv6_packet_count, _fragment_packet_count
+
+        # Track IPv6 packets even though we don't fully process them yet
+        try:
+            from scapy.layers.inet6 import IPv6  # type: ignore
+            if pkt.haslayer(IPv6):
+                _ipv6_packet_count += 1
+        except ImportError:
+            pass
+
         features = extract_features(pkt)
         if not features:
             return
+
+        # Track fragmented packets
+        if features.get("is_fragment"):
+            _fragment_packet_count += 1
+
         try:
             from app.research.metrics import mark_packet_observed
             mark_packet_observed(features)
@@ -183,7 +200,7 @@ async def start_sniffer() -> None:
     sniffer_kwargs: dict = {
         "prn": _packet_callback,
         "store": False,
-        "filter": "ip or arp",
+        "filter": "ip or ip6 or arp",
         "promisc": True,  # Capture traffic for ALL devices on the segment
     }
     if iface:
@@ -236,3 +253,11 @@ async def start_sniffer() -> None:
 def stop_sniffer() -> None:
     global _running
     _running = False
+
+
+def get_ipv6_stats() -> dict:
+    """Return IPv6 and fragment packet counters for research telemetry."""
+    return {
+        "ipv6_packets_seen": _ipv6_packet_count,
+        "fragment_packets_seen": _fragment_packet_count,
+    }

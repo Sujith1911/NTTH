@@ -56,6 +56,12 @@ def _should_persist_packet(payload: dict, *, threat: bool = False) -> bool:
         return False
     if src_ip.endswith((".255", ".0")) or dst_ip.endswith((".255", ".0")):
         return False
+    # Filter out scanner ARP probes (gateway/server sending ARP who-has to subnet)
+    if protocol == "arp":
+        from app.config import get_settings
+        _settings = get_settings()
+        if src_ip in {_settings.server_display_ip, _settings.gateway_ip}:
+            return False
     if _is_scanner_probe_or_reply(payload):
         return False
     if threat:

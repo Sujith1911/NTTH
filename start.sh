@@ -146,11 +146,20 @@ if [ "$NTTH_MODE" = "gateway" ]; then
     sudo iw dev "$GW_IFACE" set type managed
   fi
 
-  # ── 5d. Assign gateway IP ──────────────────────────────────────────────────
+  # ── 5d. Create bridge and assign gateway IP ─────────────────────────────────
+  BRIDGE="br-ntth"
+  if ! ip link show "$BRIDGE" &>/dev/null; then
+    sudo ip link add name "$BRIDGE" type bridge
+    echo "   ✅ Bridge $BRIDGE created"
+  else
+    echo "   ✅ Bridge $BRIDGE already exists"
+  fi
   sudo ip addr flush dev "$GW_IFACE" 2>/dev/null || true
-  sudo ip addr add "$GW_IP/24" dev "$GW_IFACE"
+  sudo ip addr flush dev "$BRIDGE" 2>/dev/null || true
+  sudo ip addr add "$GW_IP/24" dev "$BRIDGE"
+  sudo ip link set "$BRIDGE" up
   sudo ip link set "$GW_IFACE" up
-  echo "   ✅ $GW_IFACE → $GW_IP/24"
+  echo "   ✅ $BRIDGE → $GW_IP/24 (bridge mode)"
 
   # ── 5e. Deploy hostapd config ──────────────────────────────────────────────
   if [ -f "$GATEWAY_DIR/hostapd.conf" ]; then
@@ -180,14 +189,26 @@ if [ "$NTTH_MODE" = "gateway" ]; then
   # ── 5h. Set up NAT / iptables ──────────────────────────────────────────────
   # Flush old NTTH rules first (idempotent)
   sudo iptables -t nat -D POSTROUTING -o "$GW_UPSTREAM" -j MASQUERADE 2>/dev/null || true
+  sudo iptables -D FORWARD -i "$BRIDGE" -o "$GW_UPSTREAM" -j ACCEPT 2>/dev/null || true
+  sudo iptables -D FORWARD -i "$GW_UPSTREAM" -o "$BRIDGE" -m state --state RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || true
+  # Clean up any old rules referencing the raw Wi-Fi iface
   sudo iptables -D FORWARD -i "$GW_IFACE" -o "$GW_UPSTREAM" -j ACCEPT 2>/dev/null || true
   sudo iptables -D FORWARD -i "$GW_UPSTREAM" -o "$GW_IFACE" -m state --state RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || true
 
-  # Add rules
+  # Add rules — forward from bridge to upstream
   sudo iptables -t nat -A POSTROUTING -o "$GW_UPSTREAM" -j MASQUERADE
-  sudo iptables -A FORWARD -i "$GW_IFACE" -o "$GW_UPSTREAM" -j ACCEPT
-  sudo iptables -A FORWARD -i "$GW_UPSTREAM" -o "$GW_IFACE" -m state --state RELATED,ESTABLISHED -j ACCEPT
-  echo "   ✅ NAT rules applied ($GW_IFACE → $GW_UPSTREAM)"
+  sudo iptables -A FORWARD -i "$BRIDGE" -o "$GW_UPSTREAM" -j ACCEPT
+  sudo iptables -A FORWARD -i "$GW_UPSTREAM" -o "$BRIDGE" -m state --state RELATED,ESTABLISHED -j ACCEPT
+  echo "   ✅ NAT rules applied ($BRIDGE → $GW_UPSTREAM)"
+
+  # ── 5h2. Initialise NTTH nftables infrastructure ──────────────────────────
+  # Create NTTH-owned tables/chains for security rules (containment, redirect)
+  sudo nft add table inet ntth_filter 2>/dev/null || true
+  sudo nft add chain inet ntth_filter ntth_input '{ type filter hook input priority 0; }' 2>/dev/null || true
+  sudo nft add chain inet ntth_filter ntth_forward '{ type filter hook forward priority -10; }' 2>/dev/null || true
+  sudo nft add table ip ntth_nat 2>/dev/null || true
+  sudo nft add chain ip ntth_nat ntth_prerouting '{ type nat hook prerouting priority dstnat; }' 2>/dev/null || true
+  echo "   ✅ nftables NTTH infrastructure ready"
 
   # ── 5i. Switch backend .env to gateway mode ────────────────────────────────
   if [ -f "$GATEWAY_DIR/env.gateway" ]; then

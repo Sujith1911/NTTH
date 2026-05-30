@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>NTTH Springer LNCS Paper — Part 3</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Times+New+Roman&display=swap');
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Times New Roman', Georgia, serif; font-size: 10pt; line-height: 1.35; color: #000; background: #fff; max-width: 210mm; margin: 0 auto; padding: 20mm 18mm; }
+  .two-column { column-count: 2; column-gap: 6mm; text-align: justify; hyphens: auto; }
+  h2 { font-size: 12pt; font-weight: bold; margin-top: 14pt; margin-bottom: 6pt; column-span: all; }
+  h3 { font-size: 10pt; font-weight: bold; margin-top: 10pt; margin-bottom: 4pt; }
+  p { text-indent: 4mm; margin-bottom: 4pt; text-align: justify; }
+  p.no-indent { text-indent: 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 9pt; margin: 8pt 0; break-inside: avoid; }
+  table caption { font-size: 9pt; font-weight: bold; margin-bottom: 4pt; text-align: center; }
+  th, td { border: 1px solid #333; padding: 3pt 4pt; text-align: left; vertical-align: top; }
+  th { background: #f0f0f0; font-weight: bold; }
+  .figure-placeholder { border: 2px dashed #888; background: #fafafa; padding: 12pt; margin: 10pt 0; text-align: center; font-style: italic; font-size: 9pt; color: #555; break-inside: avoid; }
+  .figure-caption { text-align: center; font-size: 9pt; font-weight: bold; margin-top: 4pt; margin-bottom: 8pt; }
+  .references { font-size: 9pt; }
+  .references p { text-indent: -6mm; padding-left: 6mm; margin-bottom: 3pt; }
+</style>
+</head>
+<body>
+
+<div class="two-column">
+
+<!-- SECTION 9: Comparative Analysis -->
+<h2>9 &nbsp; Comparative Analysis</h2>
+
+<p class="no-indent">
+Comparing NTTH against established security platforms requires careful framing. NTTH is a prototype gateway for university-scale experimentation, not a production security appliance. The comparison is therefore architectural in nature — evaluating integration completeness rather than detection depth or operational maturity.
+</p>
+
+<table>
+<caption>Table 10. Architectural comparison with existing security approaches</caption>
+<tr><th>System / Category</th><th>Detection</th><th>Containment</th><th>Evidence</th><th>Dashboard</th><th>Cost</th></tr>
+<tr><td>Snort/Suricata IDS [1,2]</td><td>Deep signatures, 30,000+ rules</td><td>Requires external firewall integration</td><td>Alert logs; no honeypot</td><td>Third-party (Kibana/Splunk)</td><td>Free (SW); needs hardware</td></tr>
+<tr><td>Cowrie Honeypot [3]</td><td>None (passive)</td><td>None</td><td>SSH/Telnet commands, credentials</td><td>Logs only</td><td>Free</td></tr>
+<tr><td>Security Onion / Wazuh</td><td>Comprehensive (Suricata + OSSEC)</td><td>Limited auto-response</td><td>Full SIEM correlation</td><td>Rich SOC interface</td><td>Free (SW); heavy hardware</td></tr>
+<tr><td>pfSense + Snort</td><td>Gateway-integrated IDS</td><td>Inline blocking</td><td>Alerts; no honeypot</td><td>Web GUI</td><td>Dedicated hardware</td></tr>
+<tr><td><strong>NTTH (this work)</strong></td><td>6 heuristic detectors</td><td>Graduated nftables (throttle/redirect/block)</td><td>Honeypot + packet forensics + IOCs</td><td>Real-time Flutter web</td><td>Single laptop + USB adapter</td></tr>
+</table>
+
+<p>
+NTTH's primary advantage over individual tools lies in integration completeness: it provides a single deployment that simultaneously captures packets, scores risk, enforces graduated containment, collects honeypot evidence, and presents operational state through a real-time dashboard. No configuration of separate Snort instances, Cowrie containers, firewall rules, log aggregators, and visualization tools is required by the user.
+</p>
+
+<p>
+Against production stacks such as Security Onion, NTTH offers dramatically lower deployment complexity (single laptop versus multi-server infrastructure) but substantially less detection depth, protocol analysis capability, and operational hardening. This tradeoff is acceptable for the stated use case of university laboratory security education and controlled experimentation, where deployment simplicity and conceptual transparency take priority over enterprise-grade coverage.
+</p>
+
+<p>
+The pfSense comparison is particularly relevant since both operate as gateway-positioned security appliances. pfSense provides superior routing performance, mature web management, and access to the full Snort rule library. NTTH compensates with integrated honeypot evidence collection, graduated response policies including traffic redirection to decoys, and purpose-built research instrumentation for latency and accuracy measurement. The two systems serve different audiences: pfSense targets small-office network administrators while NTTH targets security researchers and students requiring observable, modifiable defensive workflows.
+</p>
+
+<div class="figure-placeholder">
+<strong>[Figure 6: Feature Coverage Comparison Radar Chart]</strong><br><br>
+<em>Description for image creation:</em> A radar/spider chart comparing 5 systems across 6 axes. The axes are: "Detection Depth", "Containment Flexibility", "Evidence Collection", "Dashboard Quality", "Deployment Simplicity", and "Research Instrumentation". The 5 systems plotted as colored polygon overlays: Snort/Suricata (blue, high on Detection, low on Evidence and Simplicity), Cowrie (green, high only on Evidence), Security Onion (purple, high on everything except Simplicity), pfSense+Snort (orange, moderate-high on most except Evidence and Research), NTTH (red, moderate on Detection, high on Containment Flexibility, Evidence, Dashboard, Simplicity, and Research). Include a legend. Clean grayscale-friendly academic style.
+</div>
+<div class="figure-caption">Fig. 6. Feature coverage comparison across five system categories. NTTH achieves strong coverage in containment flexibility, evidence collection, deployment simplicity, and research instrumentation while acknowledging limited detection depth.</div>
+
+
+<!-- SECTION 10: Advantages and Limitations -->
+<h2>10 &nbsp; Advantages and Limitations</h2>
+
+<h3>10.1 &nbsp; Advantages</h3>
+
+<p class="no-indent">
+<strong>Minimal hardware requirements.</strong> The complete system operates on a commodity laptop with a $15 USB wireless adapter, making it accessible to students and under-resourced laboratories without dedicated network appliance budgets.
+</p>
+
+<p>
+<strong>Closed-loop transparency.</strong> Every detection, scoring, decision, and enforcement action is recorded with full evidential context. A reviewer can inspect not only what the system did but precisely why it acted, including rule scores, threshold comparisons, and decision rationale strings.
+</p>
+
+<p>
+<strong>Graduated response with reversibility.</strong> The five-tier response policy (allow, log, rate-limit, redirect, block) reduces the impact of misclassification compared to binary allow/block systems. Blocked devices retain Wi-Fi association and dashboard visibility, and containment can be reversed through a single administrative action.
+</p>
+
+<p>
+<strong>Integrated evidence pipeline.</strong> Honeypot sessions, packet metadata, IOC extraction, and threat events are stored in a unified database and accessible through a single dashboard, eliminating the log correlation overhead typical of multi-tool deployments.
+</p>
+
+<p>
+<strong>Research instrumentation.</strong> Built-in telemetry recording enables quantitative evaluation of detection accuracy, false-positive rates, latency distributions, and resource consumption without requiring external measurement infrastructure.
+</p>
+
+<h3>10.2 &nbsp; Limitations</h3>
+
+<p class="no-indent">
+<strong>Limited detection scope.</strong> Six heuristic detectors cover common reconnaissance and volumetric attacks but do not address application-layer exploits, protocol-specific evasion techniques, encrypted payload inspection, or sophisticated slow-rate attacks that operate below sliding-window thresholds.
+</p>
+
+<p>
+<strong>Single point of failure.</strong> The gateway concentrates all defensive functions on a single host. Hardware failure, kernel panic, or process crash disables all detection, containment, and evidence collection simultaneously. Production deployments would require redundancy mechanisms absent from this prototype.
+</p>
+
+<p>
+<strong>IP-based containment granularity.</strong> Containment rules target source IP addresses. In environments with DHCP address rotation, containment persistence may degrade if a blocked device obtains a new address. MAC-aware containment is not implemented in the current version.
+</p>
+
+<p>
+<strong>IPv6 and tunnel limitations.</strong> The prototype tracks IPv6 packets and flags VPN-associated UDP ports for visibility but does not perform deep IPv6 inspection, fragment reassembly, or tunnel content analysis. Attackers using IPv6-only traffic or encrypted tunnels can evade detection.
+</p>
+
+<p>
+<strong>Honeypot fingerprinting.</strong> Cowrie and the lightweight TCP decoys may be identifiable by sophisticated attackers through timing analysis, banner inconsistencies, or interaction depth limitations. The honeypot layer is effective against automated tools and commodity scanners but should not be relied upon for advanced adversary engagement.
+</p>
+
+<p>
+<strong>Evaluation scale.</strong> Experiments were conducted with two mobile devices on an isolated subnet. While this validates the architecture's functional correctness, it does not demonstrate performance under production-scale traffic loads with dozens or hundreds of concurrent clients. Scalability evaluation remains future work.
+</p>
+
+<p>
+<strong>NAT and firewall consolidation.</strong> The current deployment uses iptables for NAT masquerading alongside nftables for dynamic security rules. This dual-framework configuration introduces operational complexity. Full migration to nftables-only configuration is a planned improvement.
+</p>
+
+
+<!-- SECTION 11: Conclusion -->
+<h2>11 &nbsp; Conclusion</h2>
+
+<p class="no-indent">
+This paper presented NTTH, an event-driven security gateway prototype that integrates packet observation, rule-assisted risk scoring, graduated forwarding-layer containment, and honeypot-based evidence collection into a single deployment operating on commodity laptop hardware. The architecture addresses a documented gap in the availability of reproducible, low-cost defensive loop implementations suitable for university-scale security education and applied research.
+</p>
+
+<p>
+Controlled experiments conducted with two mobile devices on an isolated wireless network demonstrated that the prototype successfully detects port scans, host sweeps, SYN floods, and brute-force attempts with a 100% detection rate across fifteen attack trial executions. No false-positive block or rate-limit actions occurred during forty minutes of cumulative benign traffic workloads including idle state, web browsing, video streaming, and application updates. Average capture-to-enforcement latency remained below 900 milliseconds across all enforcement scenarios, with the system consuming less than 380 MB of resident memory.
+</p>
+
+<p>
+The principal contribution is not a novel detection algorithm but rather a systems architecture that demonstrates how existing primitives — packet capture via Scapy, sliding-window heuristics, policy-driven response, nftables enforcement, Cowrie honeypot, and real-time web dashboard — can be composed into a measurable and transparent closed-loop defense. The complete system, including its threshold configuration, detection heuristics, decision policy, and enforcement mechanisms, is documented at a level sufficient for independent reproduction and extension.
+</p>
+
+<p>
+NTTH occupies a deliberate position between production-grade security appliances and academic proof-of-concept demonstrations. It provides enough operational capability to support meaningful security experiments and educational exercises while maintaining architectural simplicity that enables understanding, modification, and extension by researchers and students.
+</p>
+
+
+<!-- SECTION 12: Future Scope -->
+<h2>12 &nbsp; Future Work</h2>
+
+<p class="no-indent">
+Several directions for future development emerge from the current limitations. First, MAC-address-aware device identity tracking would improve containment persistence across DHCP lease changes and enable device-level rather than IP-level policy enforcement. Second, complete migration from the current iptables/nftables hybrid to a unified nftables-only configuration would simplify operational management and reduce potential rule conflicts.
+</p>
+
+<p>
+Third, integration of lightweight machine-learning anomaly detection models trained on the gateway's own baseline traffic would activate the anomaly score component of the risk calculation formula, potentially improving detection of novel or slow-rate attacks not covered by the current heuristic set. Public datasets such as CICIDS2017 [17] and Edge-IIoTset [8] could supplement training data.
+</p>
+
+<p>
+Fourth, IPv6 deep inspection, IP fragment reassembly, and VPN/tunnel content analysis would address current visibility gaps. Fifth, the honeypot layer could be enhanced with protocol-specific interaction depth — more realistic MySQL, FTP, and Redis emulation — to improve evidence quality against moderately sophisticated adversaries.
+</p>
+
+<p>
+Sixth, scalability evaluation with larger client populations (10–50 concurrent devices) and longer deployment durations (multi-day soak testing) would validate the architecture's applicability beyond the current two-device experimental scope. Finally, comparative benchmarking against integrated open-source security stacks such as Security Onion running identical attack scenarios would provide quantitative positioning data for the research community.
+</p>
+
+
+</div><!-- end two-column -->
+
+<!-- ============================================ -->
+<!-- REFERENCES (full width) -->
+<!-- ============================================ -->
+
+<h2 style="margin-top: 16pt;">References</h2>
+
+<div class="references">
+
+<p>[1] Roesch, M.: Snort — lightweight intrusion detection for networks. In: Proc. USENIX LISA Conference, pp. 229–238. USENIX Association (1999)</p>
+
+<p>[2] Open Information Security Foundation: Suricata — open source IDS/IPS engine. Available: https://suricata.io/ (2024)</p>
+
+<p>[3] Oosterhof, M.: Cowrie SSH/Telnet honeypot. Available: https://github.com/cowrie/cowrie. Documentation: https://docs.cowrie.org/ (2024)</p>
+
+<p>[4] Ahmad, Z., Shahid Khan, A., Wai Shiang, C., Abdullah, J., Ahmad, F.: Network intrusion detection system: a systematic study of machine learning and deep learning approaches. Trans. Emerg. Telecommun. Technol. 32(1), e4150 (2021). doi: 10.1002/ett.4150</p>
+
+<p>[5] Diro, A.A., Chilamkurti, N.: Leveraging LSTM networks for attack detection in fog-to-things communications. IEEE Commun. Mag. 56(9), 124–130 (2018). doi: 10.1109/MCOM.2018.1701270</p>
+
+<p>[6] Sarhan, M., Layeghy, S., Moustafa, N., Portmann, M.: Cyber threat intelligence sharing scheme based on federated learning for network intrusion detection. J. Netw. Syst. Manag. 31(1), 3 (2023). doi: 10.1007/s10922-022-09691-3</p>
+
+<p>[7] Khraisat, A., Alazab, A.: A critical review of intrusion detection systems in the internet of things: techniques, deployment strategy, validation strategy, attacks, public datasets and challenges. Cybersecurity 4, article 18 (2021). doi: 10.1186/s42400-021-00077-7</p>
+
+<p>[8] Ferrag, M.A., Friha, O., Maglaras, L., Janicke, H., Shu, L.: Edge-IIoTset: a new comprehensive realistic cyber security dataset of IoT and IIoT applications for centralized and federated learning. IEEE Access 10, 40281–40306 (2022). doi: 10.1109/ACCESS.2022.3165809</p>
+
+<p>[9] Arp, D., Quiring, E., Pendlebury, F., Warnecke, A., Pierazzi, F., Wressnegger, C., Rieck, K.: Dos and don'ts of machine learning in computer security. In: Proc. USENIX Security Symposium, pp. 3971–3988 (2022)</p>
+
+<p>[10] Pawlick, J., Colbert, E., Zhu, Q.: A game-theoretic taxonomy and survey of defensive deception for cybersecurity and privacy. ACM Comput. Surv. 52(4), article 82 (2019). doi: 10.1145/3337772</p>
+
+<p>[11] Almeshekah, M.H., Spafford, E.H.: Cyber security deception. In: Jajodia, S., et al. (eds.) Cyber Deception: Building the Scientific Foundation, pp. 25–52. Springer, Cham (2016). doi: 10.1007/978-3-319-32699-3_2</p>
+
+<p>[12] Sivanathan, A., Gharakheili, H.H., Loi, F., Radford, A., Wijenayake, C., Vishwanath, A., Sivaraman, V.: Classifying IoT devices in smart environments using network traffic characteristics. IEEE Trans. Mob. Comput. 18(8), 1745–1759 (2019). doi: 10.1109/TMC.2018.2866249</p>
+
+<p>[13] Netgate: pfSense Plus and CE software. Available: https://www.pfsense.org/ (2024)</p>
+
+<p>[14] Netfilter Project: nftables — the modern Linux firewall framework. Available: https://wiki.nftables.org/ (2024)</p>
+
+<p>[15] Biondi, P., et al.: Scapy — packet manipulation library. Available: https://scapy.readthedocs.io/ (2024)</p>
+
+<p>[16] Malinen, J.: hostapd — IEEE 802.11 AP, IEEE 802.1X/WPA/WPA2/EAP/RADIUS authenticator. Available: https://w1.fi/hostapd/ (2024)</p>
+
+<p>[17] Sharafaldin, I., Lashkari, A.H., Ghorbani, A.A.: Toward generating a new intrusion detection dataset and intrusion traffic characterization. In: Proc. ICISSP, pp. 108–116 (2018). doi: 10.5220/0006639801080116</p>
+
+<p>[18] Paxson, V.: Bro: a system for detecting network intruders in real-time. Comput. Netw. 31(23–24), 2435–2463 (1999). doi: 10.1016/S1389-1286(99)00112-7</p>
+
+<p>[19] Mirsky, Y., Doitshman, T., Elovici, Y., Shabtai, A.: Kitsune: an ensemble of autoencoders for online network intrusion detection. In: Proc. NDSS (2018). doi: 10.14722/ndss.2018.23204</p>
+
+<p>[20] Mukherjee, B., Heberlein, L.T., Levitt, K.N.: Network intrusion detection. IEEE Netw. 8(3), 26–41 (1994). doi: 10.1109/65.283931</p>
+
+<p>[21] Provos, N., Holz, T.: Virtual Honeypots: From Botnet Tracking to Intrusion Detection. Addison-Wesley Professional (2007)</p>
+
+<p>[22] Moustafa, N., Slay, J.: UNSW-NB15: a comprehensive data set for network intrusion detection systems. In: Proc. Military Communications and Information Systems Conference (MilCIS), pp. 1–6 (2015). doi: 10.1109/MilCIS.2015.7348942</p>
+
+<p>[23] Garcia, S., Grill, M., Stiborek, J., Zunino, A.: An empirical comparison of botnet detection methods. Comput. Secur. 45, 100–123 (2014). doi: 10.1016/j.cose.2014.05.011</p>
+
+<p>[24] Lashkari, A.H., Draper-Gil, G., Mamun, M.S.I., Ghorbani, A.A.: Characterization of tor traffic using time based features. In: Proc. ICISSP, pp. 253–262 (2017)</p>
+
+<p>[25] Kolias, C., Kambourakis, G., Stavrou, A., Voas, J.: DDoS in the IoT: Mirai and other botnets. Computer 50(7), 80–84 (2017). doi: 10.1109/MC.2017.201</p>
+
+</div>
+
+</body>
+</html>

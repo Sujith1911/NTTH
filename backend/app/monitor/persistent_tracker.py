@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json as _json
 import os
+import sys
 import time
 from datetime import datetime
 from pathlib import Path
@@ -273,8 +274,6 @@ def clear_attacker(mac: str) -> bool:
         return True
     return False
 
-
-import sys
 
 # Alias used by API routes
 remove_attacker = clear_attacker

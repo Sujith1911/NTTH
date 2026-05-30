@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
@@ -24,6 +26,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
   final int _page = 1;
   int _total = 0;
   VoidCallback? _wsListener;
+  Timer? _wsDebounce;
   DateTime? _lastSyncedAt;
 
   @override
@@ -37,6 +40,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
 
   @override
   void dispose() {
+    _wsDebounce?.cancel();
     final listener = _wsListener;
     if (listener != null) {
       context.read<WebSocketService>().removeListener(listener);
@@ -45,15 +49,20 @@ class _DevicesScreenState extends State<DevicesScreen> {
   }
 
   Future<void> _fetchDevices() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+    // Only show spinner on first load — subsequent fetches update silently
+    final isFirstLoad = _devices.isEmpty && _error == null;
+    if (isFirstLoad) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
     try {
       final api = context.read<AuthService>().api;
       final resp =
           await api.get('/devices', params: {'page': _page, 'page_size': 50});
       final data = resp.data as Map<String, dynamic>;
+      if (!mounted) return;
       setState(() {
         _devices = (data['items'] as List)
             .map((j) => DeviceModel.fromJson(j))
@@ -63,10 +72,14 @@ class _DevicesScreenState extends State<DevicesScreen> {
         _lastSyncedAt = DateTime.now();
       });
     } catch (e) {
-      setState(() {
-        _error = e.toString();
-        _loading = false;
-      });
+      if (!mounted) return;
+      // Only show error if we have no data yet
+      if (_devices.isEmpty) {
+        setState(() {
+          _error = e.toString();
+          _loading = false;
+        });
+      }
     }
   }
 
@@ -179,7 +192,8 @@ class _DevicesScreenState extends State<DevicesScreen> {
           });
           return;
         }
-        if (!_loading) _fetchDevices();
+        // Unknown device — debounce the full refetch
+        _debouncedFetch();
         return;
       }
       if (type == 'device_seen') {
@@ -188,14 +202,21 @@ class _DevicesScreenState extends State<DevicesScreen> {
         if (_devices.any((device) => device.ipAddress == ip)) {
           return;
         }
-        if (!_loading) _fetchDevices();
+        _debouncedFetch();
         return;
       }
-      if (type == 'topology_updated' && !_loading) {
-        _fetchDevices();
+      if (type == 'topology_updated') {
+        _debouncedFetch();
       }
     };
     ws.addListener(_wsListener!);
+  }
+
+  void _debouncedFetch() {
+    _wsDebounce?.cancel();
+    _wsDebounce = Timer(const Duration(seconds: 3), () {
+      if (mounted && !_loading) _fetchDevices();
+    });
   }
 
   @override

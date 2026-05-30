@@ -51,6 +51,12 @@ async def _handle_device_seen(features: dict) -> None:
     ):
         return
 
+    # ── ALWAYS register managed devices, even for benign traffic ──
+    # This must happen BEFORE any whitelist return, otherwise devices
+    # that only produce whitelisted traffic (VMs, phones) never appear.
+    if is_managed_asset_ip(src_ip):
+        device_registry.update(features)
+
     # Ignore normal web responses from public CDNs to local ephemeral ports.
     # These are replies to Ubuntu/browser traffic, not inbound scans.
     src_port = features.get("src_port")
@@ -77,6 +83,7 @@ async def _handle_device_seen(features: dict) -> None:
     ):
         return
 
+    # Skip responses from public servers back to local ephemeral ports (TCP).
     if (
         src_ip
         and dst_ip
@@ -89,8 +96,36 @@ async def _handle_device_seen(features: dict) -> None:
     ):
         return
 
-    # Update device registry
-    device_state = device_registry.update(features)
+    # Skip normal outbound UDP traffic from managed devices to ANY public IP.
+    # This covers QUIC/HTTP3, DNS, NTP, and app traffic on non-standard ports.
+    # A managed device cannot be an attacker — it's the asset we're protecting.
+    protocol = features.get("protocol", "")
+    if (
+        protocol == "udp"
+        and is_managed_asset_ip(src_ip)
+        and not is_managed_asset_ip(dst_ip)
+    ):
+        return
+
+    # Skip inbound UDP responses from public IPs to managed device ephemeral ports.
+    # These are reply packets to outbound QUIC/DNS connections initiated by the device.
+    if (
+        protocol == "udp"
+        and not is_managed_asset_ip(src_ip)
+        and is_managed_asset_ip(dst_ip)
+        and isinstance(dst_port, int)
+        and dst_port >= 1024
+    ):
+        return
+
+    # Skip ALL ICMP from/to managed devices.
+    # Browsing generates ICMP (traceroute, CDN pings, gateway pings) — not a threat.
+    if protocol == "icmp" and (is_managed_asset_ip(src_ip) or is_managed_asset_ip(dst_ip)):
+        return
+
+    # Update device registry (for non-managed IPs that made it past whitelists)
+    if not is_managed_asset_ip(src_ip):
+        device_registry.update(features)
 
     # Rule-based scoring
     rule_result = rule_engine.evaluate(features)
@@ -100,10 +135,12 @@ async def _handle_device_seen(features: dict) -> None:
 
     # Risk calculation
     risk_score = calculate(rule_result["rule_score"], ml_score)
+    # Outbound traffic from managed devices to common service ports is ALWAYS benign.
+    # Normal phone browsing (HTTPS, DNS, Google Play, etc.) must never raise alerts.
     if (
         features.get("direction") == "outbound"
+        and is_managed_asset_ip(src_ip)
         and dst_port in _COMMON_CLIENT_SERVICE_PORTS
-        and rule_result.get("threat_type") in {"normal", "suspicious"}
     ):
         return
     if rule_result.get("threat_type") == "normal":

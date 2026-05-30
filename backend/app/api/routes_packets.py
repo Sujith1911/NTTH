@@ -305,6 +305,7 @@ async def cleanup_packet_noise(
     deleted = await crud.purge_packet_noise(db)
     demo_cleanup = await crud.purge_synthetic_demo_data(db)
     benign_cleanup = await crud.purge_benign_web_false_positives(db)
+    stealth_cleanup = await crud.purge_false_stealth_scans(db)
     scanner_cleanup = await crud.purge_scanner_false_positives(
         db,
         server_ip=settings.server_display_ip,
@@ -315,7 +316,94 @@ async def cleanup_packet_noise(
         "deleted": deleted,
         "demo_cleanup": demo_cleanup,
         "benign_cleanup": benign_cleanup,
+        "stealth_cleanup": stealth_cleanup,
         "scanner_cleanup": scanner_cleanup,
+    }
+
+
+@router.post("/purge-all-stale")
+async def purge_all_stale_data(
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(require_admin),
+):
+    """
+    Admin-only: NUCLEAR CLEANUP — removes ALL test/fake/stale data:
+    - All captured packets
+    - All threat events
+    - All honeypot sessions
+    - All firewall rules (deactivated)
+    - Stale device rows (not in current subnet)
+    - In-memory live stats reset
+
+    Use this when transitioning from testing to live experiments.
+    """
+    from sqlalchemy import delete as sql_delete
+    from app.database.models import (
+        CapturedPacket, ThreatEvent, HoneypotSession, FirewallRule, Device, DeviceStat,
+    )
+
+    # 1. Delete all captured packets
+    pkt_result = await db.execute(sql_delete(CapturedPacket))
+    packets_deleted = int(pkt_result.rowcount or 0)
+
+    # 2. Delete all threat events
+    threat_result = await db.execute(sql_delete(ThreatEvent))
+    threats_deleted = int(threat_result.rowcount or 0)
+
+    # 3. Delete all honeypot sessions
+    session_result = await db.execute(sql_delete(HoneypotSession))
+    sessions_deleted = int(session_result.rowcount or 0)
+
+    # 4. Deactivate all firewall rules
+    rules_deactivated = await crud.deactivate_all_firewall_rules(db)
+
+    # 5. Remove stale devices outside subnet
+    devices_purged = 0
+    if settings.scan_subnet:
+        devices_purged = await crud.purge_devices_outside_subnet(db, settings.scan_subnet)
+
+    # 6. Delete all device stats
+    stat_result = await db.execute(sql_delete(DeviceStat))
+    stats_deleted = int(stat_result.rowcount or 0)
+
+    # 7. Reset risk scores on remaining devices to 0
+    from sqlalchemy import update as sql_update
+    await db.execute(sql_update(Device).values(risk_score=0.0))
+
+    await db.commit()
+
+    # 8. Flush live nftables rules
+    nft_flushed = False
+    try:
+        from app.firewall.nft_manager import NFTManager
+        nft_flushed = await NFTManager().flush_chain()
+    except Exception:
+        pass
+
+    # 9. Clear in-memory live stats
+    try:
+        from app.monitor.network_scanner import _live_stats
+        _live_stats.clear()
+    except Exception:
+        pass
+
+    # 10. Clear known attackers in persistent tracker
+    try:
+        from app.monitor.persistent_tracker import _known_attackers, _save_to_disk
+        _known_attackers.clear()
+        _save_to_disk()
+    except Exception:
+        pass
+
+    return {
+        "packets_deleted": packets_deleted,
+        "threats_deleted": threats_deleted,
+        "sessions_deleted": sessions_deleted,
+        "rules_deactivated": rules_deactivated,
+        "devices_purged": devices_purged,
+        "stats_deleted": stats_deleted,
+        "nft_flushed": nft_flushed,
+        "message": "All stale/test data purged. Dashboard is clean for live experiments.",
     }
 
 
@@ -337,7 +425,38 @@ async def delete_packet(
     db: AsyncSession = Depends(get_db),
     _admin=Depends(require_admin),
 ):
+    # Fetch the packet first to get its source IP for risk recalculation
+    pkt = await crud.get_captured_packet(db, packet_id)
+    if not pkt:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Packet not found")
+    src_ip = pkt.src_ip
+
     deleted = await crud.delete_captured_packet(db, packet_id)
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Packet not found")
     await db.commit()
+
+    # Recalculate risk score from remaining threat packets for this device
+    if src_ip:
+        try:
+            from sqlalchemy import select, func
+            from app.database.models import CapturedPacket, Device
+
+            # Get max risk_score from remaining threat packets for this IP
+            max_risk_q = select(func.max(CapturedPacket.risk_score)).where(
+                CapturedPacket.src_ip == src_ip,
+                CapturedPacket.threat_type.notin_(["normal", None, ""]),
+            )
+            result = await db.execute(max_risk_q)
+            new_risk = result.scalar() or 0.0
+
+            # Update the device's risk score
+            device_q = select(Device).where(Device.ip_address == src_ip)
+            device_result = await db.execute(device_q)
+            device = device_result.scalar_one_or_none()
+            if device:
+                device.risk_score = round(float(new_risk), 4)
+                await db.commit()
+        except Exception:
+            pass  # Non-critical — risk will self-correct on next packet
+

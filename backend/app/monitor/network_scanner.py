@@ -334,6 +334,35 @@ async def scan_network() -> list[dict]:
             if open_ports:
                 log.info("network_scanner.device_ports",
                          ip=ip, hostname=hostname, open_ports=open_ports)
+
+        # ── Also register DHCP-leased devices (VMs that don't respond to ping) ──
+        dhcp_ips = set()
+        try:
+            import os
+            lease_file = "/var/lib/misc/dnsmasq.leases"
+            if os.path.isfile(lease_file):
+                with open(lease_file, "r") as f:
+                    for line in f:
+                        parts = line.strip().split()
+                        if len(parts) >= 4:
+                            lease_mac = parts[1]
+                            lease_ip = parts[2]
+                            lease_hostname = parts[3] if parts[3] != "*" else None
+                            # Only include IPs in our scan subnet
+                            if is_managed_asset_ip(lease_ip) and lease_ip not in live_ips:
+                                dhcp_ips.add(lease_ip)
+                                await crud.upsert_device_details(
+                                    db,
+                                    lease_ip,
+                                    mac_address=lease_mac,
+                                    hostname=lease_hostname,
+                                    vendor=_vendor_from_mac(lease_mac),
+                                )
+                                log.info("network_scanner.dhcp_lease_device",
+                                         ip=lease_ip, hostname=lease_hostname, mac=lease_mac)
+        except Exception as exc:
+            log.warning("network_scanner.dhcp_lease_read_error", error=str(exc))
+
         subnet = get_effective_scan_subnet()
         if subnet:
             preserve_ips = {
@@ -341,10 +370,12 @@ async def scan_network() -> list[dict]:
                 for ip in (settings.server_display_ip, settings.gateway_ip)
                 if ip
             }
+            # Include both ping-live and DHCP-leased IPs as "seen"
+            all_live_ips = set(live_ips) | preserve_ips | dhcp_ips
             removed_stale = await crud.purge_unseen_devices_in_subnet(
                 db,
                 subnet,
-                set(live_ips) | preserve_ips,
+                all_live_ips,
                 preserve_ips=preserve_ips,
             )
             removed_invalid = await crud.purge_invalid_devices(db, subnet)

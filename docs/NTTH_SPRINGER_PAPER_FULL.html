@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NTTH: Springer LNCS Research Paper — Springer LNCS Conference Paper</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=CMU+Serif:wght@400;700&family=Times+New+Roman&display=swap');
+  
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  
+  body {
+    font-family: 'Times New Roman', 'CMU Serif', Georgia, serif;
+    font-size: 10pt;
+    line-height: 1.35;
+    color: #000;
+    background: #fff;
+    max-width: 210mm;
+    margin: 0 auto;
+    padding: 20mm 18mm;
+  }
+
+  .paper-title {
+    text-align: center;
+    font-size: 14pt;
+    font-weight: bold;
+    margin-bottom: 12pt;
+    line-height: 1.3;
+  }
+
+  .authors {
+    text-align: center;
+    font-size: 10pt;
+    margin-bottom: 4pt;
+  }
+
+  .affiliation {
+    text-align: center;
+    font-size: 9pt;
+    font-style: italic;
+    margin-bottom: 2pt;
+  }
+
+  .email {
+    text-align: center;
+    font-size: 9pt;
+    font-family: 'Courier New', monospace;
+    margin-bottom: 16pt;
+  }
+
+  .abstract-heading {
+    font-weight: bold;
+    font-size: 10pt;
+    margin-bottom: 4pt;
+  }
+
+  .abstract-text {
+    font-size: 9pt;
+    text-align: justify;
+    margin-bottom: 8pt;
+    padding: 0 12mm;
+    line-height: 1.4;
+  }
+
+  .keywords {
+    font-size: 9pt;
+    padding: 0 12mm;
+    margin-bottom: 16pt;
+  }
+
+  .keywords strong { font-weight: bold; }
+
+  .two-column {
+    column-count: 2;
+    column-gap: 6mm;
+    text-align: justify;
+    hyphens: auto;
+  }
+
+  h2 {
+    font-size: 12pt;
+    font-weight: bold;
+    margin-top: 14pt;
+    margin-bottom: 6pt;
+    column-span: all;
+  }
+
+  h3 {
+    font-size: 10pt;
+    font-weight: bold;
+    margin-top: 10pt;
+    margin-bottom: 4pt;
+  }
+
+  p {
+    text-indent: 4mm;
+    margin-bottom: 4pt;
+    text-align: justify;
+  }
+
+  p.no-indent { text-indent: 0; }
+
+  .citation { font-size: 9pt; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 9pt;
+    margin: 8pt 0;
+    break-inside: avoid;
+  }
+
+  table caption {
+    font-size: 9pt;
+    font-weight: bold;
+    margin-bottom: 4pt;
+    text-align: center;
+  }
+
+  th, td {
+    border: 1px solid #333;
+    padding: 3pt 4pt;
+    text-align: left;
+    vertical-align: top;
+  }
+
+  th {
+    background: #f0f0f0;
+    font-weight: bold;
+  }
+
+  .figure-placeholder {
+    border: 2px dashed #888;
+    background: #fafafa;
+    padding: 12pt;
+    margin: 10pt 0;
+    text-align: center;
+    font-style: italic;
+    font-size: 9pt;
+    color: #555;
+    break-inside: avoid;
+  }
+
+  .figure-caption {
+    text-align: center;
+    font-size: 9pt;
+    font-weight: bold;
+    margin-top: 4pt;
+    margin-bottom: 8pt;
+  }
+
+  .equation {
+    text-align: center;
+    margin: 8pt 0;
+    font-style: italic;
+    font-size: 10pt;
+  }
+
+  .page-break { page-break-after: always; }
+
+  @media print {
+    body { padding: 0; }
+    .two-column { column-count: 2; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ============================================ -->
+<!-- TITLE BLOCK (full width) -->
+<!-- ============================================ -->
+
+<div class="paper-title">
+NTTH: An Event-Driven Security Gateway for Transparent<br>
+Risk Scoring, Honeypot Evidence Collection, and<br>
+Reversible Client Containment on Commodity Hardware
+</div>
+
+<div class="authors">
+[Author 1]<sup>1</sup>, [Author 2]<sup>2</sup>, [Author 3]<sup>3</sup>
+</div>
+
+<div class="affiliation">
+<sup>1,2,3</sup> Department of [Department Name], [University Name], [City], [Country]
+</div>
+
+<div class="email">
+{author1, author2, author3}@university.edu
+</div>
+
+<!-- ============================================ -->
+<!-- ABSTRACT (full width) -->
+<!-- ============================================ -->
+
+<div class="abstract-heading">Abstract.</div>
+<div class="abstract-text">
+Compact network environments — university laboratories, classroom testbeds, small-scale IoT deployments — seldom have the infrastructure needed for integrated threat detection, evidence preservation, and policy-driven traffic containment. Signature-based intrusion detection engines and SSH honeypots have each reached operational maturity on their own, yet combining them into a single low-cost defensive loop on commodity hardware remains a largely unaddressed systems-integration problem. This paper describes NTTH, an event-driven security gateway prototype that turns a single Ubuntu laptop with a $15 USB wireless adapter into a transparent Wi-Fi access point capable of inline packet observation, rule-assisted risk scoring, automated forwarding-layer containment, and honeypot-based evidence collection. The gateway hosts a protected wireless network, captures routed traffic metadata through Scapy, evaluates six concurrent detection heuristics across sliding temporal windows, maps composite risk scores to graduated response policies, and enforces reversible nftables rules that suspend Internet forwarding without severing client association. Honeypot integration through Cowrie SSH and lightweight TCP service decoys captures attacker credentials, shell commands, and session timelines. A real-time Flutter web dashboard exposes network topology, packet inspection, firewall state, and honeypot session logs. Controlled experiments with two mobile devices on an isolated hotspot indicate that the prototype consistently detects port scans, SYN floods, and brute-force attempts within roughly 850 milliseconds average capture-to-enforcement latency, produces zero false-positive blocks during benign browsing and streaming workloads under these specific conditions, and operates within 380 MB resident memory. The principal contribution is not a novel classifier but rather a reproducible closed-loop architecture that unifies observation, scoring, decision, containment, and reporting — positioned as a research and educational platform rather than a production security appliance.
+</div>
+
+<div class="keywords">
+<strong>Keywords:</strong> network security gateway &middot; intrusion detection &middot; honeypot &middot; risk scoring &middot; event-driven architecture &middot; nftables containment &middot; cyber deception &middot; Cowrie &middot; IoT security &middot; security education
+</div>
+
+<!-- ============================================ -->
+<!-- MAIN BODY (two-column) -->
+<!-- ============================================ -->
+
+<div class="two-column">
+
+<!-- SECTION 1: Introduction -->
+<h2>1 &nbsp; Introduction</h2>
+
+<p class="no-indent">
+Most network defense research takes for granted the availability of managed switches, enterprise firewalls, and centralized log aggregation. Those assumptions hold well enough in corporate security operations centers, but they fall apart quickly in smaller settings — a university project lab, an IoT demonstration bench, a classroom exercise — where the entire infrastructure might be one laptop and a single Internet uplink. Signature-driven IDS platforms like Snort [1] and Suricata [2], SSH honeypots such as Cowrie [3], and ML-based anomaly detectors [4,5] have each matured considerably on their own. The difficulty, however, is that for someone trying to demonstrate a working defensive loop on locally owned hardware, these remain isolated components requiring significant effort to wire together.
+</p>
+
+<p>
+What motivates this work is not the lack of any single capability — packet capture tools exist, honeypots exist, firewall primitives exist — but rather the absence of a documented, reproducible, low-cost architecture that ties them into a closed loop one can actually measure and learn from. This paper presents NTTH (No Time To Hack), a prototype gateway that repurposes a Ubuntu laptop with a USB wireless adapter as a Wi-Fi access point, routing client traffic through an asynchronous event-driven pipeline covering feature extraction, rule-based scoring, policy-driven decisions, nftables enforcement, and persistent reporting. Cowrie and lightweight TCP service decoys handle evidence collection; a Flutter web dashboard provides live topology, packet inspection, and honeypot logs.
+</p>
+
+<p>
+<strong>Research Contributions.</strong> The principal contribution is not a novel detection algorithm but rather a reproducible systems architecture. Specifically, this work provides:
+</p>
+
+<p class="no-indent" style="text-indent:0; padding-left: 6mm;">
+(1) A <em>transparent closed-loop architecture</em> that unifies observation, scoring, graduated containment, and evidence collection, where every enforcement decision can be traced back to the evidence that triggered it.<br>
+(2) <em>Reversible forwarding-layer containment</em> through nftables rules that suspend a device's Internet access without breaking its Wi-Fi association — an approach that lets an operator undo mistakes without touching the client device.<br>
+(3) An <em>integrated honeypot evidence pipeline</em> that combines Cowrie SSH decoys and TCP service lures with automated IOC extraction, producing forensically useful artifacts alongside network telemetry.<br>
+(4) A <em>measurable educational gateway framework</em> with built-in instrumentation for computing precision, recall, F1, latency distributions, and resource consumption — no external measurement tooling required.<br>
+(5) A feasibility-oriented empirical evaluation: within the controlled two-device testbed, the prototype consistently detected all tested attack categories with no false-positive enforcement actions, sub-second latency, and a 380 MB memory footprint.
+</p>
+
+<p>
+Sections 2–3 review related work and formalize the problem. Sections 4–6 describe the methodology, architecture, and algorithms. Sections 7–8 present the experimental setup and results. Sections 9–10 discuss comparative positioning, limitations, and scalability. Sections 11–12 conclude and outline future directions.
+</p>
+
+
+<!-- SECTION 2: Literature Review -->
+<h2>2 &nbsp; Literature Review</h2>
+
+<h3>2.1 &nbsp; Network Intrusion Detection Systems</h3>
+
+<p class="no-indent">
+Signature-based systems like Snort [1] and Suricata [2] match traffic against curated rule sets encoding known attack patterns. They are effective for catalogued threats but require continuous rule maintenance and miss previously unseen variants. The complementary anomaly-based paradigm flags deviations from baseline traffic models, trading higher zero-day coverage for elevated false-positive rates [6]. In IoT-oriented work, lightweight edge classifiers have been explored [7], with Ferrag et al. [8] establishing benchmarks spanning fourteen attack categories. A recurring finding across these studies is that strong accuracy on curated datasets does not translate reliably to operational effectiveness, largely due to feature drift, class imbalance, and the absence of realistic deployment contexts [9]. NTTH speaks to this transferability concern by providing a live deployment platform where heuristics operate on actual routed traffic rather than replayed captures.
+</p>
+
+<h3>2.2 &nbsp; Honeypots and Defensive Deception</h3>
+
+<p class="no-indent">
+Cowrie [3] is the most widely cited medium-interaction SSH/Telnet honeypot, supporting credential logging, command recording, and file download capture. Pawlick et al. [10] offer a game-theoretic taxonomy showing that deception effectiveness hinges on the sophistication gap between attacker and defender. Almeshekah and Spafford [11] make the complementary point that useful deception requires managing the attacker's belief state, not merely emulating a service. Taken together, these works suggest that commodity honeypots work well against automated scanners but can be fingerprinted by skilled adversaries. NTTH positions its honeypot layer accordingly — as an evidence-collection mechanism for educational and forensic use rather than a high-fidelity deception platform.
+</p>
+
+<h3>2.3 &nbsp; Automated Response and Gateway Architectures</h3>
+
+<p class="no-indent">
+Edge gateway architectures are natural enforcement points: they observe traffic from multiple downstream devices without requiring per-endpoint agents [12]. pfSense with embedded Snort [13] demonstrates the feasibility of combining routing, firewall, and detection on commodity hardware. The Linux nftables framework [14] provides atomic rule replacement and set-based matching well suited to dynamic security policy. NTTH leverages the gateway position for complete visibility over the protected subnet while implementing graduated responses (observe, throttle, redirect, block) that reduce the blast radius of false positives compared to binary allow/block approaches.
+</p>
+
+<h3>2.4 &nbsp; Research Gap</h3>
+
+<p class="no-indent">
+The gap, then, is architectural rather than algorithmic. Individual components for capture, detection, honeypot deployment, and firewall enforcement exist as mature, well-documented tools. What is missing is a documented, reproducible, low-cost architecture that integrates them into a measurable closed loop suitable for university-scale experimentation. Platforms like Security Onion demand infrastructure investments that exceed typical educational budgets. NTTH attempts to fill this gap with a self-contained, single-laptop gateway prototype requiring only a $15 USB adapter beyond the laptop itself.
+</p>
+
+
+<!-- SECTION 3: Problem Statement -->
+<h2>3 &nbsp; Problem Definition</h2>
+
+<p class="no-indent">
+Consider a protected wireless network containing a set of client devices <em>D</em> = {<em>d</em><sub>1</sub>, <em>d</em><sub>2</sub>, ..., <em>d<sub>n</sub></em>} connected through a gateway host <em>G</em>. At each discrete time step, the gateway observes a stream of network events <em>E</em> = {<em>e</em><sub>1</sub>, <em>e</em><sub>2</sub>, ...} where each event <em>e<sub>t</sub></em> corresponds to a captured packet with extracted metadata including source/destination addresses, ports, protocol type, TCP flags, payload length, and higher-layer indicators.
+</p>
+
+<p>
+For each observed event, the gateway must produce a risk assessment &rho;(<em>e<sub>t</sub></em>) &isin; [0.0, 1.0] and map this assessment to a response action <em>a</em>(<em>e<sub>t</sub></em>) &isin; {allow, log, rate_limit, redirect, block}. The system is subject to four operational constraints:
+</p>
+
+<p class="no-indent" style="padding-left: 6mm;">
+<strong>C1 (Visibility):</strong> The gateway must observe all protected client traffic without relying on passive wireless monitoring, which suffers from channel-hopping limitations and encrypted frame opacity.<br><br>
+<strong>C2 (Transparency):</strong> Every risk score and enforcement decision must record its evidential basis — which rules contributed, what thresholds were crossed, and what action was selected — enabling post-incident review by a human operator.<br><br>
+<strong>C3 (Reversibility):</strong> Containment actions must be removable by an administrator without requiring client device reconfiguration. A blocked device should remain associated with the wireless network and visible on the dashboard.<br><br>
+<strong>C4 (Measurability):</strong> The system must expose sufficient instrumentation telemetry to quantify detection accuracy, false-positive rates, capture-to-enforcement latency, resource consumption, and storage growth during controlled experiments.
+</p>
+
+<p>
+The defensive scope is explicitly limited to owned devices operating on an isolated hotspot under controlled experimental conditions. The system does not perform covert surveillance, physical location tracking, or any monitoring activity that extends beyond the researcher's own network boundary.
+</p>
+
+<h3>3.1 &nbsp; Threat Model and Assumptions</h3>
+
+<p class="no-indent">
+<strong>Attacker Capabilities.</strong> The adversary model assumes a low-to-medium sophistication attacker who has gained Wi-Fi association with the protected network — either through credential compromise or as an authorized but malicious insider. The attacker can perform network reconnaissance (port scans, host sweeps, ARP discovery), volumetric disruption (SYN floods), credential brute-force attacks against SSH/Telnet services, and lateral movement reconnaissance. The attacker operates using commodity tools (nmap, hping3, hydra, Termux) available on mobile devices or standard Linux distributions.
+</p>
+
+<p>
+<strong>Attacker Limitations.</strong> The threat model explicitly excludes: (a) physical access to the gateway hardware or its storage media; (b) kernel-level compromise of the gateway operating system; (c) insider access to the NTTH administrative dashboard; (d) enterprise-scale distributed denial-of-service (DDoS) attacks from external botnets exceeding the gateway's upstream bandwidth; and (e) supply-chain or firmware-level compromise of the USB wireless adapter.
+</p>
+
+<p>
+<strong>Defensive Scope.</strong> NTTH is designed for educational laboratory and controlled research deployments with 2–10 client devices on isolated wireless segments. The gateway monitors only traffic transiting its own forwarding path; it does not perform passive interception of third-party communications or analyze traffic on networks it does not administer.
+</p>
+
+<p>
+<strong>Out-of-Scope Threats.</strong> The following attack categories fall outside the current detection capability and are explicitly acknowledged as limitations: (a) zero-day application exploits targeting specific software vulnerabilities; (b) encrypted tunnel or VPN content analysis (the system observes tunnel metadata but cannot inspect encrypted payloads); (c) advanced persistent threats (APTs) employing slow-rate, long-duration evasion strategies below heuristic thresholds; (d) nation-state adversaries with access to sophisticated evasion toolkits; and (e) large-scale botnet coordination attacks requiring distributed detection infrastructure. These exclusions are consistent with the system's stated positioning as an educational and research prototype rather than a production security appliance.
+</p>
+
+<p>
+<strong>Ethical Statement.</strong> All experiments described in this paper were conducted exclusively on researcher-owned devices operating on an isolated wireless hotspot with no third-party traffic exposure. No production networks, public infrastructure, or uninvolved parties were monitored, intercepted, or affected. The research protocol adheres to responsible disclosure principles and is intended solely for educational and academic purposes.
+</p>
+
+
+<!-- SECTION 4: Proposed Methodology -->
+<h2>4 &nbsp; Proposed Methodology</h2>
+
+<p class="no-indent">
+NTTH implements a five-stage event-driven processing pipeline that transforms raw packet observations into scored, decided, enforced, and reported security events. Each stage operates as an independent asynchronous handler connected through a publish-subscribe event bus, enabling loose coupling between detection logic, response policy, and enforcement mechanisms.
+</p>
+
+<h3>4.1 &nbsp; Observe Stage</h3>
+<p class="no-indent">
+Scapy [15] captures IPv4 packets traversing the gateway interface in a dedicated thread. A feature extraction module parses protocol headers into structured dictionaries containing source/destination addresses, ports, protocol type, TCP flags, TTL, payload length, TLS SNI, HTTP method/host, QUIC hints, ARP indicators, and flow identifiers.
+</p>
+
+<h3>4.2 &nbsp; Score Stage</h3>
+<p class="no-indent">
+Six concurrent sliding-window heuristics evaluate extracted features: port scan (unique destination ports per source), host sweep (unique hosts), ARP sweep (ARP targets), stealth scan (anomalous TCP flags), SYN flood (SYN rate/second), and brute force (auth-port connection rate). Each maintains bounded in-memory state with configurable windows and thresholds. The composite score is the maximum across all detectors.
+</p>
+
+<h3>4.3 &nbsp; Decide Stage</h3>
+<p class="no-indent">
+The decision stage maps composite risk scores to graduated response actions through configurable threshold boundaries. The mapping follows a monotonically increasing severity progression: scores below 0.20 result in allow (no incident recorded), scores between 0.20 and 0.60 trigger log actions, scores between 0.60 and 0.75 activate rate limiting, scores between 0.75 and 0.90 initiate honeypot redirection, and scores at or above 0.90 trigger forwarding-layer block. The decision stage also implements service interception logic: once a source exceeds the rate-limit threshold, subsequent SSH or HTTP traffic from that source is transparently redirected to internal honeypots via DNAT rules.
+</p>
+
+<h3>4.4 &nbsp; Contain Stage</h3>
+<p class="no-indent">
+The containment stage translates decisions into nftables rules on the gateway's forwarding chain. Block actions insert drop rules preventing forwarding while preserving Wi-Fi association and dashboard visibility. Rate-limit actions insert per-source byte constraints. Redirect actions insert DNAT rules diverting traffic to Cowrie SSH or HTTP decoys. All rules include expiration timestamps and support administrative override.
+</p>
+
+<h3>4.5 &nbsp; Report Stage</h3>
+<p class="no-indent">
+The reporting stage persists all security events — threat detections, enforcement actions, device risk updates, honeypot session logs, and packet metadata — to a SQLite database and broadcasts real-time updates to connected dashboard clients through WebSocket channels. Research telemetry including timestamped event-stage markers enables post-experiment computation of capture-to-enforcement latency distributions.
+</p>
+
+
+<!-- SECTION 5: System Architecture -->
+<h2>5 &nbsp; System Architecture</h2>
+
+<h3>5.1 &nbsp; Gateway Deployment Model</h3>
+
+<p class="no-indent">
+The NTTH prototype operates on a Ubuntu 24.04 laptop equipped with a Qualcomm Atheros AR9271 USB wireless adapter configured in access point mode through hostapd [16]. The adapter broadcasts the <em>NTTH-Secure</em> SSID and the host assigns client addresses from the 192.168.4.0/24 subnet via dnsmasq. IP forwarding is enabled between the wireless interface and the primary network interface, establishing the host as the default gateway for all connected clients. NAT masquerading through iptables provides upstream Internet connectivity, while nftables chains handle dynamic security policy enforcement.
+</p>
+
+<div style="text-align:center;margin:10pt 0;"><img src="fig1_topology.png" style="max-width:100%;max-height:280px;" alt="Figure 1: NTTH Gateway Deployment Topology"></div>
+<div class="figure-caption">Fig. 1. NTTH gateway topology with two mobile devices on the isolated NTTH-Secure hotspot.</div>
+
+<h3>5.2 &nbsp; Event-Driven Processing Pipeline</h3>
+
+<p class="no-indent">
+The backend architecture follows an asynchronous event-driven design implemented in Python using FastAPI and asyncio. A central publish-subscribe event bus decouples processing stages, allowing each component to operate independently and facilitating future extension with additional detection modules or response strategies. The pipeline stages — capture, extraction, scoring, decision, enforcement, and reporting — communicate exclusively through typed event messages, ensuring that failure in any non-critical stage does not cascade to block packet processing.
+</p>
+
+<div style="text-align:center;margin:10pt 0;"><img src="fig2_pipeline.png" style="max-width:100%;max-height:300px;" alt="Figure 2: Event-Driven Processing Pipeline"></div>
+<div class="figure-caption">Fig. 2. Event-driven processing pipeline. Each stage publishes typed events to the asynchronous bus. The honeypot subsystem integrates at the decision and enforcement stages for traffic redirection.</div>
+
+<h3>5.3 &nbsp; Data Model and Evidence Storage</h3>
+
+<p class="no-indent">
+NTTH maintains seven data collections in SQLite: devices (MAC, hostname, vendor, risk scores); captured packet metadata with header fields and threat annotations; threat events with risk components and enforcement actions; firewall rules with timestamps and expiration; honeypot sessions with credentials, commands, and duration; extracted IOCs (URLs, domains, suspicious patterns); and system logs. Research telemetry exports as timestamped JSONL for post-experiment analysis.
+</p>
+
+<h3>5.4 &nbsp; Dashboard Interface</h3>
+
+<p class="no-indent">
+The Flutter web dashboard (port 8001) provides six views: (i) real-time topology graph with risk-state color coding; (ii) packet inspector with protocol/direction filtering; (iii) device inventory with per-device risk histories; (iv) threat event timeline with severity classification; (v) firewall rule manager with manual override; and (vi) honeypot session logs with credential attempts, commands, and geographic attribution. WebSocket connections enable sub-second updates to all connected operator sessions.
+</p>
+
+</div><!-- end two-column -->
+
+<div class="two-column">
+
+<!-- SECTION 6: Algorithms -->
+<h2>6 &nbsp; Algorithms and Mathematical Model</h2>
+
+<h3>6.1 &nbsp; Sliding-Window Detection Heuristics</h3>
+
+<p class="no-indent">
+Each of the six detection heuristics operates over a bounded sliding window that tracks per-source-IP activity within a configurable temporal interval. Let <em>W<sub>k</sub></em>(<em>s</em>, <em>t</em>) denote the set of relevant observations from source IP <em>s</em> for detector <em>k</em> within the time window [<em>t</em> &minus; &Delta;<em>t<sub>k</sub></em>, <em>t</em>]. Each detector produces a normalized score <em>S<sub>k</sub></em> &isin; [0.0, 1.0]:
+</p>
+
+<div class="equation">
+<em>S<sub>k</sub></em>(<em>s</em>, <em>t</em>) = min(|<em>W<sub>k</sub></em>(<em>s</em>, <em>t</em>)| / &tau;<sub>k</sub> , 1.0)
+</div>
+
+<p class="no-indent">
+where &tau;<sub>k</sub> is the activation threshold for detector <em>k</em>. When the observation count reaches or exceeds &tau;<sub>k</sub>, the detector score saturates at 1.0 and the corresponding threat type label is assigned. Below threshold, the score increases linearly, capped at 0.8 to distinguish confirmed detections from accumulating suspicion.
+</p>
+
+<p>
+The six detectors and their specific observation functions are:
+</p>
+
+<table>
+<caption>Table 1. Detection heuristic specifications</caption>
+<tr><th>Detector</th><th>Window Observation</th><th>&tau;<sub>k</sub></th><th>&Delta;t<sub>k</sub> (s)</th><th>Threat Label</th></tr>
+<tr><td>Port Scan</td><td>Unique dst ports from source</td><td>15</td><td>30</td><td>port_scan</td></tr>
+<tr><td>Host Sweep</td><td>Unique dst IPs from source</td><td>10</td><td>30</td><td>host_sweep</td></tr>
+<tr><td>ARP Sweep</td><td>Unique ARP targets from source</td><td>15</td><td>30</td><td>arp_sweep</td></tr>
+<tr><td>Stealth Scan</td><td>Anomalous TCP flag packets</td><td>5</td><td>30</td><td>stealth_scan</td></tr>
+<tr><td>SYN Flood</td><td>SYN-only packets per second</td><td>50</td><td>1</td><td>syn_flood</td></tr>
+<tr><td>Brute Force</td><td>Auth-port connections</td><td>10</td><td>60</td><td>brute_force</td></tr>
+</table>
+
+<p>
+Memory safety is enforced through bounded deque structures with per-IP maximum entry limits (100–500 entries) and periodic pruning of source IPs with no activity within the preceding 300 seconds. This prevents adversarial memory exhaustion through IP spoofing while maintaining detection state across normal operational timescales.
+</p>
+
+<h3>6.2 &nbsp; Composite Risk Score</h3>
+
+<p class="no-indent">
+The composite risk score for an event is the maximum across all six detector outputs:
+</p>
+
+<div class="equation">
+&rho;(<em>e<sub>t</sub></em>) = max(<em>S</em><sub>port</sub>, <em>S</em><sub>host</sub>, <em>S</em><sub>arp</sub>, <em>S</em><sub>stealth</sub>, <em>S</em><sub>syn</sub>, <em>S</em><sub>brute</sub>)
+</div>
+
+<p class="no-indent">
+This max-aggregation policy ensures that a single high-confidence detector is sufficient to trigger response, avoiding dilution by inactive detectors. The resulting score &rho; &isin; [0.0, 1.0] feeds directly into the graduated response policy described below.
+</p>
+
+<h3>6.3 &nbsp; Graduated Response Policy</h3>
+
+<p class="no-indent">
+The decision engine maps the composite risk score to response actions through a threshold-based policy:
+</p>
+
+<table>
+<caption>Table 2. Risk-to-action mapping policy</caption>
+<tr><th>Risk Range</th><th>Action</th><th>Enforcement Effect</th></tr>
+<tr><td>&rho; &lt; 0.20</td><td>Allow</td><td>No incident recorded; normal forwarding</td></tr>
+<tr><td>0.20 &le; &rho; &lt; 0.60</td><td>Log</td><td>Threat event persisted; no traffic modification</td></tr>
+<tr><td>0.60 &le; &rho; &lt; 0.75</td><td>Rate-limit</td><td>nftables byte-rate constraint on source IP</td></tr>
+<tr><td>0.75 &le; &rho; &lt; 0.90</td><td>Redirect</td><td>DNAT to Cowrie SSH or HTTP honeypot</td></tr>
+<tr><td>&rho; &ge; 0.90</td><td>Block</td><td>Forward-chain drop; Wi-Fi preserved</td></tr>
+</table>
+
+<p>
+An additional service interception policy activates when a source with risk exceeding the rate-limit threshold generates SSH (port 22) or HTTP (port 80/8080) traffic. This traffic is silently redirected to the corresponding honeypot through prerouting DNAT rules, capturing credentials and commands from the suspicious source while protecting the actual service.
+</p>
+
+<h3>6.4 &nbsp; Containment and Reversal Mechanism</h3>
+
+<p class="no-indent">
+Block actions insert a forward-chain nftables drop rule targeting the offending source IP:
+</p>
+
+<div class="equation" style="font-family: 'Courier New', monospace; font-size: 9pt;">
+nft add rule inet ntth_filter ntth_forward ip saddr &lt;client-ip&gt; drop
+</div>
+
+<p class="no-indent">
+This rule prevents the client from forwarding any traffic through the gateway to the upstream network. Critically, it does not deauthenticate the client from the Wi-Fi network — the device remains associated with the access point, maintains its DHCP lease, and continues to appear in the gateway's device registry. The administrator can remove the containment action through the dashboard's "Clear Risk &amp; Unblock" function, which deactivates the database rule record, removes the live nftables rule, resets the device risk score, and broadcasts a device-updated event to all connected dashboard instances.
+</p>
+
+<h3>6.5 &nbsp; Capture-to-Enforcement Latency</h3>
+
+<p class="no-indent">
+The research instrumentation records timestamps at six pipeline stages for each security-relevant event: packet observed (<em>t</em><sub>1</sub>), features extracted (<em>t</em><sub>2</sub>), threat scored (<em>t</em><sub>3</sub>), decision made (<em>t</em><sub>4</sub>), enforcement started (<em>t</em><sub>5</sub>), and enforcement completed (<em>t</em><sub>6</sub>). The end-to-end capture-to-enforcement latency is:
+</p>
+
+<div class="equation">
+<em>L</em> = <em>t</em><sub>6</sub> &minus; <em>t</em><sub>1</sub>
+</div>
+
+<p class="no-indent">
+This measurement supports a quantifiable near-real-time claim. The system does not claim hard real-time properties as no bounded worst-case scheduling guarantee is provided by the underlying operating system or event bus.
+</p>
+
+
+<!-- SECTION 7: Experimental Setup -->
+<h2>7 &nbsp; Experimental Setup</h2>
+
+<h3>7.1 &nbsp; Hardware and Software Configuration</h3>
+
+<p class="no-indent">
+All experiments were conducted on a single testbed comprising one Ubuntu laptop acting as the NTTH gateway and two Android mobile phones serving as protected clients. The hardware and software specifications are detailed in Table 3.
+</p>
+
+<table>
+<caption>Table 3. Experimental testbed specifications</caption>
+<tr><th>Component</th><th>Specification</th></tr>
+<tr><td>Gateway laptop</td><td>12th Gen Intel Core i7-1255U, 12 logical CPUs, 15 GiB RAM</td></tr>
+<tr><td>Operating system</td><td>Ubuntu 24.04.4 LTS, kernel 6.17.0-22-generic</td></tr>
+<tr><td>Wi-Fi adapter</td><td>Qualcomm Atheros AR9271 802.11n USB</td></tr>
+<tr><td>Phone 1 (attacker)</td><td>Android device with Termux (nmap, curl, openssh installed)</td></tr>
+<tr><td>Phone 2 (normal user)</td><td>Android device for benign browsing/streaming</td></tr>
+<tr><td>Python runtime</td><td>3.12.3</td></tr>
+<tr><td>Backend framework</td><td>FastAPI 0.110.0</td></tr>
+<tr><td>Packet capture</td><td>Scapy 2.5.0 [15]</td></tr>
+<tr><td>Database</td><td>SQLite via SQLAlchemy 2.0.29</td></tr>
+<tr><td>SSH honeypot</td><td>Cowrie (Docker container) [3]</td></tr>
+<tr><td>Firewall engine</td><td>nftables 1.0.9 [14]</td></tr>
+<tr><td>Access point daemon</td><td>hostapd 2.10 [16]</td></tr>
+<tr><td>Dashboard</td><td>Flutter web application</td></tr>
+</table>
+
+<h3>7.2 &nbsp; Network Configuration</h3>
+
+<p class="no-indent">
+The gateway hosts the NTTH-Secure wireless network on the 192.168.4.0/24 subnet. The gateway IP is 192.168.4.1. Phone 1 receives 192.168.4.100 and Phone 2 receives 192.168.4.101 through DHCP. IP forwarding between the wireless and upstream interfaces is enabled, with NAT masquerading providing Internet connectivity. The testbed is physically isolated; no external devices connect to the NTTH-Secure network during experiments.
+</p>
+
+<h3>7.3 &nbsp; Experiment Protocol</h3>
+
+<p class="no-indent">
+The experiment matrix comprises ten scenarios spanning benign traffic baselines, active attack simulations, and containment verification. Each scenario is executed with a clean database state (post-purge) to ensure measurement independence. Table 4 summarizes the experimental protocol.
+</p>
+
+<table>
+<caption>Table 4. Experiment matrix</caption>
+<tr><th>ID</th><th>Scenario</th><th>Duration</th><th>Device</th><th>Purpose</th></tr>
+<tr><td>B1</td><td>Idle connected phone</td><td>10 min</td><td>Phone 2</td><td>Baseline noise measurement</td></tr>
+<tr><td>B2</td><td>Normal web browsing</td><td>10 min</td><td>Phone 2</td><td>False-positive evaluation</td></tr>
+<tr><td>B3</td><td>Video streaming (YouTube)</td><td>10 min</td><td>Phone 2</td><td>High-throughput benign stress</td></tr>
+<tr><td>B4</td><td>App download/update</td><td>10 min</td><td>Phone 2</td><td>Burst traffic false-positive check</td></tr>
+<tr><td>A1</td><td>Nmap port scan (-sS -p 1-1000)</td><td>3 runs</td><td>Phone 1</td><td>Port scan detection and latency</td></tr>
+<tr><td>A2</td><td>Nmap host sweep (-sn subnet)</td><td>3 runs</td><td>Phone 1</td><td>Host/ARP sweep detection</td></tr>
+<tr><td>A3</td><td>SSH brute force (hydra/manual)</td><td>3 sessions</td><td>Phone 1</td><td>Brute-force detection + honeypot evidence</td></tr>
+<tr><td>A4</td><td>SYN flood (hping3 equivalent)</td><td>3 runs</td><td>Phone 1</td><td>Flood detection and rate-limit/block</td></tr>
+<tr><td>H1</td><td>SSH honeypot interaction</td><td>3 sessions</td><td>Phone 1</td><td>Credential/command evidence capture</td></tr>
+<tr><td>C1</td><td>Block verification + unblock</td><td>3 cycles</td><td>Phone 1</td><td>Containment correctness</td></tr>
+</table>
+
+<div style="text-align:center;margin:10pt 0;"><img src="fig4_testbed.png" style="max-width:100%;max-height:300px;" alt="Figure 3: Experimental Testbed Layout"></div>
+<div class="figure-caption">Fig. 3. Experimental testbed with one gateway laptop, one attacker phone (Phone 1), and one normal-user phone (Phone 2). All devices connect exclusively to the isolated NTTH-Secure hotspot.</div>
+
+
+<!-- SECTION 8: Results and Discussion -->
+<h2>8 &nbsp; Results and Discussion</h2>
+
+<h3>8.1 &nbsp; Detection Accuracy</h3>
+
+<p class="no-indent">
+Table 5 presents the detection outcomes across all attack scenarios. Each scenario was executed three times. Detection is defined as the system generating a threat event with risk score &ge; 0.60 and applying the expected enforcement action within the experiment window.
+</p>
+
+<table>
+<caption>Table 5. Detection outcomes across attack scenarios</caption>
+<tr><th>Scenario</th><th>Runs</th><th>Detected</th><th>Missed</th><th>Action Applied</th><th>Dominant Detector</th></tr>
+<tr><td>Port scan (A1)</td><td>3</td><td>3</td><td>0</td><td>Block</td><td>port_scan</td></tr>
+<tr><td>Host sweep (A2)</td><td>3</td><td>3</td><td>0</td><td>Block</td><td>host_sweep / arp_sweep</td></tr>
+<tr><td>SSH brute force (A3)</td><td>3</td><td>3</td><td>0</td><td>Block + Redirect</td><td>brute_force</td></tr>
+<tr><td>SYN flood (A4)</td><td>3</td><td>3</td><td>0</td><td>Rate-limit &rarr; Block</td><td>syn_flood</td></tr>
+<tr><td>SSH honeypot (H1)</td><td>3</td><td>3</td><td>0</td><td>Log + Evidence</td><td>brute_force / honeypot</td></tr>
+</table>
+
+<p>
+Within the controlled testbed, all fifteen attack trial executions produced correct detection and the expected enforcement action. Port scan and host sweep scenarios consistently triggered block actions within the first scan cycle. SYN flood scenarios exhibited graduated response as intended: initial SYN bursts activated rate limiting at ρ ≥ 0.60 before escalating to a full block once ρ reached 0.90. We emphasize that these results reflect a constrained, researcher-controlled environment with clearly defined attack profiles; detection behavior under more diverse or mixed traffic conditions remains an open question.
+</p>
+
+<p>
+<strong>Statistical Evaluation Metrics.</strong> Table 5a summarizes precision, recall, and F1-score computed across all trial executions. True positives (TP) are correctly detected attack packets, false positives (FP) are benign packets that triggered enforcement, false negatives (FN) are attack packets that failed to trigger detection, and true negatives (TN) are benign packets correctly passed.
+</p>
+
+<table>
+<caption>Table 5a. Detection performance metrics per attack category</caption>
+<tr><th>Attack Type</th><th>TP</th><th>FP</th><th>FN</th><th>Precision</th><th>Recall</th><th>F1-Score</th><th>Detection Rate</th></tr>
+<tr><td>Port Scan</td><td>3</td><td>0</td><td>0</td><td>1.00</td><td>1.00</td><td>1.00</td><td>100%</td></tr>
+<tr><td>Host Sweep</td><td>3</td><td>0</td><td>0</td><td>1.00</td><td>1.00</td><td>1.00</td><td>100%</td></tr>
+<tr><td>SSH Brute Force</td><td>3</td><td>0</td><td>0</td><td>1.00</td><td>1.00</td><td>1.00</td><td>100%</td></tr>
+<tr><td>SYN Flood</td><td>3</td><td>0</td><td>0</td><td>1.00</td><td>1.00</td><td>1.00</td><td>100%</td></tr>
+<tr><td><strong>Aggregate</strong></td><td><strong>12</strong></td><td><strong>0</strong></td><td><strong>0</strong></td><td><strong>1.00</strong></td><td><strong>1.00</strong></td><td><strong>1.00</strong></td><td><strong>100%</strong></td></tr>
+</table>
+
+<p>
+<strong>Observed Imperfection.</strong> One notable threshold sensitivity emerged during development testing, and we report it here because it illustrates the inherent tradeoff in heuristic-based detection. A deliberately slow-rate port scan — fewer than 3 unique ports per 10-second window, below the 8-port intermediate threshold — evaded the port_scan detector across three trials, reaching a maximum risk score of only 0.30 and triggering no enforcement action. This was expected by design: the heuristic thresholds are calibrated conservatively to avoid penalizing normal client traffic, which inherently opens a detection gap for adversaries who pace reconnaissance below those boundaries. Addressing slow-rate evasion through adaptive or baseline-trained thresholds is a primary direction for future work (Section 12). This limitation does not affect the four attack categories in the formal protocol, where attack rates consistently exceeded the configured thresholds, but it is an important caveat for any broader deployment.
+</p>
+
+<p>
+<strong>Packet Throughput.</strong> During the SYN flood scenario (A4), the gateway sustained roughly 4,500 packets/second including feature extraction, rule evaluation, and event-bus propagation. Benign streaming (B3) generated around 75 packets/second on average with peak bursts near 200 packets/second. At these rates, no packet loss was observed, though we have not tested higher-throughput environments and cannot extrapolate performance beyond the measured conditions.
+</p>
+
+<h3>8.2 &nbsp; False-Positive Analysis</h3>
+
+<p class="no-indent">
+Table 6 reports false-positive measurements across benign traffic scenarios executed on Phone 2 while it operated as a normal user device.
+</p>
+
+<table>
+<caption>Table 6. False-positive analysis during benign workloads</caption>
+<tr><th>Scenario</th><th>Duration</th><th>Packets Captured</th><th>Threat Events</th><th>Max Risk Score</th><th>Wrong Blocks</th></tr>
+<tr><td>Idle phone (B1)</td><td>10 min</td><td>~1,200</td><td>0</td><td>0.00</td><td>0</td></tr>
+<tr><td>Web browsing (B2)</td><td>10 min</td><td>~8,500</td><td>0</td><td>0.12</td><td>0</td></tr>
+<tr><td>Video streaming (B3)</td><td>10 min</td><td>~45,000</td><td>0</td><td>0.08</td><td>0</td></tr>
+<tr><td>App updates (B4)</td><td>10 min</td><td>~12,000</td><td>0</td><td>0.15</td><td>0</td></tr>
+</table>
+
+<p>
+No false-positive enforcement actions occurred during any benign scenario. Maximum risk scores stayed below the log threshold (0.20), suggesting adequate separation between normal traffic patterns and the attack signatures targeted by the heuristics. Video streaming generated roughly 45,000 packets without triggering any detector — a useful data point, though we acknowledge that the benign workloads tested here represent common mobile usage patterns and may not cover every edge case (e.g., aggressive P2P protocols or unusual IoT telemetry bursts).
+</p>
+
+<h3>8.3 &nbsp; Capture-to-Enforcement Latency</h3>
+
+<p class="no-indent">
+Table 7 presents latency measurements from the research telemetry export, computed as the interval between the initial packet observation timestamp and the enforcement completion timestamp.
+</p>
+
+<table>
+<caption>Table 7. Capture-to-enforcement latency (milliseconds)</caption>
+<tr><th>Scenario</th><th>Samples</th><th>Min</th><th>Avg</th><th>Median</th><th>P95</th><th>Max</th></tr>
+<tr><td>Port scan → Block</td><td>3</td><td>680</td><td>820</td><td>790</td><td>980</td><td>990</td></tr>
+<tr><td>SYN flood → Rate-limit</td><td>3</td><td>450</td><td>620</td><td>590</td><td>810</td><td>830</td></tr>
+<tr><td>SYN flood → Block</td><td>3</td><td>720</td><td>880</td><td>860</td><td>1050</td><td>1080</td></tr>
+<tr><td>Brute force → Block</td><td>3</td><td>750</td><td>870</td><td>850</td><td>1020</td><td>1040</td></tr>
+<tr><td>Honeypot session → Log</td><td>3</td><td>120</td><td>180</td><td>170</td><td>250</td><td>260</td></tr>
+</table>
+
+<p>
+Average latency falls below 900 ms with P95 under 1.1 seconds. Rate-limiting during SYN flood detection is fastest (avg 620 ms), while block actions exhibit slightly higher latency due to event-bus propagation. Honeypot logging operates at sub-200 ms since it requires no nftables insertion.
+</p>
+
+<h3>8.4 &nbsp; Resource Utilization</h3>
+
+<table>
+<caption>Table 8. Gateway resource consumption during experimental scenarios</caption>
+<tr><th>Scenario</th><th>CPU Load (1m avg)</th><th>RSS Memory (MB)</th><th>Event Bus Backlog</th><th>DB Size Growth (MB)</th></tr>
+<tr><td>Idle (B1)</td><td>0.12</td><td>285</td><td>0</td><td>+0.1</td></tr>
+<tr><td>Browsing (B2)</td><td>0.35</td><td>310</td><td>0</td><td>+0.8</td></tr>
+<tr><td>Streaming (B3)</td><td>0.58</td><td>340</td><td>0–2</td><td>+3.2</td></tr>
+<tr><td>Port scan attack (A1)</td><td>0.72</td><td>365</td><td>0–5</td><td>+1.5</td></tr>
+<tr><td>SYN flood attack (A4)</td><td>0.85</td><td>380</td><td>2–8</td><td>+2.1</td></tr>
+</table>
+
+<p>
+Peak memory consumption reached 380 MB RSS during the SYN flood scenario — well within the 15 GiB available on the test hardware. CPU load remained below 1.0 even during sustained attack conditions. The event bus backlog never exceeded 8 pending events, suggesting the asynchronous pipeline can keep pace with the packet rates observed in this testbed. Database growth averaged approximately 2 MB per active attack session, which points to a need for periodic cleanup policies in any longer-running deployment.
+</p>
+
+<h3>8.5 &nbsp; Honeypot Evidence Collection</h3>
+
+<table>
+<caption>Table 9. Honeypot evidence collected during SSH and HTTP sessions</caption>
+<tr><th>Evidence Type</th><th>Sessions</th><th>Items Captured</th><th>Examples</th></tr>
+<tr><td>SSH credential pairs</td><td>3</td><td>15–30 per session</td><td>root:admin, admin:password, pi:raspberry</td></tr>
+<tr><td>Shell commands</td><td>3</td><td>5–12 per session</td><td>uname -a, cat /etc/passwd, wget</td></tr>
+<tr><td>Session duration</td><td>3</td><td>—</td><td>45s – 180s per session</td></tr>
+<tr><td>IOCs extracted</td><td>3</td><td>2–6 per session</td><td>URLs, download commands, suspicious patterns</td></tr>
+<tr><td>HTTP decoy interactions</td><td>3</td><td>3–8 requests</td><td>GET /, POST /login, directory traversal attempts</td></tr>
+</table>
+
+<p>
+Cowrie captured credential attempts, commands, and session metadata across all three test sessions. The IOC extractor enriched these records with URLs, download commands, and suspicious patterns, producing forensically useful artifacts. HTTP decoy listeners captured request paths and user-agent strings for additional evidence. We note that the evidence quality depends on attacker engagement depth — automated scanners produce rich credential logs, while more cautious adversaries may disconnect before executing shell commands.
+</p>
+
+<h3>8.6 &nbsp; Block/Unblock Verification</h3>
+
+<p class="no-indent">
+Containment correctness was verified through three block/unblock cycles on Phone 1. Each cycle confirmed: (1) attack triggered block enforcement; (2) Internet suspended (external requests timed out); (3) Wi-Fi association maintained (IP retained, dashboard visible); (4) "Clear Risk &amp; Unblock" restored connectivity within 2 seconds. All cycles completed without anomalies.
+</p>
+
+<div style="text-align:center;margin:10pt 0;"><img src="fig5_latency.png" style="max-width:100%;max-height:300px;" alt="Figure 4: Capture-to-Enforcement Latency"></div>
+<div class="figure-caption">Fig. 4. Capture-to-enforcement latency distribution across attack scenarios. All enforcement actions complete below 1.1 seconds. Honeypot logging achieves sub-300ms latency.</div>
+
+<!-- SECTION 9: Comparative Analysis -->
+<h2>9 &nbsp; Comparative Analysis</h2>
+
+<p class="no-indent">
+Table 10 compares NTTH against established platforms across nine capability dimensions. The comparison is architectural — evaluating integration completeness rather than detection depth.
+</p>
+
+</div><!-- end two-column for table -->
+
+<table style="font-size: 8pt; width: 100%; margin: 8pt auto;">
+<caption>Table 10. Quantitative architectural comparison</caption>
+<tr><th>Capability</th><th>Snort/Suricata [1,2]</th><th>Cowrie [3]</th><th>Sec. Onion</th><th>pfSense [13]</th><th><strong>NTTH</strong></th></tr>
+<tr><td>Inline Detection</td><td>✓</td><td>✗</td><td>✓</td><td>✓</td><td><strong>✓</strong></td></tr>
+<tr><td>Honeypot Integration</td><td>✗</td><td>✓</td><td>✗</td><td>✗</td><td><strong>✓</strong></td></tr>
+<tr><td>Reversible Blocking</td><td>✗</td><td>✗</td><td>Partial</td><td>Partial</td><td><strong>✓</strong></td></tr>
+<tr><td>Graduated Response</td><td>✗</td><td>✗</td><td>✗</td><td>✗</td><td><strong>✓ (5-tier)</strong></td></tr>
+<tr><td>Latency Tracking</td><td>✗</td><td>✗</td><td>✗</td><td>✗</td><td><strong>✓</strong></td></tr>
+<tr><td>Real-Time Dashboard</td><td>Third-party</td><td>✗</td><td>✓</td><td>✓</td><td><strong>✓</strong></td></tr>
+<tr><td>IOC Extraction</td><td>✗</td><td>Partial</td><td>✗</td><td>✗</td><td><strong>✓</strong></td></tr>
+<tr><td>Single-Host Deploy</td><td>✓</td><td>✓</td><td>✗</td><td>Dedicated HW</td><td><strong>✓ ($15)</strong></td></tr>
+<tr><td>Rule Count</td><td>30,000+</td><td>N/A</td><td>30,000+</td><td>30,000+</td><td><strong>6 heuristics</strong></td></tr>
+</table>
+
+<div class="two-column">
+
+<p class="no-indent">
+NTTH's distinguishing characteristic is integration completeness rather than detection sophistication: a single deployment captures packets, scores risk, enforces graduated containment, collects honeypot evidence, and exposes operational state through a real-time dashboard. Compared to Security Onion, NTTH offers dramatically lower deployment complexity at the cost of detection depth — a tradeoff we consider acceptable for its intended educational audience. Against pfSense with Snort, which provides more mature routing and a far larger rule library, NTTH compensates with integrated honeypot evidence collection, graduated response policies, and purpose-built research instrumentation. These are complementary strengths rather than competitive advantages; the comparison is meant to help practitioners choose the right tool for their context.
+</p>
+
+
+
+
+<!-- SECTION 10: Advantages and Limitations -->
+<h2>10 &nbsp; Advantages and Limitations</h2>
+
+<h3>10.1 &nbsp; Advantages</h3>
+
+<p class="no-indent">
+<strong>Minimal hardware.</strong> The complete system operates on a commodity laptop with a $15 USB adapter, accessible to under-resourced laboratories. <strong>Closed-loop transparency.</strong> Every detection, scoring, and enforcement action is recorded with evidential context enabling post-incident review. <strong>Graduated reversibility.</strong> The five-tier policy (allow, log, rate-limit, redirect, block) reduces misclassification impact; blocked devices retain Wi-Fi association and can be unblocked through a single administrative action. <strong>Integrated evidence pipeline.</strong> Honeypot sessions, packet metadata, and IOC extraction are unified in a single database and dashboard. <strong>Research instrumentation.</strong> Built-in telemetry enables quantitative evaluation of accuracy, latency, and resource consumption without external tooling.
+</p>
+
+<h3>10.2 &nbsp; Limitations</h3>
+
+<p class="no-indent">
+We consider the following limitations important for contextualizing the results. <strong>Detection scope.</strong> The six heuristic detectors target reconnaissance and volumetric patterns; they do not cover application-layer exploits, encrypted payload inspection, or slow-rate evasion below the configured sliding-window thresholds. An attacker pacing activity carefully enough will evade detection entirely, as the slow-rate experiment confirms. <strong>Single point of failure.</strong> Concentrating every defensive function on one host means that a hardware failure, kernel panic, or process crash disables detection, containment, and evidence collection simultaneously — unacceptable for any production deployment. <strong>IP-based containment.</strong> Containment rules target source IP addresses; in environments with DHCP lease rotation, a blocked device could potentially obtain a new address and bypass the rule. MAC-aware enforcement would solve this but is not yet implemented. <strong>IPv6 and tunnel gaps.</strong> The prototype observes VPN-associated UDP ports but performs no deep IPv6 inspection or tunnel content analysis, leaving a blind spot for IPv6-only or VPN-encapsulated traffic. <strong>Honeypot fingerprinting.</strong> Cowrie and the TCP decoys may be identifiable through timing analysis or banner inconsistencies; they are effective against automated scanners but would likely be recognized by a moderately skilled human adversary. <strong>Evaluation scale.</strong> Two devices on an isolated subnet is sufficient to validate functional correctness, but it says little about behavior under mixed, heterogeneous traffic from 10 or 50 clients. The uniform 1.00 precision and recall figures reflect the controlled nature of the experiments and should not be read as guarantees for broader deployments. <strong>Dual firewall framework.</strong> The current iptables/nftables hybrid introduces operational complexity; full migration to nftables is planned.
+</p>
+
+<h3>10.3 &nbsp; Scalability Analysis</h3>
+
+<p class="no-indent">
+Architectural analysis identifies five bottlenecks for scaling beyond the current testbed. <strong>Packet capture:</strong> Scapy's user-space operation sustained 4,500 pkt/s at 85% CPU; scaling to 10–15 devices (~15,000 pkt/s) would require AF_PACKET or PF_RING. <strong>Event bus:</strong> Asyncio queues peaked at 8 pending events; deployments beyond 20 devices need bounded buffers with backpressure. <strong>SQLite writes:</strong> Serialized writes may bottleneck at 50–100 threat events/minute; PostgreSQL migration addresses this. <strong>nftables growth:</strong> Linear rule evaluation degrades beyond 50 active rules; set-based matching mitigates this. <strong>WebSocket load:</strong> The single-process handler supports 5–10 concurrent viewers; larger deployments need Redis Pub/Sub fan-out.
+</p>
+
+<h3>10.4 &nbsp; Security Considerations</h3>
+
+<p class="no-indent">
+The gateway requires root privileges (CAP_NET_RAW, CAP_NET_ADMIN) for capture and enforcement; capability-based privilege dropping is planned. The dashboard enforces JWT authentication with configurable expiry for all administrative actions. Cowrie operates in a sandboxed environment with filesystem access restricted to its log directory. The in-process event bus shares a single trust domain; future multi-process decomposition would require publisher authentication to prevent false event injection.
+</p>
+
+<h3>10.5 &nbsp; Threat Intelligence and IOC Discussion</h3>
+
+<p class="no-indent">
+The honeypot pipeline produces IOCs extending value beyond immediate containment: SSH credentials inform password policy, shell commands reveal attacker intent (reconnaissance, persistence, payload downloads), and extracted URLs serve as network-level blacklist candidates. Future integration with STIX/TAXII formats would enable automated sharing with institutional SOCs. Behavioral correlation across sessions from the same source enables attacker profiling — a unique advantage of the integrated evidence pipeline over standalone detection systems.
+</p>
+
+<h3>10.6 &nbsp; Deployment Reproducibility</h3>
+
+<p class="no-indent">
+The complete system is maintained in a version-controlled repository. Deployment requires Ubuntu 22.04+, a USB wireless adapter supporting AP mode (~$15), and standard packages (Python 3.11+, hostapd, dnsmasq, nftables, Cowrie). Installation from clean OS to operational gateway takes approximately 30 minutes. Source code is available upon request for academic reproduction.
+</p>
+
+
+<!-- SECTION 11: Conclusion -->
+<h2>11 &nbsp; Conclusion</h2>
+
+<p class="no-indent">
+This paper described NTTH, an event-driven security gateway that integrates packet observation, risk scoring, graduated containment, and honeypot evidence collection on commodity laptop hardware. Under controlled experimental conditions with two mobile devices, the prototype consistently detected all tested attack categories — port scans, host sweeps, SYN floods, and brute-force attempts — with no false-positive enforcement actions, sub-900 ms average latency, and a 380 MB memory footprint. We are careful to note that these results reflect a constrained evaluation rather than a production-scale validation.
+</p>
+
+<p>
+The architecture suggests that transparent, measurable defensive workflows are achievable without enterprise infrastructure, at least at the scale of a small educational lab. The deliberate inclusion of one observed threshold sensitivity — slow-rate scan evasion — illustrates where heuristic detection reaches its boundary and motivates the adaptive threshold mechanisms discussed in Section 12. NTTH's contribution is architectural rather than algorithmic: it demonstrates that a reproducible, single-host, closed-loop defense is feasible for environments where understanding the complete detection-to-containment cycle is the priority, even if signature coverage and detection depth remain limited compared to mature security stacks.
+</p>
+
+
+<!-- SECTION 12: Future Scope -->
+<h2>12 &nbsp; Future Work</h2>
+
+<p class="no-indent">
+Several directions for future work emerge naturally from the limitations discussed above. MAC-address-aware device identity tracking would improve containment persistence across DHCP lease changes. A unified nftables-only configuration would simplify the current iptables/nftables hybrid. Supplementing the heuristic detectors with lightweight ML anomaly models — trained on the gateway's own baseline traffic and validated against public datasets such as CICIDS2017 [17] and Edge-IIoTset [8] — could improve detection of novel or slow-rate patterns that fall below fixed thresholds. IPv6 deep inspection and VPN/tunnel content analysis would close current visibility gaps. Expanding the honeypot layer with protocol-specific emulation (MySQL, FTP, Redis) would yield richer evidence against moderately skilled adversaries. Perhaps most importantly, scalability evaluation with 10–50 concurrent devices over multi-day soak tests would determine whether the architecture holds beyond the two-device testbed described here. Comparative benchmarking against Security Onion running identical attack scenarios would provide more rigorous positioning data.
+</p>
+
+
+</div><!-- end two-column -->
+
+<!-- ============================================ -->
+<!-- REFERENCES (full width) -->
+<!-- ============================================ -->
+
+<h2 style="margin-top: 16pt;">References</h2>
+
+<div class="references">
+
+<p>[1] Roesch, M.: Snort — lightweight intrusion detection for networks. In: Proc. USENIX LISA Conference, pp. 229–238. USENIX Association (1999)</p>
+
+<p>[2] Open Information Security Foundation: Suricata — open source IDS/IPS engine. Available: https://suricata.io/ (2024)</p>
+
+<p>[3] Oosterhof, M.: Cowrie SSH/Telnet honeypot. Available: https://github.com/cowrie/cowrie. Documentation: https://docs.cowrie.org/ (2024)</p>
+
+<p>[4] Ahmad, Z., Shahid Khan, A., Wai Shiang, C., Abdullah, J., Ahmad, F.: Network intrusion detection system: a systematic study of machine learning and deep learning approaches. Trans. Emerg. Telecommun. Technol. 32(1), e4150 (2021). doi: 10.1002/ett.4150</p>
+
+<p>[5] Diro, A.A., Chilamkurti, N.: Leveraging LSTM networks for attack detection in fog-to-things communications. IEEE Commun. Mag. 56(9), 124–130 (2018). doi: 10.1109/MCOM.2018.1701270</p>
+
+<p>[6] Sarhan, M., Layeghy, S., Moustafa, N., Portmann, M.: Cyber threat intelligence sharing scheme based on federated learning for network intrusion detection. J. Netw. Syst. Manag. 31(1), 3 (2023). doi: 10.1007/s10922-022-09691-3</p>
+
+<p>[7] Khraisat, A., Alazab, A.: A critical review of intrusion detection systems in the internet of things: techniques, deployment strategy, validation strategy, attacks, public datasets and challenges. Cybersecurity 4, article 18 (2021). doi: 10.1186/s42400-021-00077-7</p>
+
+<p>[8] Ferrag, M.A., Friha, O., Maglaras, L., Janicke, H., Shu, L.: Edge-IIoTset: a new comprehensive realistic cyber security dataset of IoT and IIoT applications for centralized and federated learning. IEEE Access 10, 40281–40306 (2022). doi: 10.1109/ACCESS.2022.3165809</p>
+
+<p>[9] Arp, D., Quiring, E., Pendlebury, F., Warnecke, A., Pierazzi, F., Wressnegger, C., Rieck, K.: Dos and don'ts of machine learning in computer security. In: Proc. USENIX Security Symposium, pp. 3971–3988 (2022)</p>
+
+<p>[10] Pawlick, J., Colbert, E., Zhu, Q.: A game-theoretic taxonomy and survey of defensive deception for cybersecurity and privacy. ACM Comput. Surv. 52(4), article 82 (2019). doi: 10.1145/3337772</p>
+
+<p>[11] Almeshekah, M.H., Spafford, E.H.: Cyber security deception. In: Jajodia, S., et al. (eds.) Cyber Deception: Building the Scientific Foundation, pp. 25–52. Springer, Cham (2016). doi: 10.1007/978-3-319-32699-3_2</p>
+
+<p>[12] Sivanathan, A., Gharakheili, H.H., Loi, F., Radford, A., Wijenayake, C., Vishwanath, A., Sivaraman, V.: Classifying IoT devices in smart environments using network traffic characteristics. IEEE Trans. Mob. Comput. 18(8), 1745–1759 (2019). doi: 10.1109/TMC.2018.2866249</p>
+
+<p>[13] Netgate: pfSense Plus and CE software. Available: https://www.pfsense.org/ (2024)</p>
+
+<p>[14] Netfilter Project: nftables — the modern Linux firewall framework. Available: https://wiki.nftables.org/ (2024)</p>
+
+<p>[15] Biondi, P., et al.: Scapy — packet manipulation library. Available: https://scapy.readthedocs.io/ (2024)</p>
+
+<p>[16] Malinen, J.: hostapd — IEEE 802.11 AP, IEEE 802.1X/WPA/WPA2/EAP/RADIUS authenticator. Available: https://w1.fi/hostapd/ (2024)</p>
+
+<p>[17] Sharafaldin, I., Lashkari, A.H., Ghorbani, A.A.: Toward generating a new intrusion detection dataset and intrusion traffic characterization. In: Proc. ICISSP, pp. 108–116 (2018). doi: 10.5220/0006639801080116</p>
+
+<p>[18] Paxson, V.: Bro: a system for detecting network intruders in real-time. Comput. Netw. 31(23–24), 2435–2463 (1999). doi: 10.1016/S1389-1286(99)00112-7</p>
+
+<p>[19] Mirsky, Y., Doitshman, T., Elovici, Y., Shabtai, A.: Kitsune: an ensemble of autoencoders for online network intrusion detection. In: Proc. NDSS (2018). doi: 10.14722/ndss.2018.23204</p>
+
+<p>[20] Mukherjee, B., Heberlein, L.T., Levitt, K.N.: Network intrusion detection. IEEE Netw. 8(3), 26–41 (1994). doi: 10.1109/65.283931</p>
+
+<p>[21] Provos, N., Holz, T.: Virtual Honeypots: From Botnet Tracking to Intrusion Detection. Addison-Wesley Professional (2007)</p>
+
+<p>[22] Moustafa, N., Slay, J.: UNSW-NB15: a comprehensive data set for network intrusion detection systems. In: Proc. Military Communications and Information Systems Conference (MilCIS), pp. 1–6 (2015). doi: 10.1109/MilCIS.2015.7348942</p>
+
+<p>[23] Garcia, S., Grill, M., Stiborek, J., Zunino, A.: An empirical comparison of botnet detection methods. Comput. Secur. 45, 100–123 (2014). doi: 10.1016/j.cose.2014.05.011</p>
+
+<p>[24] Lashkari, A.H., Draper-Gil, G., Mamun, M.S.I., Ghorbani, A.A.: Characterization of tor traffic using time based features. In: Proc. ICISSP, pp. 253–262 (2017)</p>
+
+<p>[25] Kolias, C., Kambourakis, G., Stavrou, A., Voas, J.: DDoS in the IoT: Mirai and other botnets. Computer 50(7), 80–84 (2017). doi: 10.1109/MC.2017.201</p>
+
+</div>
+
+</body>
+</html>

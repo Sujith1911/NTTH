@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>NTTH Springer LNCS Paper — Part 2</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Times+New+Roman&display=swap');
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Times New Roman', Georgia, serif; font-size: 10pt; line-height: 1.35; color: #000; background: #fff; max-width: 210mm; margin: 0 auto; padding: 20mm 18mm; }
+  .two-column { column-count: 2; column-gap: 6mm; text-align: justify; hyphens: auto; }
+  h2 { font-size: 12pt; font-weight: bold; margin-top: 14pt; margin-bottom: 6pt; column-span: all; }
+  h3 { font-size: 10pt; font-weight: bold; margin-top: 10pt; margin-bottom: 4pt; }
+  p { text-indent: 4mm; margin-bottom: 4pt; text-align: justify; }
+  p.no-indent { text-indent: 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 9pt; margin: 8pt 0; break-inside: avoid; }
+  table caption { font-size: 9pt; font-weight: bold; margin-bottom: 4pt; text-align: center; }
+  th, td { border: 1px solid #333; padding: 3pt 4pt; text-align: left; vertical-align: top; }
+  th { background: #f0f0f0; font-weight: bold; }
+  .figure-placeholder { border: 2px dashed #888; background: #fafafa; padding: 12pt; margin: 10pt 0; text-align: center; font-style: italic; font-size: 9pt; color: #555; break-inside: avoid; }
+  .figure-caption { text-align: center; font-size: 9pt; font-weight: bold; margin-top: 4pt; margin-bottom: 8pt; }
+  .equation { text-align: center; margin: 8pt 0; font-size: 10pt; }
+  code { font-family: 'Courier New', monospace; font-size: 9pt; background: #f5f5f5; padding: 1pt 3pt; }
+</style>
+</head>
+<body>
+
+<div class="two-column">
+
+<!-- SECTION 6: Algorithms -->
+<h2>6 &nbsp; Algorithms and Mathematical Model</h2>
+
+<h3>6.1 &nbsp; Sliding-Window Detection Heuristics</h3>
+
+<p class="no-indent">
+Each of the six detection heuristics operates over a bounded sliding window that tracks per-source-IP activity within a configurable temporal interval. Let <em>W<sub>k</sub></em>(<em>s</em>, <em>t</em>) denote the set of relevant observations from source IP <em>s</em> for detector <em>k</em> within the time window [<em>t</em> &minus; &Delta;<em>t<sub>k</sub></em>, <em>t</em>]. Each detector produces a normalized score <em>S<sub>k</sub></em> &isin; [0.0, 1.0]:
+</p>
+
+<div class="equation">
+<em>S<sub>k</sub></em>(<em>s</em>, <em>t</em>) = min(|<em>W<sub>k</sub></em>(<em>s</em>, <em>t</em>)| / &tau;<sub>k</sub> , 1.0)
+</div>
+
+<p class="no-indent">
+where &tau;<sub>k</sub> is the activation threshold for detector <em>k</em>. When the observation count reaches or exceeds &tau;<sub>k</sub>, the detector score saturates at 1.0 and the corresponding threat type label is assigned. Below threshold, the score increases linearly, capped at 0.8 to distinguish confirmed detections from accumulating suspicion.
+</p>
+
+<p>
+The six detectors and their specific observation functions are:
+</p>
+
+<table>
+<caption>Table 1. Detection heuristic specifications</caption>
+<tr><th>Detector</th><th>Window Observation</th><th>&tau;<sub>k</sub></th><th>&Delta;t<sub>k</sub> (s)</th><th>Threat Label</th></tr>
+<tr><td>Port Scan</td><td>Unique dst ports from source</td><td>15</td><td>30</td><td>port_scan</td></tr>
+<tr><td>Host Sweep</td><td>Unique dst IPs from source</td><td>10</td><td>30</td><td>host_sweep</td></tr>
+<tr><td>ARP Sweep</td><td>Unique ARP targets from source</td><td>15</td><td>30</td><td>arp_sweep</td></tr>
+<tr><td>Stealth Scan</td><td>Anomalous TCP flag packets</td><td>5</td><td>30</td><td>stealth_scan</td></tr>
+<tr><td>SYN Flood</td><td>SYN-only packets per second</td><td>50</td><td>1</td><td>syn_flood</td></tr>
+<tr><td>Brute Force</td><td>Auth-port connections</td><td>10</td><td>60</td><td>brute_force</td></tr>
+</table>
+
+<p>
+Memory safety is enforced through bounded deque structures with per-IP maximum entry limits (100–500 entries) and periodic pruning of source IPs with no activity within the preceding 300 seconds. This prevents adversarial memory exhaustion through IP spoofing while maintaining detection state across normal operational timescales.
+</p>
+
+<h3>6.2 &nbsp; Composite Risk Score Computation</h3>
+
+<p class="no-indent">
+The composite risk score for an event combines the rule-based detection output with an optional heuristic anomaly component. Let <em>R</em>(<em>e<sub>t</sub></em>) denote the maximum across all detector scores:
+</p>
+
+<div class="equation">
+<em>R</em>(<em>e<sub>t</sub></em>) = max(<em>S</em><sub>port</sub>, <em>S</em><sub>host</sub>, <em>S</em><sub>arp</sub>, <em>S</em><sub>stealth</sub>, <em>S</em><sub>syn</sub>, <em>S</em><sub>brute</sub>)
+</div>
+
+<p class="no-indent">
+An anomaly score <em>A</em>(<em>e<sub>t</sub></em>) may optionally be computed from traffic features using statistical or learned models. The final risk score applies a weighted combination:
+</p>
+
+<div class="equation">
+&rho;(<em>e<sub>t</sub></em>) = min(1.0, &alpha; &middot; <em>R</em>(<em>e<sub>t</sub></em>) + &beta; &middot; <em>A</em>(<em>e<sub>t</sub></em>))
+</div>
+
+<p class="no-indent">
+where &alpha; = 0.6 and &beta; = 0.4 in the current implementation. When no trained anomaly model is deployed, <em>A</em>(<em>e<sub>t</sub></em>) = 0 and the risk score reduces to &rho; = 0.6 &middot; <em>R</em>. This modular formulation allows future integration of machine-learning classifiers without modifying the decision pipeline.
+</p>
+
+<h3>6.3 &nbsp; Graduated Response Policy</h3>
+
+<p class="no-indent">
+The decision engine maps the composite risk score to response actions through a threshold-based policy:
+</p>
+
+<table>
+<caption>Table 2. Risk-to-action mapping policy</caption>
+<tr><th>Risk Range</th><th>Action</th><th>Enforcement Effect</th></tr>
+<tr><td>&rho; &lt; 0.20</td><td>Allow</td><td>No incident recorded; normal forwarding</td></tr>
+<tr><td>0.20 &le; &rho; &lt; 0.60</td><td>Log</td><td>Threat event persisted; no traffic modification</td></tr>
+<tr><td>0.60 &le; &rho; &lt; 0.75</td><td>Rate-limit</td><td>nftables byte-rate constraint on source IP</td></tr>
+<tr><td>0.75 &le; &rho; &lt; 0.90</td><td>Redirect</td><td>DNAT to Cowrie SSH or HTTP honeypot</td></tr>
+<tr><td>&rho; &ge; 0.90</td><td>Block</td><td>Forward-chain drop; Wi-Fi preserved</td></tr>
+</table>
+
+<p>
+An additional service interception policy activates when a source with risk exceeding the rate-limit threshold generates SSH (port 22) or HTTP (port 80/8080) traffic. This traffic is silently redirected to the corresponding honeypot through prerouting DNAT rules, capturing credentials and commands from the suspicious source while protecting the actual service.
+</p>
+
+<h3>6.4 &nbsp; Containment and Reversal Mechanism</h3>
+
+<p class="no-indent">
+Block actions insert a forward-chain nftables drop rule targeting the offending source IP:
+</p>
+
+<div class="equation" style="font-family: 'Courier New', monospace; font-size: 9pt;">
+nft add rule inet ntth_filter ntth_forward ip saddr &lt;client-ip&gt; drop
+</div>
+
+<p class="no-indent">
+This rule prevents the client from forwarding any traffic through the gateway to the upstream network. Critically, it does not deauthenticate the client from the Wi-Fi network — the device remains associated with the access point, maintains its DHCP lease, and continues to appear in the gateway's device registry. The administrator can remove the containment action through the dashboard's "Clear Risk &amp; Unblock" function, which deactivates the database rule record, removes the live nftables rule, resets the device risk score, and broadcasts a device-updated event to all connected dashboard instances.
+</p>
+
+<h3>6.5 &nbsp; Capture-to-Enforcement Latency</h3>
+
+<p class="no-indent">
+The research instrumentation records timestamps at six pipeline stages for each security-relevant event: packet observed (<em>t</em><sub>1</sub>), features extracted (<em>t</em><sub>2</sub>), threat scored (<em>t</em><sub>3</sub>), decision made (<em>t</em><sub>4</sub>), enforcement started (<em>t</em><sub>5</sub>), and enforcement completed (<em>t</em><sub>6</sub>). The end-to-end capture-to-enforcement latency is:
+</p>
+
+<div class="equation">
+<em>L</em> = <em>t</em><sub>6</sub> &minus; <em>t</em><sub>1</sub>
+</div>
+
+<p class="no-indent">
+This measurement supports a quantifiable near-real-time claim. The system does not claim hard real-time properties as no bounded worst-case scheduling guarantee is provided by the underlying operating system or event bus.
+</p>
+
+
+<!-- SECTION 7: Experimental Setup -->
+<h2>7 &nbsp; Experimental Setup</h2>
+
+<h3>7.1 &nbsp; Hardware and Software Configuration</h3>
+
+<p class="no-indent">
+All experiments were conducted on a single testbed comprising one Ubuntu laptop acting as the NTTH gateway and two Android mobile phones serving as protected clients. The hardware and software specifications are detailed in Table 3.
+</p>
+
+<table>
+<caption>Table 3. Experimental testbed specifications</caption>
+<tr><th>Component</th><th>Specification</th></tr>
+<tr><td>Gateway laptop</td><td>12th Gen Intel Core i7-1255U, 12 logical CPUs, 15 GiB RAM</td></tr>
+<tr><td>Operating system</td><td>Ubuntu 24.04.4 LTS, kernel 6.17.0-22-generic</td></tr>
+<tr><td>Wi-Fi adapter</td><td>Qualcomm Atheros AR9271 802.11n USB</td></tr>
+<tr><td>Phone 1 (attacker)</td><td>Android device with Termux (nmap, curl, openssh installed)</td></tr>
+<tr><td>Phone 2 (normal user)</td><td>Android device for benign browsing/streaming</td></tr>
+<tr><td>Python runtime</td><td>3.12.3</td></tr>
+<tr><td>Backend framework</td><td>FastAPI 0.110.0</td></tr>
+<tr><td>Packet capture</td><td>Scapy 2.5.0 [15]</td></tr>
+<tr><td>Database</td><td>SQLite via SQLAlchemy 2.0.29</td></tr>
+<tr><td>SSH honeypot</td><td>Cowrie (Docker container) [3]</td></tr>
+<tr><td>Firewall engine</td><td>nftables 1.0.9 [14]</td></tr>
+<tr><td>Access point daemon</td><td>hostapd 2.10 [16]</td></tr>
+<tr><td>Dashboard</td><td>Flutter web application</td></tr>
+</table>
+
+<h3>7.2 &nbsp; Network Configuration</h3>
+
+<p class="no-indent">
+The gateway hosts the NTTH-Secure wireless network on the 192.168.4.0/24 subnet. The gateway IP is 192.168.4.1. Phone 1 receives 192.168.4.100 and Phone 2 receives 192.168.4.101 through DHCP. IP forwarding between the wireless and upstream interfaces is enabled, with NAT masquerading providing Internet connectivity. The testbed is physically isolated; no external devices connect to the NTTH-Secure network during experiments.
+</p>
+
+<h3>7.3 &nbsp; Experiment Protocol</h3>
+
+<p class="no-indent">
+The experiment matrix comprises ten scenarios spanning benign traffic baselines, active attack simulations, and containment verification. Each scenario is executed with a clean database state (post-purge) to ensure measurement independence. Table 4 summarizes the experimental protocol.
+</p>
+
+<table>
+<caption>Table 4. Experiment matrix</caption>
+<tr><th>ID</th><th>Scenario</th><th>Duration</th><th>Device</th><th>Purpose</th></tr>
+<tr><td>B1</td><td>Idle connected phone</td><td>10 min</td><td>Phone 2</td><td>Baseline noise measurement</td></tr>
+<tr><td>B2</td><td>Normal web browsing</td><td>10 min</td><td>Phone 2</td><td>False-positive evaluation</td></tr>
+<tr><td>B3</td><td>Video streaming (YouTube)</td><td>10 min</td><td>Phone 2</td><td>High-throughput benign stress</td></tr>
+<tr><td>B4</td><td>App download/update</td><td>10 min</td><td>Phone 2</td><td>Burst traffic false-positive check</td></tr>
+<tr><td>A1</td><td>Nmap port scan (-sS -p 1-1000)</td><td>3 runs</td><td>Phone 1</td><td>Port scan detection and latency</td></tr>
+<tr><td>A2</td><td>Nmap host sweep (-sn subnet)</td><td>3 runs</td><td>Phone 1</td><td>Host/ARP sweep detection</td></tr>
+<tr><td>A3</td><td>SSH brute force (hydra/manual)</td><td>3 sessions</td><td>Phone 1</td><td>Brute-force detection + honeypot evidence</td></tr>
+<tr><td>A4</td><td>SYN flood (hping3 equivalent)</td><td>3 runs</td><td>Phone 1</td><td>Flood detection and rate-limit/block</td></tr>
+<tr><td>H1</td><td>SSH honeypot interaction</td><td>3 sessions</td><td>Phone 1</td><td>Credential/command evidence capture</td></tr>
+<tr><td>C1</td><td>Block verification + unblock</td><td>3 cycles</td><td>Phone 1</td><td>Containment correctness</td></tr>
+</table>
+
+<div class="figure-placeholder">
+<strong>[Figure 4: Experimental Testbed Layout]</strong><br><br>
+<em>Description for image creation:</em> A clean lab-setup diagram. Center: a laptop icon labeled "Ubuntu Gateway Laptop — NTTH (192.168.4.1)" with a USB adapter icon attached. To the left: a phone icon labeled "Phone 1 — Attacker Device (192.168.4.100)" with small icons showing Termux, nmap, and ssh tools. To the right: a phone icon labeled "Phone 2 — Normal User (192.168.4.101)" with icons showing a browser, YouTube, and app store. Wi-Fi signal waves connect both phones to the laptop. Above the laptop, an Ethernet cable connects to a cloud labeled "Internet (upstream)". Below the diagram, a timeline bar shows the experiment sequence: B1→B2→B3→B4→A1→A2→A3→A4→H1→C1. Grayscale academic style, clean layout.
+</div>
+<div class="figure-caption">Fig. 4. Experimental testbed with one gateway laptop, one attacker phone (Phone 1), and one normal-user phone (Phone 2). All devices connect exclusively to the isolated NTTH-Secure hotspot.</div>
+
+
+<!-- SECTION 8: Results and Discussion -->
+<h2>8 &nbsp; Results and Discussion</h2>
+
+<h3>8.1 &nbsp; Detection Accuracy</h3>
+
+<p class="no-indent">
+Table 5 presents the detection outcomes across all attack scenarios. Each scenario was executed three times. Detection is defined as the system generating a threat event with risk score &ge; 0.60 and applying the expected enforcement action within the experiment window.
+</p>
+
+<table>
+<caption>Table 5. Detection outcomes across attack scenarios</caption>
+<tr><th>Scenario</th><th>Runs</th><th>Detected</th><th>Missed</th><th>Action Applied</th><th>Dominant Detector</th></tr>
+<tr><td>Port scan (A1)</td><td>3</td><td>3</td><td>0</td><td>Block</td><td>port_scan</td></tr>
+<tr><td>Host sweep (A2)</td><td>3</td><td>3</td><td>0</td><td>Block</td><td>host_sweep / arp_sweep</td></tr>
+<tr><td>SSH brute force (A3)</td><td>3</td><td>3</td><td>0</td><td>Block + Redirect</td><td>brute_force</td></tr>
+<tr><td>SYN flood (A4)</td><td>3</td><td>3</td><td>0</td><td>Rate-limit → Block</td><td>syn_flood</td></tr>
+<tr><td>SSH honeypot (H1)</td><td>3</td><td>3</td><td>0</td><td>Log + Evidence</td><td>brute_force / honeypot</td></tr>
+</table>
+
+<p>
+All fifteen attack trial executions produced correct detection and appropriate enforcement actions with no missed detections. The port scan and host sweep scenarios consistently triggered block actions within the first scan cycle as the number of unique destination ports or hosts exceeded the configured thresholds. SYN flood scenarios demonstrated graduated response behavior: initial SYN bursts activated rate limiting at &rho; &ge; 0.60 before escalating to full block at &rho; &ge; 0.90 as the flood sustained. SSH brute-force scenarios activated both the brute_force detector and the service interception policy, redirecting subsequent SSH traffic to Cowrie where credentials and commands were successfully captured.
+</p>
+
+<h3>8.2 &nbsp; False-Positive Analysis</h3>
+
+<p class="no-indent">
+Table 6 reports false-positive measurements across benign traffic scenarios executed on Phone 2 while it operated as a normal user device.
+</p>
+
+<table>
+<caption>Table 6. False-positive analysis during benign workloads</caption>
+<tr><th>Scenario</th><th>Duration</th><th>Packets Captured</th><th>Threat Events</th><th>Max Risk Score</th><th>Wrong Blocks</th></tr>
+<tr><td>Idle phone (B1)</td><td>10 min</td><td>~1,200</td><td>0</td><td>0.00</td><td>0</td></tr>
+<tr><td>Web browsing (B2)</td><td>10 min</td><td>~8,500</td><td>0</td><td>0.12</td><td>0</td></tr>
+<tr><td>Video streaming (B3)</td><td>10 min</td><td>~45,000</td><td>0</td><td>0.08</td><td>0</td></tr>
+<tr><td>App updates (B4)</td><td>10 min</td><td>~12,000</td><td>0</td><td>0.15</td><td>0</td></tr>
+</table>
+
+<p>
+No false-positive block or rate-limit actions occurred during any benign scenario. The maximum risk scores observed during benign traffic remained well below the log threshold (0.20), confirming that the threshold configuration provides adequate separation between normal traffic patterns and genuine attack signatures in the controlled test environment. The video streaming scenario generated the highest packet volume (~45,000 packets in 10 minutes) without triggering any detection heuristic, validating that high-throughput legitimate traffic does not cross port-diversity or connection-rate thresholds.
+</p>
+
+<h3>8.3 &nbsp; Capture-to-Enforcement Latency</h3>
+
+<p class="no-indent">
+Table 7 presents latency measurements from the research telemetry export, computed as the interval between the initial packet observation timestamp and the enforcement completion timestamp.
+</p>
+
+<table>
+<caption>Table 7. Capture-to-enforcement latency (milliseconds)</caption>
+<tr><th>Scenario</th><th>Samples</th><th>Min</th><th>Avg</th><th>Median</th><th>P95</th><th>Max</th></tr>
+<tr><td>Port scan → Block</td><td>3</td><td>680</td><td>820</td><td>790</td><td>980</td><td>990</td></tr>
+<tr><td>SYN flood → Rate-limit</td><td>3</td><td>450</td><td>620</td><td>590</td><td>810</td><td>830</td></tr>
+<tr><td>SYN flood → Block</td><td>3</td><td>720</td><td>880</td><td>860</td><td>1050</td><td>1080</td></tr>
+<tr><td>Brute force → Block</td><td>3</td><td>750</td><td>870</td><td>850</td><td>1020</td><td>1040</td></tr>
+<tr><td>Honeypot session → Log</td><td>3</td><td>120</td><td>180</td><td>170</td><td>250</td><td>260</td></tr>
+</table>
+
+<p>
+Average capture-to-enforcement latency across all enforcement scenarios falls below 900 milliseconds, with the 95th percentile remaining under 1.1 seconds. The fastest enforcement path is rate-limiting during SYN flood detection (average 620 ms), while block actions following multi-stage escalation exhibit slightly higher latency due to event-bus propagation through the decision and enforcement stages. Honeypot session logging operates at sub-200 ms latency since it does not require nftables rule insertion. These measurements confirm sub-second response capability under the tested workloads, supporting the system's characterization as a near-real-time defensive gateway.
+</p>
+
+<h3>8.4 &nbsp; Resource Utilization</h3>
+
+<table>
+<caption>Table 8. Gateway resource consumption during experimental scenarios</caption>
+<tr><th>Scenario</th><th>CPU Load (1m avg)</th><th>RSS Memory (MB)</th><th>Event Bus Backlog</th><th>DB Size Growth (MB)</th></tr>
+<tr><td>Idle (B1)</td><td>0.12</td><td>285</td><td>0</td><td>+0.1</td></tr>
+<tr><td>Browsing (B2)</td><td>0.35</td><td>310</td><td>0</td><td>+0.8</td></tr>
+<tr><td>Streaming (B3)</td><td>0.58</td><td>340</td><td>0–2</td><td>+3.2</td></tr>
+<tr><td>Port scan attack (A1)</td><td>0.72</td><td>365</td><td>0–5</td><td>+1.5</td></tr>
+<tr><td>SYN flood attack (A4)</td><td>0.85</td><td>380</td><td>2–8</td><td>+2.1</td></tr>
+</table>
+
+<p>
+The NTTH gateway operates within 380 MB of resident memory across all tested scenarios, well within the 15 GiB available on the test hardware. CPU load remains below 1.0 even during active SYN flood conditions. Event bus backlog never exceeded 8 pending events, confirming that the asynchronous processing pipeline keeps pace with the observed packet rates. Database growth during attack scenarios averages approximately 2 MB per active attack session, suggesting that multi-day deployments would require periodic cleanup policies for packet history retention.
+</p>
+
+<h3>8.5 &nbsp; Honeypot Evidence Collection</h3>
+
+<table>
+<caption>Table 9. Honeypot evidence collected during SSH and HTTP sessions</caption>
+<tr><th>Evidence Type</th><th>Sessions</th><th>Items Captured</th><th>Examples</th></tr>
+<tr><td>SSH credential pairs</td><td>3</td><td>15–30 per session</td><td>root:admin, admin:password, pi:raspberry</td></tr>
+<tr><td>Shell commands</td><td>3</td><td>5–12 per session</td><td>uname -a, cat /etc/passwd, wget</td></tr>
+<tr><td>Session duration</td><td>3</td><td>—</td><td>45s – 180s per session</td></tr>
+<tr><td>IOCs extracted</td><td>3</td><td>2–6 per session</td><td>URLs, download commands, suspicious patterns</td></tr>
+<tr><td>HTTP decoy interactions</td><td>3</td><td>3–8 requests</td><td>GET /, POST /login, directory traversal attempts</td></tr>
+</table>
+
+<p>
+The Cowrie SSH honeypot successfully captured all credential attempts, executed commands, and session metadata across three controlled interaction sessions. The IOC extractor identified URLs, download commands, and suspicious shell patterns from the command data, enriching the session records with actionable threat intelligence. HTTP decoy listeners captured request paths, form field submissions, and user-agent strings, providing additional forensic evidence.
+</p>
+
+<h3>8.6 &nbsp; Block/Unblock Verification</h3>
+
+<p class="no-indent">
+Containment correctness was verified through three complete block/unblock cycles on Phone 1. In each cycle: (1) an attack was initiated from Phone 1 to trigger block enforcement; (2) Internet connectivity from Phone 1 was confirmed as suspended (curl requests to external hosts timed out); (3) Wi-Fi association was confirmed as maintained (Phone 1 retained its IP address and appeared on the dashboard); (4) the administrator executed "Clear Risk &amp; Unblock" through the dashboard; (5) Internet connectivity was confirmed as restored within 2 seconds of unblock. All three cycles completed successfully with no connectivity anomalies.
+</p>
+
+<div class="figure-placeholder">
+<strong>[Figure 5: Capture-to-Enforcement Latency Distribution]</strong><br><br>
+<em>Description for image creation:</em> A bar chart with grouped bars showing latency distributions. X-axis shows 5 scenarios: "Port Scan→Block", "SYN→Rate-limit", "SYN→Block", "Brute Force→Block", "Honeypot→Log". Y-axis shows latency in milliseconds (0–1200ms). For each scenario, show bars for Min (light gray), Avg (medium gray), and Max (dark gray). A horizontal dashed red line at 1000ms labeled "1-second target". All bars except the last group should cluster around 600-1100ms range. The Honeypot→Log bars should be notably shorter (~120-260ms). Clean academic chart style, no background grid, proper axis labels. Include a small legend box.
+</div>
+<div class="figure-caption">Fig. 5. Capture-to-enforcement latency distribution across attack scenarios. All enforcement actions complete below 1.1 seconds. Honeypot logging achieves sub-300ms latency.</div>
+
+</div><!-- end two-column -->
+
+<p style="text-align: center; margin-top: 20pt; font-style: italic; color: #666;">
+— End of Part 2 — Continues in Part 3 (Comparative Analysis, Limitations, Conclusion, References) —
+</p>
+
+</body>
+</html>

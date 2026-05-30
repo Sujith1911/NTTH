@@ -609,17 +609,30 @@ async def purge_unseen_devices_in_subnet(
     live_ips: set[str],
     preserve_ips: set[str] | None = None,
 ) -> int:
-    """Remove stale non-live device rows from the scanned subnet."""
+    """Remove stale non-live device rows from the scanned subnet.
+
+    Only purge devices that haven't been seen (via any traffic) for over 2 hours
+    AND were not found by the latest scan. This prevents VMs and devices that
+    don't respond to scan probes from being incorrectly deleted.
+    """
+    from datetime import datetime, timedelta, timezone
     try:
         network = ip_network(subnet, strict=False)
     except ValueError:
         return 0
 
     preserve = preserve_ips or set()
-    result = await db.execute(select(Device.id, Device.ip_address, Device.is_trusted))
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=2)
+    result = await db.execute(
+        select(Device.id, Device.ip_address, Device.is_trusted, Device.last_seen)
+    )
     stale_ids: list[str] = []
-    for device_id, ip, is_trusted in result.all():
+    for device_id, ip, is_trusted, last_seen in result.all():
+        # Never purge devices that are in the live scan, preserved, or trusted
         if ip in live_ips or ip in preserve or is_trusted:
+            continue
+        # Never purge devices seen within the last 2 hours
+        if last_seen and last_seen.replace(tzinfo=timezone.utc) > cutoff:
             continue
         try:
             parsed = ip_address(ip)
@@ -815,7 +828,10 @@ async def latest_threat_events_for_ips(
 
 
 async def purge_packet_noise(db: AsyncSession) -> int:
-    """Remove synthetic scan packets and impossible broadcast rows from packet history."""
+    """Remove synthetic scan packets, ARP scanner probes, and broadcast rows from packet history."""
+    from app.config import get_settings
+    _settings = get_settings()
+
     result = await db.execute(
         delete(CapturedPacket).where(
             (CapturedPacket.protocol == "arp_scan")
@@ -823,9 +839,47 @@ async def purge_packet_noise(db: AsyncSession) -> int:
             | CapturedPacket.dst_ip.like("%.255")
             | CapturedPacket.src_ip.like("%.0")
             | CapturedPacket.dst_ip.like("%.0")
+            | (
+                (CapturedPacket.protocol == "arp")
+                & CapturedPacket.src_ip.in_(
+                    [ip for ip in [_settings.server_display_ip, _settings.gateway_ip] if ip]
+                )
+            )
         )
     )
     return int(result.rowcount or 0)
+
+
+async def purge_false_stealth_scans(db: AsyncSession) -> dict[str, int]:
+    """Remove stealth_scan threat events and packets that were actually UDP/QUIC traffic.
+
+    The stealth scan detector previously had a bug where UDP packets (no TCP flags)
+    were classified as NULL scans. This purges those false positives.
+    """
+    # Delete stealth_scan threats on non-TCP protocols
+    threat_result = await db.execute(
+        delete(ThreatEvent).where(
+            ThreatEvent.threat_type == "stealth_scan",
+        )
+    )
+    # Clean packets tagged as stealth_scan on UDP (QUIC/DNS) traffic
+    pkt_result = await db.execute(
+        delete(CapturedPacket).where(
+            CapturedPacket.threat_type == "stealth_scan",
+            CapturedPacket.protocol != "tcp",
+        )
+    )
+    # Also clean packets tagged as stealth_scan that were to common HTTPS ports
+    pkt_result2 = await db.execute(
+        delete(CapturedPacket).where(
+            CapturedPacket.threat_type == "stealth_scan",
+            CapturedPacket.dst_port.in_({443, 80, 53, 8443, 5228, 5229, 5230}),
+        )
+    )
+    return {
+        "threats": int(threat_result.rowcount or 0),
+        "packets": int(pkt_result.rowcount or 0) + int(pkt_result2.rowcount or 0),
+    }
 
 
 async def purge_synthetic_demo_data(db: AsyncSession) -> dict[str, int]:

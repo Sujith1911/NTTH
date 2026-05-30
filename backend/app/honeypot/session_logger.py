@@ -326,6 +326,16 @@ async def _save_session(
             "location_accuracy": location_accuracy,
             "location_summary": location_summary,
         })
+        # Extract IOCs from honeypot session commands
+        try:
+            from app.honeypot.ioc_extractor import extract_from_session as extract_iocs
+            extract_iocs(
+                attacker_ip=attacker_ip,
+                honeypot_type=honeypot_type,
+                commands=commands_run,
+            )
+        except Exception:
+            pass
         log.info("session_logger.saved", ip=attacker_ip, type=honeypot_type)
     except Exception as exc:
         log.error("session_logger.error", error=str(exc))

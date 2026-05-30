@@ -269,18 +269,33 @@ async def get_topology(
                 "type": "redirected",
             })
 
-    # Honeypot sessions from external (non-local) IPs
+    # Synthetic nodes: only show IPs from RECENT sessions or ACTIVE enforcement
+    # that don't already have a device entry — prevents stale blocked/unknown nodes
     known_ips = set(known_device_ips)
+    from datetime import datetime, timedelta
+    _recent_cutoff = datetime.utcnow() - timedelta(hours=1)
+
+    # Only include honeypot session IPs that are recent (within last hour)
+    recent_session_ips = {
+        session.attacker_ip
+        for session in honeypot_sessions
+        if _is_local_managed_ip(session.attacker_ip)
+        and session.started_at and session.started_at > _recent_cutoff
+    }
+
     synthetic_local_ips = sorted(
         ip
-        for ip in local_session_ips | blocked_ips | redirected_ips | throttled_ips
+        for ip in recent_session_ips | blocked_ips | redirected_ips | throttled_ips
         if ip not in known_ips and ip not in _infrastructure_ips and _is_local_managed_ip(ip)
     )
     for ip in synthetic_local_ips:
         node_id = f"dev_{ip.replace('.', '_')}"
         latest_events = risk_events.get(ip, [])
         latest_risk = max([event.risk_score or 0 for event in latest_events] or [0.0])
-        session_count = len([s for s in honeypot_sessions if s.attacker_ip == ip])
+        session_count = len([
+            s for s in honeypot_sessions
+            if s.attacker_ip == ip and s.started_at and s.started_at > _recent_cutoff
+        ])
         nodes.append({
             "id": node_id,
             "device_id": None,

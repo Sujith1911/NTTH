@@ -26,7 +26,9 @@ class _NetworkTopologyScreenState extends State<NetworkTopologyScreen>
   bool _scanning = false;
   String? _error;
   String? _selectedNodeId;
+  late AnimationController _flowAnim;
   Timer? _refreshTimer;
+  Timer? _wsDebounce;
   VoidCallback? _wsListener;
   DateTime? _lastSyncedAt;
 
@@ -44,18 +46,23 @@ class _NetworkTopologyScreenState extends State<NetworkTopologyScreen>
   @override
   void initState() {
     super.initState();
+    _flowAnim = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 3),
+    )..repeat();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _fetchTopology();
       _listenWS();
     });
-    // Keep topology fresh even when websocket reconnects after hotspot restarts.
     _refreshTimer =
-        Timer.periodic(const Duration(seconds: 5), (_) => _fetchTopology());
+        Timer.periodic(const Duration(seconds: 30), (_) => _fetchTopology());
   }
 
   @override
   void dispose() {
+    _flowAnim.dispose();
     _refreshTimer?.cancel();
+    _wsDebounce?.cancel();
     final listener = _wsListener;
     if (listener != null) {
       context.read<WebSocketService>().removeListener(listener);
@@ -76,21 +83,28 @@ class _NetworkTopologyScreenState extends State<NetworkTopologyScreen>
       if (latest['type'] == 'topology_updated' ||
           latest['type'] == 'device_seen' ||
           latest['type'] == 'device_updated') {
-        _fetchTopology();
+        // Debounce: wait 3s after last event before fetching
+        _wsDebounce?.cancel();
+        _wsDebounce = Timer(const Duration(seconds: 3), () {
+          if (mounted) _fetchTopology();
+        });
       }
     }
   }
 
   Future<void> _fetchTopology() async {
     if (!mounted) return;
-    setState(() {
-      _loading = _topology == null;
-      _error = null;
-    });
+    if (_topology == null) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
     try {
       final api = context.read<AuthService>().api;
       final resp = await api.get('/network/topology');
       final data = resp.data as Map<String, dynamic>;
+      if (!mounted) return;
       setState(() {
         _topology = data;
         _loading = false;
@@ -98,7 +112,7 @@ class _NetworkTopologyScreenState extends State<NetworkTopologyScreen>
         _layoutNodes(data);
       });
     } catch (e) {
-      if (mounted) {
+      if (mounted && _topology == null) {
         setState(() {
           _error = e.toString();
           _loading = false;
@@ -163,49 +177,66 @@ class _NetworkTopologyScreenState extends State<NetworkTopologyScreen>
   void _layoutNodes(Map<String, dynamic> topo) {
     final nodes = (topo['nodes'] as List? ?? []).cast<Map<String, dynamic>>();
     final size = MediaQuery.of(context).size;
-    final cx = size.width / 2.8;
-    final cy = size.height / 2.5;
+    final cx = size.width / 3.0;
+    final cy = size.height / 2.2;
 
-    // Fixed infrastructure nodes — spread out
+    // ── Infrastructure nodes: gateway top, server/honeypot flanking ──
     if (!_nodePositions.containsKey('gateway')) {
-      _nodePositions['gateway'] = Offset(cx, cy - 160);
+      _nodePositions['gateway'] = Offset(cx, cy - 40);
     }
     if (!_nodePositions.containsKey('server')) {
-      _nodePositions['server'] = Offset(cx - 100, cy + 40);
+      _nodePositions['server'] = Offset(cx - 140, cy + 80);
     }
     if (!_nodePositions.containsKey('honeypot')) {
-      _nodePositions['honeypot'] = Offset(cx + 100, cy + 40);
+      _nodePositions['honeypot'] = Offset(cx + 140, cy + 80);
     }
 
     final deviceNodes = nodes.where((n) => n['type'] == 'device').toList();
     final attackerNodes = nodes.where((n) => n['type'] == 'attacker').toList();
 
-    // Spread devices in a wider arc below the server
-    for (int i = 0; i < deviceNodes.length; i++) {
-      final id = deviceNodes[i]['id'] as String;
-      if (!_nodePositions.containsKey(id)) {
-        final totalDevices = math.max(deviceNodes.length, 1);
-        // Full semicircle below with generous spacing
-        final angleRange = math.pi * 0.8;
-        final startAngle = math.pi + (math.pi - angleRange) / 2;
-        final angle =
-            startAngle + angleRange * (i / math.max(totalDevices - 1, 1));
-        const radius = 260.0;
-        _nodePositions[id] = Offset(
-          cx + radius * math.cos(angle),
-          cy + radius * math.sin(angle) + 60,
-        );
+    // ── Devices: two concentric rings with generous spacing ──
+    final devCount = deviceNodes.length;
+    if (devCount > 0) {
+      // For 8 or fewer: single ring. For more: split into two rings.
+      final useDoubleRing = devCount > 8;
+      final ring1Count = useDoubleRing ? (devCount / 2).ceil() : devCount;
+      final ring2Count = useDoubleRing ? devCount - ring1Count : 0;
+
+      // Radii: much wider to avoid overlapping — min 120px arc per node
+      final r1 = math.max(280.0, ring1Count * 120.0 / (2 * math.pi));
+      final r2 = math.max(450.0, ring2Count * 120.0 / (2 * math.pi));
+
+      for (int i = 0; i < deviceNodes.length; i++) {
+        final id = deviceNodes[i]['id'] as String;
+        if (!_nodePositions.containsKey(id)) {
+          final bool isRing2 = useDoubleRing && i >= ring1Count;
+          final ringIdx = isRing2 ? i - ring1Count : i;
+          final ringTotal = isRing2 ? ring2Count : ring1Count;
+          final radius = isRing2 ? r2 : r1;
+          // Offset ring2 by half a slot to stagger nodes
+          final offset = isRing2 ? math.pi / math.max(ringTotal, 1) : 0.0;
+          final angle = offset + 2 * math.pi * ringIdx / math.max(ringTotal, 1) - math.pi / 2;
+          _nodePositions[id] = Offset(
+            cx + radius * math.cos(angle),
+            cy + radius * math.sin(angle),
+          );
+        }
       }
     }
 
-    // Attackers spread out to the right
-    for (int i = 0; i < attackerNodes.length; i++) {
-      final id = attackerNodes[i]['id'] as String;
-      if (!_nodePositions.containsKey(id)) {
-        _nodePositions[id] = Offset(
-          cx + 320 + (i % 3) * 100.0,
-          cy - 160 + (i ~/ 3) * 100.0,
-        );
+    // ── Attackers: far outer ring ──
+    if (attackerNodes.isNotEmpty) {
+      final atkCount = attackerNodes.length;
+      final atkRadius = math.max(550.0, atkCount * 120.0 / (2 * math.pi));
+      for (int i = 0; i < attackerNodes.length; i++) {
+        final id = attackerNodes[i]['id'] as String;
+        if (!_nodePositions.containsKey(id)) {
+          final angle = 2 * math.pi * i / atkCount - math.pi / 2;
+          _nodePositions[id] = Offset(
+            cx + atkRadius * math.cos(angle),
+            cy + atkRadius * math.sin(angle),
+          );
+        }
       }
     }
   }
@@ -267,6 +298,16 @@ class _NetworkTopologyScreenState extends State<NetworkTopologyScreen>
               });
             },
             tooltip: 'Reset view',
+          ),
+          IconButton(
+            icon: const Icon(Icons.auto_fix_high),
+            onPressed: () {
+              setState(() {
+                _nodePositions.clear();
+                if (_topology != null) _layoutNodes(_topology!);
+              });
+            },
+            tooltip: 'Re-layout nodes',
           ),
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -427,7 +468,6 @@ class _NetworkTopologyScreenState extends State<NetworkTopologyScreen>
 
     return GestureDetector(
       onScaleStart: (d) {
-        // Check if user is dragging a node
         final hitId = hitTestNode(d.focalPoint);
         if (hitId != null) {
           _draggingNodeId = hitId;
@@ -439,11 +479,9 @@ class _NetworkTopologyScreenState extends State<NetworkTopologyScreen>
       onScaleUpdate: (d) {
         setState(() {
           if (_draggingNodeId != null) {
-            // Move the node
             final canvasPos = (d.focalPoint - _panOffset) / _scale;
             _nodePositions[_draggingNodeId!] = canvasPos;
           } else {
-            // Pan canvas
             _panOffset = d.focalPoint - _lastPanStart;
             if (d.scale != 1.0) {
               _scale = (_scale * d.scale).clamp(0.4, 2.5);
@@ -477,18 +515,22 @@ class _NetworkTopologyScreenState extends State<NetworkTopologyScreen>
           ),
         ),
         child: ClipRect(
-          child: CustomPaint(
-            painter: _TopologyPainter(
-              nodes: nodes,
-              edges: edges,
-              positions: _nodePositions,
-              panOffset: _panOffset,
-              scale: _scale,
-              selectedNodeId: _selectedNodeId,
-              theme: theme,
-              isDark: isDark,
+          child: AnimatedBuilder(
+            animation: _flowAnim,
+            builder: (context, _) => CustomPaint(
+              painter: _TopologyPainter(
+                nodes: nodes,
+                edges: edges,
+                positions: _nodePositions,
+                panOffset: _panOffset,
+                scale: _scale,
+                selectedNodeId: _selectedNodeId,
+                theme: theme,
+                isDark: isDark,
+                flowProgress: _flowAnim.value,
+              ),
+              child: const SizedBox.expand(),
             ),
-            child: const SizedBox.expand(),
           ),
         ),
       ),
@@ -908,6 +950,7 @@ class _TopologyPainter extends CustomPainter {
   final String? selectedNodeId;
   final ThemeData theme;
   final bool isDark;
+  final double flowProgress;
 
   _TopologyPainter({
     required this.nodes,
@@ -918,6 +961,7 @@ class _TopologyPainter extends CustomPainter {
     this.selectedNodeId,
     required this.theme,
     required this.isDark,
+    this.flowProgress = 0.0,
   });
 
   Color _nodeColor(Map<String, dynamic> node) {
@@ -981,6 +1025,22 @@ class _TopologyPainter extends CustomPainter {
         _drawDashedLine(canvas, fromPos, toPos, paint);
       } else {
         canvas.drawLine(fromPos, toPos, paint);
+      }
+
+      // Animated packet-flow dots along the edge
+      final dotColor = isAttack
+          ? Colors.red.shade300
+          : isRedirected
+              ? Colors.orange.shade300
+              : theme.colorScheme.primary.withOpacity(0.7);
+      final dotPaint = Paint()..color = dotColor;
+      for (int d = 0; d < 3; d++) {
+        final t = (flowProgress + d * 0.33) % 1.0;
+        final dotPos = Offset(
+          fromPos.dx + (toPos.dx - fromPos.dx) * t,
+          fromPos.dy + (toPos.dy - fromPos.dy) * t,
+        );
+        canvas.drawCircle(dotPos, 3.0, dotPaint);
       }
     }
 
@@ -1154,12 +1214,5 @@ class _TopologyPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _TopologyPainter oldDelegate) =>
-      oldDelegate.nodes != nodes ||
-      oldDelegate.positions != positions ||
-      oldDelegate.panOffset != panOffset ||
-      oldDelegate.scale != scale ||
-      oldDelegate.selectedNodeId != selectedNodeId ||
-      oldDelegate.theme != theme ||
-      oldDelegate.isDark != isDark;
+  bool shouldRepaint(covariant _TopologyPainter oldDelegate) => true;
 }

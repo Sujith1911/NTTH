@@ -19,6 +19,14 @@ from app.ids.threshold_config import THRESHOLDS
 
 log = get_logger("rule_engine")
 
+# Ports that normal client devices legitimately connect to — never count these as scan targets
+_COMMON_SERVICE_PORTS = {
+    53, 80, 123, 443, 853, 993, 995,
+    5222, 5223, 5228, 5229, 5230,  # Google Play, FCM push
+    8080, 8443,                     # alt HTTP/HTTPS
+    4500, 500,                      # IPSec/VPN
+}
+
 # ── Memory safety constants ──────────────────────────────────────────────────
 _PORT_WINDOW_MAXLEN = 500       # Max entries per IP for port scan tracking
 _TARGET_WINDOW_MAXLEN = 500     # Max entries per IP for target sweep tracking
@@ -91,6 +99,9 @@ def _detect_port_scan(src_ip: str, dst_port: int | None) -> tuple[float, dict]:
     """Score = 1.0 if >N unique ports in window, else 0."""
     if dst_port is None:
         return 0.0, {"rule": "port_scan", "matched": False, "reason": "No destination port"}
+    # Common service ports (HTTPS, DNS, etc.) are not scan indicators
+    if dst_port in _COMMON_SERVICE_PORTS:
+        return 0.0, {"rule": "port_scan", "matched": False, "reason": "Common service port"}
     now = time.monotonic()
     window = _port_windows[src_ip]
     # Prune old entries
@@ -121,6 +132,10 @@ def _detect_host_sweep(src_ip: str, dst_ip: str | None, protocol: str | None, ds
     # Repeated DNS/HTTPS to public endpoints should not look like LAN host discovery.
     if protocol in {"tcp", "udp"} and dst_port in {53, 80, 123, 443, 853, 5228, 5229, 5230}:
         return 0.0, {"rule": "host_sweep", "matched": False, "reason": "Common client service"}
+    # ICMP to public/external IPs is normal browsing behavior (traceroute, CDN pings).
+    # Host sweeps only target local LAN subnets.
+    if protocol == "icmp" and not dst_ip.startswith("192.168.") and not dst_ip.startswith("10.") and not dst_ip.startswith("172."):
+        return 0.0, {"rule": "host_sweep", "matched": False, "reason": "ICMP to public IP (normal browsing)"}
     now = time.monotonic()
     window = _target_windows[src_ip]
     cutoff = now - THRESHOLDS.port_scan_window_seconds
@@ -147,6 +162,11 @@ def _detect_arp_sweep(src_ip: str, arp_target_ip: str | None, is_arp_request: bo
     """Detect ARP discovery sweeps such as nmap -PR or arp-scan."""
     if not is_arp_request or not arp_target_ip:
         return 0.0, {"rule": "arp_sweep", "matched": False, "reason": "Not an ARP request"}
+    # ARP for the gateway is completely normal — every device does this
+    from app.config import get_settings
+    _gw = get_settings().gateway_ip
+    if arp_target_ip == _gw:
+        return 0.0, {"rule": "arp_sweep", "matched": False, "reason": "ARP for gateway (normal)"}
     now = time.monotonic()
     window = _arp_windows[src_ip]
     cutoff = now - THRESHOLDS.port_scan_window_seconds
@@ -171,13 +191,16 @@ def _detect_arp_sweep(src_ip: str, arp_target_ip: str | None, is_arp_request: bo
 
 def _detect_stealth_scan(src_ip: str, protocol: str | None, flags: str | None) -> tuple[float, dict]:
     """Detect NULL/FIN/XMAS-like nmap probes and OS-detection flag anomalies."""
+    # Stealth scans only apply to TCP — UDP/ICMP/ARP packets must be excluded immediately
+    if protocol != "tcp":
+        return 0.0, {"rule": "stealth_scan", "matched": False, "reason": "Not TCP; stealth scan N/A"}
     normalized = (flags or "").strip()
-    if protocol != "tcp" or normalized in {"S", "SA", "A", "PA", "FA", "RA", "R", ""}:
-        if normalized != "":
-            return 0.0, {"rule": "stealth_scan", "matched": False, "reason": "Common TCP flag pattern"}
+    # Normal TCP flag patterns are safe
+    if normalized in {"S", "SA", "A", "PA", "FA", "RA", "R"}:
+        return 0.0, {"rule": "stealth_scan", "matched": False, "reason": "Common TCP flag pattern"}
     suspicious = False
     if normalized == "":
-        suspicious = True  # NULL scan
+        suspicious = True  # NULL scan (TCP with no flags set)
     else:
         flag_set = set(normalized)
         suspicious = bool(flag_set & {"F", "P", "U"}) and "S" not in flag_set and "A" not in flag_set
