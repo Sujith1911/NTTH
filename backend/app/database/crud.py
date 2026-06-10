@@ -48,14 +48,19 @@ async def update_last_login(db: AsyncSession, user_id: str) -> None:
 
 # ── Devices ───────────────────────────────────────────────────────────────────
 
-async def get_or_create_device(db: AsyncSession, ip_address: str) -> tuple[Device, bool]:
-    """Return (device, created). Updates last_seen on each call."""
+async def get_or_create_device(
+    db: AsyncSession,
+    ip_address: str,
+    last_seen: Optional[datetime] = None,
+) -> tuple[Device, bool]:
+    """Return (device, created)."""
     result = await db.execute(select(Device).where(Device.ip_address == ip_address))
     device = result.scalar_one_or_none()
     if device:
-        device.last_seen = utc_now_naive()
+        if last_seen is not None:
+            device.last_seen = last_seen
         return device, False
-    device = Device(ip_address=ip_address)
+    device = Device(ip_address=ip_address, last_seen=last_seen or utc_now_naive())
     db.add(device)
     await db.flush()
     await db.refresh(device)
@@ -121,9 +126,12 @@ async def get_device(db: AsyncSession, device_id: str) -> Optional[Device]:
 
 
 async def update_device_risk(db: AsyncSession, device_id: str, risk_score: float) -> None:
-    await db.execute(
-        update(Device).where(Device.id == device_id).values(risk_score=risk_score)
-    )
+    """Update device risk score using max(current, new) so repeated attacks accumulate."""
+    result = await db.execute(select(Device).where(Device.id == device_id))
+    device = result.scalar_one_or_none()
+    if device:
+        device.risk_score = max(device.risk_score or 0.0, risk_score)
+        device.last_seen = utc_now_naive()
 
 
 async def update_device_trust(db: AsyncSession, device_id: str, is_trusted: bool) -> Optional[Device]:

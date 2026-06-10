@@ -62,13 +62,12 @@ services:
     image: cowrie/cowrie:latest
     container_name: ntth_cowrie
     restart: unless-stopped
+    network_mode: host
     environment:
       - COWRIE_HOSTNAME=server01
     volumes:
       - ./cowrie/logs:/cowrie/cowrie-git/var/log/cowrie
       - ./cowrie/cowrie.cfg:/cowrie/cowrie-git/etc/cowrie.cfg:ro
-    ports:
-      - "30022:2222" # SSH honeypot port
 
 volumes:
   postgres_data:

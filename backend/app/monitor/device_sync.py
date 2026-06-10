@@ -33,7 +33,7 @@ async def sync_device_registry() -> None:
             if not state:
                 continue
             try:
-                device, _ = await crud.get_or_create_device(db, ip)
+                device, _ = await crud.get_or_create_device(db, ip, last_seen=state.get("last_seen"))
                 stat = DeviceStat(
                     device_id=device.id,
                     packet_count=state.get("packet_count", 0),

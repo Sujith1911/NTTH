@@ -251,8 +251,13 @@ def _detect_syn_flood(src_ip: str, is_syn: bool) -> tuple[float, dict]:
     return min(rate / THRESHOLDS.syn_flood_per_second, 0.8), detail
 
 
-def _detect_brute_force(src_ip: str, dst_port: int | None) -> tuple[float, dict]:
-    """Score = 1.0 if auth port hit rate > threshold in window."""
+def _detect_brute_force(src_ip: str, dst_port: int | None, is_syn: bool) -> tuple[float, dict]:
+    """Score = 1.0 if auth port packet rate > threshold in window.
+
+    Counts ALL packets to auth ports (not just SYN) because SSH is encrypted
+    and password attempts are invisible at the network layer. A single SSH
+    session generates ~15 packets for setup + ~5 per password attempt.
+    """
     if dst_port not in _AUTH_PORTS:
         return 0.0, {"rule": "brute_force", "matched": False, "reason": "Not an auth service port"}
     now = time.monotonic()
@@ -298,7 +303,7 @@ def evaluate(features: dict) -> dict:
     arp_score, arp_detail = _detect_arp_sweep(src_ip, features.get("arp_target_ip"), bool(features.get("is_arp_request")))
     stealth_score, stealth_detail = _detect_stealth_scan(src_ip, protocol, flags)
     syn_score, syn_detail = _detect_syn_flood(src_ip, is_syn)
-    brute_score, brute_detail = _detect_brute_force(src_ip, dst_port)
+    brute_score, brute_detail = _detect_brute_force(src_ip, dst_port, is_syn)
 
     rule_score = max(port_score, host_score, arp_score, stealth_score, syn_score, brute_score)
 

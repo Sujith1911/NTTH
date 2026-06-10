@@ -51,11 +51,12 @@ async def _handle_device_seen(features: dict) -> None:
     ):
         return
 
+    device_state = None
     # ── ALWAYS register managed devices, even for benign traffic ──
     # This must happen BEFORE any whitelist return, otherwise devices
     # that only produce whitelisted traffic (VMs, phones) never appear.
     if is_managed_asset_ip(src_ip):
-        device_registry.update(features)
+        device_state = device_registry.update(features)
 
     # Ignore normal web responses from public CDNs to local ephemeral ports.
     # These are replies to Ubuntu/browser traffic, not inbound scans.
@@ -125,7 +126,7 @@ async def _handle_device_seen(features: dict) -> None:
 
     # Update device registry (for non-managed IPs that made it past whitelists)
     if not is_managed_asset_ip(src_ip):
-        device_registry.update(features)
+        device_state = device_registry.update(features)
 
     # Rule-based scoring
     rule_result = rule_engine.evaluate(features)
@@ -147,7 +148,7 @@ async def _handle_device_seen(features: dict) -> None:
         if ml_score < 0.9:
             return
         rule_result["threat_type"] = "anomaly"
-    action = determine_action(risk_score)
+    action = determine_action(risk_score, rule_result.get("threat_type", "normal"))
 
     # Only emit threat events above the log threshold
     if action == "allow":

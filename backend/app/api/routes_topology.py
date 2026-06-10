@@ -220,9 +220,29 @@ async def get_topology(
 
     # Devices (skip gateway/server — they have dedicated nodes above)
     _infrastructure_ips = {gateway_ip, local_ip}
+    from datetime import datetime, timedelta
+    now_utc = datetime.utcnow()
     for device in devices:
         if device.ip_address in _infrastructure_ips:
             continue
+
+        # Check if the device is active (online, VM, or has active rules/recent sessions)
+        is_vm = (
+            (device.mac_address and device.mac_address.lower().startswith("52:54:00"))
+            or (device.hostname and device.hostname.lower().startswith("vm-"))
+        )
+        is_blocked = device.ip_address in blocked_ips
+        is_redirected = device.ip_address in redirected_ips
+        is_throttled = device.ip_address in throttled_ips
+        is_active_threat = is_blocked or is_redirected or is_throttled or (device.ip_address in local_session_ips)
+        
+        is_online = False
+        if device.last_seen:
+            is_online = (now_utc - device.last_seen) < timedelta(minutes=3)
+
+        if not (is_vm or is_online or is_active_threat):
+            continue
+
         node_id = f"dev_{device.ip_address.replace('.', '_')}"
         live = stats_map.get(device.ip_address, {})
         # Parse open_ports from JSON string

@@ -92,7 +92,8 @@ def _choose_response_action(payload: dict, base_action: str) -> tuple[str, str, 
         response = "observe" if base_action in {"allow", "log"} else "observe_and_throttle"
         return base_action, response, None
 
-    if base_action == "honeypot" and risk_score < 0.85:
+    _rule_detected_threats = {"brute_force", "port_scan", "host_sweep", "stealth_scan"}
+    if base_action == "honeypot" and risk_score < 0.85 and payload.get("threat_type") not in _rule_detected_threats:
         return "rate_limit", "observe_and_throttle", None
 
     if base_action == "honeypot" and protocol == "tcp":
@@ -136,7 +137,7 @@ async def _handle_threat_detected(payload: dict) -> None:
     if src_ip in _self_ips:
         return
 
-    base_action = determine_action(risk_score)
+    base_action = determine_action(risk_score, payload.get("threat_type", "normal"))
     action, response_mode, honeypot_port = _choose_response_action(payload, base_action)
     victim_ip = payload.get("dst_ip")
     threat_type = payload.get("threat_type", "unknown")

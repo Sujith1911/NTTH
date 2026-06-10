@@ -98,6 +98,20 @@ async def _handle_report_event(payload: dict) -> None:
                 device, _ = await crud.upsert_device_details(db, managed_asset_ip)
                 await crud.update_device_risk(db, device.id, payload.get("risk_score", 0.0))
 
+            # Also update the ATTACKER device risk when attacker is on our network
+            # (e.g. phone attacking VMs). This ensures the attacker's risk score
+            # increases in the dashboard with each detected attack.
+            attacker_ip = payload.get("src_ip", "")
+            if (
+                attacker_ip
+                and is_managed_asset_ip(attacker_ip)
+                and attacker_ip != managed_asset_ip
+            ):
+                attacker_dev, _ = await crud.upsert_device_details(db, attacker_ip)
+                await crud.update_device_risk(
+                    db, attacker_dev.id, payload.get("risk_score", 0.0)
+                )
+
             # Create threat event
             event = await crud.create_threat_event(
                 db,

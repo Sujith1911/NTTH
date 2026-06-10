@@ -159,7 +159,8 @@ if [ "$NTTH_MODE" = "gateway" ]; then
   sudo ip addr add "$GW_IP/24" dev "$BRIDGE"
   sudo ip link set "$BRIDGE" up
   sudo ip link set "$GW_IFACE" up
-  echo "   ✅ $BRIDGE → $GW_IP/24 (bridge mode)"
+  sudo ip link set "$BRIDGE" promisc on
+  echo "   ✅ $BRIDGE → $GW_IP/24 (bridge mode, promisc on)"
 
   # ── 5e. Deploy hostapd config ──────────────────────────────────────────────
   if [ -f "$GATEWAY_DIR/hostapd.conf" ]; then
@@ -186,20 +187,36 @@ if [ "$NTTH_MODE" = "gateway" ]; then
   echo 1 | sudo tee /proc/sys/net/ipv4/ip_forward > /dev/null
   echo "   ✅ IP forwarding enabled"
 
+  # ── 5g2. Enable bridge netfilter so nftables DNAT applies to bridged traffic
+  #          (VM-to-VM traffic is switched at layer 2; without br_netfilter,
+  #           nftables prerouting hooks never see it and DNAT rules are ignored)
+  sudo modprobe br_netfilter 2>/dev/null || true
+  if [ -f /proc/sys/net/bridge/bridge-nf-call-iptables ]; then
+    echo 1 | sudo tee /proc/sys/net/bridge/bridge-nf-call-iptables > /dev/null
+    echo "   ✅ Bridge netfilter enabled (nftables DNAT works on bridged traffic)"
+  fi
+
   # ── 5h. Set up NAT / iptables ──────────────────────────────────────────────
   # Flush old NTTH rules first (idempotent)
   sudo iptables -t nat -D POSTROUTING -o "$GW_UPSTREAM" -j MASQUERADE 2>/dev/null || true
   sudo iptables -D FORWARD -i "$BRIDGE" -o "$GW_UPSTREAM" -j ACCEPT 2>/dev/null || true
   sudo iptables -D FORWARD -i "$GW_UPSTREAM" -o "$BRIDGE" -m state --state RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || true
+  sudo iptables -D FORWARD -i "$BRIDGE" -o "$BRIDGE" -j ACCEPT 2>/dev/null || true
+  sudo iptables -D INPUT -i "$BRIDGE" -p udp --dport 67 -j ACCEPT 2>/dev/null || true
+  sudo iptables -D INPUT -i "$BRIDGE" -p udp --dport 68 -j ACCEPT 2>/dev/null || true
   # Clean up any old rules referencing the raw Wi-Fi iface
   sudo iptables -D FORWARD -i "$GW_IFACE" -o "$GW_UPSTREAM" -j ACCEPT 2>/dev/null || true
   sudo iptables -D FORWARD -i "$GW_UPSTREAM" -o "$GW_IFACE" -m state --state RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || true
 
-  # Add rules — forward from bridge to upstream
+  # Intra-bridge: allow VMs to talk to each other and to dnsmasq (DHCP)
+  sudo iptables -I FORWARD -i "$BRIDGE" -o "$BRIDGE" -j ACCEPT
+  sudo iptables -I INPUT -i "$BRIDGE" -p udp --dport 67 -j ACCEPT
+  sudo iptables -I INPUT -i "$BRIDGE" -p udp --dport 68 -j ACCEPT
+  # Forward from bridge to upstream (internet access for VMs)
   sudo iptables -t nat -A POSTROUTING -o "$GW_UPSTREAM" -j MASQUERADE
   sudo iptables -A FORWARD -i "$BRIDGE" -o "$GW_UPSTREAM" -j ACCEPT
   sudo iptables -A FORWARD -i "$GW_UPSTREAM" -o "$BRIDGE" -m state --state RELATED,ESTABLISHED -j ACCEPT
-  echo "   ✅ NAT rules applied ($BRIDGE → $GW_UPSTREAM)"
+  echo "   ✅ NAT + bridge forwarding rules applied"
 
   # ── 5h2. Initialise NTTH nftables infrastructure ──────────────────────────
   # Create NTTH-owned tables/chains for security rules (containment, redirect)

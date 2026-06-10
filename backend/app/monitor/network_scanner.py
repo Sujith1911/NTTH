@@ -348,8 +348,11 @@ async def scan_network() -> list[dict]:
                             lease_mac = parts[1]
                             lease_ip = parts[2]
                             lease_hostname = parts[3] if parts[3] != "*" else None
-                            # Only include IPs in our scan subnet
-                            if is_managed_asset_ip(lease_ip) and lease_ip not in live_ips:
+                            # Only include silent DHCP-leased devices if they are QEMU VMs
+                            # (since QEMU VMs can be silent/idle but should remain).
+                            # Normal user devices (like phones) that don't respond to ping are offline.
+                            is_qemu = lease_mac.lower().startswith("52:54:00")
+                            if is_managed_asset_ip(lease_ip) and lease_ip not in live_ips and is_qemu:
                                 dhcp_ips.add(lease_ip)
                                 await crud.upsert_device_details(
                                     db,

@@ -170,10 +170,16 @@ class NFTManager:
         created_by: str = "system",
         reason: Optional[str] = None,
     ) -> Optional[str]:
-        """Redirect src_ip TCP traffic from src_port to dst_port (honeypot)."""
+        """Redirect src_ip TCP traffic from src_port to the honeypot via DNAT.
+
+        Uses 'dnat to <gateway_ip>:<dst_port>' instead of 'redirect to' because
+        the traffic is forwarded through the gateway (not addressed to it).
+        The 'redirect' target only works for traffic destined to the local machine.
+        """
         await self.ensure_infra()
+        gateway_ip = settings.gateway_ip
         match_dst = f"ip daddr {dst_ip} " if dst_ip else ""
-        rule = f"ip saddr {src_ip} {match_dst}tcp dport {src_port} redirect to :{dst_port}"
+        rule = f"ip saddr {src_ip} {match_dst}tcp dport {src_port} dnat to {gateway_ip}:{dst_port}"
         rc, _, stderr = await _run_nft(
             "add",
             "rule",
@@ -198,7 +204,7 @@ class NFTManager:
                     created_by=created_by,
                     reason=reason,
                 )
-            log.info("nft_manager.redirected", ip=src_ip, from_port=src_port, to_port=dst_port)
+            log.info("nft_manager.redirected", ip=src_ip, from_port=src_port, to_port=dst_port, gateway=gateway_ip)
             return f"nat:{handle}"
         log.error("nft_manager.redirect_failed", ip=src_ip, error=stderr)
         return None
