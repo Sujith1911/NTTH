@@ -55,5 +55,9 @@ flutter_app/.pub/
 Thumbs.db
 desktop.ini
 
+# VM disk images (too large for GitHub, environment-specific)
+vms/*.qcow2
+vms/*.iso
+
 # Antigravity brain artifacts (AI assistant files)
 .gemini/
