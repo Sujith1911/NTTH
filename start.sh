@@ -25,6 +25,7 @@ GW_IFACE="wlx24ec99bfe292"       # USB adapter (hotspot)
 GW_UPSTREAM="wlp0s20f3"          # Built-in Wi-Fi (internet)
 GW_IP="192.168.4.1"
 GW_SUBNET="192.168.4.0/24"
+BRIDGE_MAC="02:4e:54:54:48:01"  # Stable gateway MAC; TAP ports must not change it
 
 echo ""
 echo "╔══════════════════════════════════════════════╗"
@@ -139,6 +140,8 @@ if [ "$NTTH_MODE" = "gateway" ]; then
   # ── 5c. Ensure adapter is in managed mode (not monitor) ────────────────────
   echo "   📡 Configuring $GW_IFACE for AP mode..."
   sudo nmcli device disconnect "$GW_IFACE" 2>/dev/null || true
+  sudo nmcli device set "$GW_IFACE" managed no 2>/dev/null || true
+  sudo rfkill unblock wifi 2>/dev/null || true
   CURRENT_MODE=$(iw dev "$GW_IFACE" info 2>/dev/null | grep "type" | awk '{print $2}')
   if [ "$CURRENT_MODE" = "monitor" ]; then
     echo "   🔧 Switching from monitor → managed mode..."
@@ -154,6 +157,7 @@ if [ "$NTTH_MODE" = "gateway" ]; then
   else
     echo "   ✅ Bridge $BRIDGE already exists"
   fi
+  sudo ip link set dev "$BRIDGE" address "$BRIDGE_MAC"
   sudo ip addr flush dev "$GW_IFACE" 2>/dev/null || true
   sudo ip addr flush dev "$BRIDGE" 2>/dev/null || true
   sudo ip addr add "$GW_IP/24" dev "$BRIDGE"
@@ -253,11 +257,20 @@ if [ "$NTTH_MODE" = "gateway" ]; then
   echo "      IP fwd:   $(cat /proc/sys/net/ipv4/ip_forward)"
   echo "      Gateway:  $GW_IP on $GW_IFACE"
   echo "      Upstream: $GW_UPSTREAM"
+  AP_MODE=$(iw dev "$GW_IFACE" info 2>/dev/null | awk '/type/ {print $2}')
+  echo "      Wi-Fi:    ${AP_MODE:-unknown}"
 
   if [ "$HOSTAPD_STATUS" != "active" ]; then
     echo ""
     echo "   ❌ hostapd failed to start! Check: sudo journalctl -u hostapd -n 20"
     echo "      Common fix: make sure no other process is using $GW_IFACE"
+    exit 1
+  fi
+  if [ "$AP_MODE" != "AP" ]; then
+    echo ""
+    echo "   ❌ $GW_IFACE is not in AP mode; real devices will disconnect."
+    echo "      Check: sudo journalctl -u hostapd -n 30"
+    echo "      The script marked $GW_IFACE unmanaged in NetworkManager so hostapd can own it."
     exit 1
   fi
 

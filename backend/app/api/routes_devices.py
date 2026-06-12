@@ -3,9 +3,12 @@ Device routes: list devices, get device details, trust toggle, and stats history
 """
 from __future__ import annotations
 
+from datetime import timedelta
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.time_utils import utc_now_naive
 from app.database import crud
 from app.config import get_settings
 from app.websocket.live_updates import broadcast
@@ -25,10 +28,27 @@ settings = get_settings()
 async def list_devices(
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
+    active_only: bool = Query(True),
     db: AsyncSession = Depends(get_db),
     _user=Depends(get_current_user),
 ):
-    total, devices = await crud.list_devices(db, page, page_size)
+    presence_seconds = max(120, settings.device_scan_interval_seconds * 2)
+    seen_after = (
+        utc_now_naive() - timedelta(seconds=presence_seconds)
+        if active_only
+        else None
+    )
+    total, devices = await crud.list_devices(
+        db,
+        page,
+        page_size,
+        seen_after=seen_after,
+        exclude_ips={
+            ip
+            for ip in (settings.gateway_ip, settings.server_display_ip)
+            if ip
+        },
+    )
     return PaginatedResponse(
         total=total, page=page, page_size=page_size,
         items=[DeviceRead.model_validate(d) for d in devices],
@@ -55,15 +75,8 @@ async def clear_device_risk_by_ip(
     if device:
         device.risk_score = 0.0
 
+    # Only deactivate firewall rules — do NOT delete threat events or packets
     deactivated_rules = await crud.deactivate_firewall_rules_for_ip(db, parsed)
-    risk_history_cleanup = await crud.clear_risk_history_for_ip(db, parsed)
-    scanner_cleanup = await crud.purge_scanner_false_positive_for_ip(
-        db,
-        device_ip=parsed,
-        server_ip=settings.server_display_ip,
-    )
-    normal_cleanup = await crud.purge_low_risk_normal_events_for_ip(db, parsed)
-    broadcast_cleanup = await crud.purge_lan_broadcast_events_for_ip(db, parsed)
 
     removed_rules = 0
     try:
@@ -78,6 +91,18 @@ async def clear_device_risk_by_ip(
     except Exception:
         pass
 
+    # Reset escalation counters so the IP starts fresh
+    try:
+        from app.ids.risk_calculator import reset_scan_count
+        reset_scan_count(parsed)
+    except Exception:
+        pass
+    try:
+        from app.honeypot.session_logger import _attacker_command_counts
+        _attacker_command_counts.pop(parsed, None)
+    except Exception:
+        pass
+
     await db.commit()
     if device:
         await db.refresh(device)
@@ -89,10 +114,6 @@ async def clear_device_risk_by_ip(
         "unblocked": True,
         "removed_rules": removed_rules,
         "deactivated_rules": deactivated_rules,
-        "scanner_cleanup": scanner_cleanup,
-        "normal_cleanup": normal_cleanup,
-        "broadcast_cleanup": broadcast_cleanup,
-        "risk_history_cleanup": risk_history_cleanup,
     })
 
     return {
@@ -164,16 +185,9 @@ async def clear_device_risk(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Device not found")
 
     # Reset risk score and mark any DB-tracked containment rules inactive.
+    # Do NOT delete threat events or packets — preserve all historical data.
     device.risk_score = 0.0
     deactivated_rules = await crud.deactivate_firewall_rules_for_ip(db, device.ip_address)
-    risk_history_cleanup = await crud.clear_risk_history_for_ip(db, device.ip_address)
-    scanner_cleanup = await crud.purge_scanner_false_positive_for_ip(
-        db,
-        device_ip=device.ip_address,
-        server_ip=settings.server_display_ip,
-    )
-    normal_cleanup = await crud.purge_low_risk_normal_events_for_ip(db, device.ip_address)
-    broadcast_cleanup = await crud.purge_lan_broadcast_events_for_ip(db, device.ip_address)
 
     # Remove live nftables rules for this IP when nftables is available.
     removed_rules = 0
@@ -190,6 +204,18 @@ async def clear_device_risk(
     except Exception:
         pass
 
+    # Reset escalation counters
+    try:
+        from app.ids.risk_calculator import reset_scan_count
+        reset_scan_count(device.ip_address)
+    except Exception:
+        pass
+    try:
+        from app.honeypot.session_logger import _attacker_command_counts
+        _attacker_command_counts.pop(device.ip_address, None)
+    except Exception:
+        pass
+
     await db.commit()
     await db.refresh(device)
 
@@ -200,10 +226,6 @@ async def clear_device_risk(
         "unblocked": True,
         "removed_rules": removed_rules,
         "deactivated_rules": deactivated_rules,
-        "scanner_cleanup": scanner_cleanup,
-        "normal_cleanup": normal_cleanup,
-        "broadcast_cleanup": broadcast_cleanup,
-        "risk_history_cleanup": risk_history_cleanup,
     })
 
     return DeviceRead.model_validate(device)

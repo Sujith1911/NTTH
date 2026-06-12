@@ -27,6 +27,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
   int _total = 0;
   VoidCallback? _wsListener;
   Timer? _wsDebounce;
+  Timer? _refreshTimer;
   DateTime? _lastSyncedAt;
 
   @override
@@ -36,11 +37,14 @@ class _DevicesScreenState extends State<DevicesScreen> {
       _fetchDevices();
       _listenToWs();
     });
+    _refreshTimer =
+        Timer.periodic(const Duration(seconds: 10), (_) => _fetchDevices());
   }
 
   @override
   void dispose() {
     _wsDebounce?.cancel();
+    _refreshTimer?.cancel();
     final listener = _wsListener;
     if (listener != null) {
       context.read<WebSocketService>().removeListener(listener);
@@ -214,7 +218,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
 
   void _debouncedFetch() {
     _wsDebounce?.cancel();
-    _wsDebounce = Timer(const Duration(seconds: 3), () {
+    _wsDebounce = Timer(const Duration(milliseconds: 500), () {
       if (mounted && !_loading) _fetchDevices();
     });
   }

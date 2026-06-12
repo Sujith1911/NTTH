@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import socket
 import json
+from datetime import datetime, timedelta
 from ipaddress import ip_address, ip_network
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Request
@@ -24,6 +25,17 @@ log = get_logger("routes_topology")
 router = APIRouter()
 settings = get_settings()
 _IGNORED_DISPLAY_NETWORKS = tuple(ip_network(cidr) for cidr in settings.ignored_monitor_cidrs)
+
+
+def _presence_cutoff() -> datetime:
+    """Allow enough time for one missed scheduled scan without retaining stale nodes."""
+    grace_seconds = max(120, settings.device_scan_interval_seconds * 2)
+    return datetime.utcnow() - timedelta(seconds=grace_seconds)
+
+
+def _is_recent(timestamp, cutoff: datetime) -> bool:
+    return bool(timestamp and timestamp >= cutoff)
+
 
 def _get_gateway() -> str:
     """Prefer configured gateway IP for stable topology on Docker/Desktop."""
@@ -202,14 +214,16 @@ async def get_topology(
     redirected_ips = {r.target_ip for r in firewall_rules if r.is_active and r.rule_type == "redirect"}
     throttled_ips = {r.target_ip for r in firewall_rules if r.is_active and r.rule_type == "rate_limit"}
     known_device_ips = {device.ip_address for device in devices}
-    local_session_ips = {
+    presence_cutoff = _presence_cutoff()
+    recent_local_session_ips = {
         session.attacker_ip
         for session in honeypot_sessions
         if _is_local_managed_ip(session.attacker_ip)
+        and _is_recent(session.started_at, presence_cutoff)
     }
     local_candidate_ips = (
         known_device_ips
-        | local_session_ips
+        | recent_local_session_ips
         | {ip for ip in blocked_ips | redirected_ips | throttled_ips if _is_local_managed_ip(ip)}
     )
     risk_events = await crud.latest_threat_events_for_ips(
@@ -220,27 +234,13 @@ async def get_topology(
 
     # Devices (skip gateway/server — they have dedicated nodes above)
     _infrastructure_ips = {gateway_ip, local_ip}
-    from datetime import datetime, timedelta
-    now_utc = datetime.utcnow()
     for device in devices:
         if device.ip_address in _infrastructure_ips:
             continue
 
-        # Check if the device is active (online, VM, or has active rules/recent sessions)
-        is_vm = (
-            (device.mac_address and device.mac_address.lower().startswith("52:54:00"))
-            or (device.hostname and device.hostname.lower().startswith("vm-"))
-        )
-        is_blocked = device.ip_address in blocked_ips
-        is_redirected = device.ip_address in redirected_ips
-        is_throttled = device.ip_address in throttled_ips
-        is_active_threat = is_blocked or is_redirected or is_throttled or (device.ip_address in local_session_ips)
-        
-        is_online = False
-        if device.last_seen:
-            is_online = (now_utc - device.last_seen) < timedelta(minutes=3)
-
-        if not (is_vm or is_online or is_active_threat):
+        # Enforcement and threat history remain visible in their own screens,
+        # but neither is proof that a device is still connected.
+        if not _is_recent(device.last_seen, presence_cutoff):
             continue
 
         node_id = f"dev_{device.ip_address.replace('.', '_')}"
@@ -289,23 +289,14 @@ async def get_topology(
                 "type": "redirected",
             })
 
-    # Synthetic nodes: only show IPs from RECENT sessions or ACTIVE enforcement
-    # that don't already have a device entry — prevents stale blocked/unknown nodes
+    # Synthetic local nodes require very recent honeypot activity. Active
+    # enforcement alone is historical state and must not imply presence.
     known_ips = set(known_device_ips)
-    from datetime import datetime, timedelta
     _recent_cutoff = datetime.utcnow() - timedelta(hours=1)
-
-    # Only include honeypot session IPs that are recent (within last hour)
-    recent_session_ips = {
-        session.attacker_ip
-        for session in honeypot_sessions
-        if _is_local_managed_ip(session.attacker_ip)
-        and session.started_at and session.started_at > _recent_cutoff
-    }
 
     synthetic_local_ips = sorted(
         ip
-        for ip in recent_session_ips | blocked_ips | redirected_ips | throttled_ips
+        for ip in recent_local_session_ips
         if ip not in known_ips and ip not in _infrastructure_ips and _is_local_managed_ip(ip)
     )
     for ip in synthetic_local_ips:
@@ -338,6 +329,8 @@ async def get_topology(
         known_ips.add(ip)
 
     for session in honeypot_sessions[:20]:
+        if not _is_recent(session.started_at, _recent_cutoff):
+            continue
         if _should_hide_ip(session.attacker_ip):
             continue
         if _is_local_managed_ip(session.attacker_ip):

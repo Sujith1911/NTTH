@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NTTH Thesis — Part 4: Chapter 3 System Design</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Times+New+Roman&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Times New Roman',Times,serif;font-size:12pt;line-height:1.5;color:#000;background:#fff;max-width:8.5in;margin:0 auto;padding:1in}
+h1{font-size:14pt;font-weight:bold;text-align:center;margin:0 0 14px;color:#000}
+h2{font-size:14pt;font-weight:bold;margin:0 0 10px;color:#000}
+h3{font-size:12pt;font-weight:bold;margin:0 0 8px;color:#000}
+h4{font-size:12pt;font-style:italic;margin:0 0 6px;color:#333}
+p{text-align:justify;margin:0 0 0pt;line-height:1.5}
+ul,ol{margin-left:28px;margin-bottom:0pt}
+ul li,ol li{margin-bottom:0pt;text-align:justify;line-height:1.5}
+table{width:100%;border-collapse:collapse;margin:10px 0;font-size:12pt}
+th{background:#1b3a5c;color:#fff;font-weight:bold;padding:6px 10px;text-align:left;border:1px solid #1b3a5c;font-size:12pt}
+td{padding:5px 10px;border:1px solid #999;vertical-align:top;font-size:12pt}
+tr:nth-child(even){background:#f5f7fa}
+pre{background:#f4f4f4;border:1px solid #ddd;border-radius:4px;padding:12px 14px;font-size:9.5pt;font-family:'Courier New',monospace;overflow-x:auto;margin:12px 0;line-height:1.4;white-space:pre-wrap;word-wrap:break-word}
+code{font-family:'Courier New',monospace;font-size:10pt;background:#f0f0f0;padding:1px 4px;border-radius:2px}
+.tc{font-size:12pt;font-weight:bold;text-align:center;margin:6px 0 4px;color:#1b3a5c}
+.fc{font-size:10pt;text-align:center;color:#555;margin:4px 0 16px;font-style:italic}
+.diagram{background:#f8fafc;border:1px solid #d0d7de;border-radius:6px;padding:16px;margin:14px 0;overflow-x:auto}
+.flow{display:flex;align-items:center;justify-content:center;gap:6px;flex-wrap:wrap;padding:8px 0}
+.fb{background:linear-gradient(135deg,#1b3a5c,#2c5282);color:#fff;padding:10px 14px;border-radius:6px;text-align:center;font-size:9pt;font-weight:bold;min-width:95px;box-shadow:0 2px 5px rgba(0,0,0,.12)}
+.fb.g{background:linear-gradient(135deg,#276749,#38a169)}
+.fb.o{background:linear-gradient(135deg,#9c4221,#dd6b20)}
+.fb.r{background:linear-gradient(135deg,#9b2c2c,#e53e3e)}
+.fb.p{background:linear-gradient(135deg,#553c9a,#805ad5)}
+.fb small{display:block;font-weight:normal;font-size:8pt;margin-top:2px;opacity:.9}
+.fa{font-size:16pt;color:#1b3a5c;font-weight:bold}
+.arch-layer{border:2px solid #1b3a5c;border-radius:8px;padding:12px;margin:8px 0;position:relative}
+.arch-layer .lt{position:absolute;top:-10px;left:14px;background:#fff;padding:0 6px;font-weight:bold;font-size:10pt;color:#1b3a5c}
+.arch-inner{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:4px}
+.arch-box{background:#e8f0fe;border:1px solid #90b4de;border-radius:5px;padding:6px 12px;text-align:center;font-size:9pt;flex:1;min-width:90px}
+.arch-box b{display:block;color:#1b3a5c;font-size:10pt}
+.ad{text-align:center;font-size:18pt;color:#1b3a5c;margin:3px 0}
+@media print{body{padding:1in}th{-webkit-print-color-adjust:exact;print-color-adjust:exact}.fb{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+</style>
+</head>
+<body>
+
+<h1>CHAPTER 3: SYSTEM DESIGN AND ARCHITECTURE</h1>
+
+<h2>3.1 System Overview</h2>
+<p>NTTH implements an agent-inspired modular autonomous pipeline consisting of five processing phases connected through an asynchronous event bus. The system captures network traffic from both wired interfaces (using Scapy packet capture) and wireless interfaces (using the AR9271 adapter in monitor mode), analyzes each packet through a hybrid detection engine, and autonomously enforces appropriate responses through Linux kernel firewall rules and honeypot redirections.</p>
+
+<p>The design philosophy follows the principle of defense-in-depth, where multiple layers of security mechanisms work together to provide comprehensive protection. Unlike traditional IDS systems that operate as passive monitors, NTTH acts as an active security gateway positioned inline with the network traffic, enabling it to not only detect but also enforce defensive actions in real-time.</p>
+
+<p>The system operates in two complementary modes. In <b>gateway mode</b>, the host machine acts as a network bridge (br-ntth) connecting KVM virtual machines and real devices, giving NTTH full visibility into all forwarded traffic. In <b>monitor mode</b>, the AR9271 USB WiFi adapter captures 802.11 management frames for wireless threat detection. Both modes feed into the same unified processing pipeline.</p>
+
+<!-- Architecture Diagram -->
+<div class="diagram">
+<div class="tc">Figure 3.1: NTTH System Architecture — Five-Phase Pipeline</div>
+<div class="arch-layer" style="border-color:#805ad5"><span class="lt" style="color:#805ad5">Phase 1: Network Capture</span>
+<div class="arch-inner"><div class="arch-box"><b>🔌 Wired Sniffer</b>Scapy AsyncSniffer</div><div class="arch-box"><b>📡 Wireless Monitor</b>AR9271 ath9k_htc</div><div class="arch-box"><b>🔍 Feature Extractor</b>10-dim vector</div></div></div>
+<div class="ad">⬇</div>
+<div class="arch-layer" style="border-color:#2c5282;background:#ebf8ff"><span class="lt" style="color:#2c5282">Phase 2: Async Event Bus (pub/sub, 5000 capacity)</span>
+<div class="arch-inner"><div class="arch-box" style="background:#bee3f8"><b>device_seen</b></div><div class="arch-box" style="background:#bee3f8"><b>threat_detected</b></div><div class="arch-box" style="background:#bee3f8"><b>enforcement_action</b></div><div class="arch-box" style="background:#bee3f8"><b>report_event</b></div></div></div>
+<div class="ad">⬇</div>
+<div class="arch-layer" style="border-color:#276749"><span class="lt" style="color:#276749">Phase 3: Agent-Inspired Pipeline</span>
+<div class="arch-inner"><div class="arch-box" style="background:#c6f6d5"><b>🛡 Threat Agent</b>IDS + ML → Risk</div><div class="arch-box" style="background:#c6f6d5"><b>🧠 Decision Agent</b>Policy → Action</div><div class="arch-box" style="background:#c6f6d5"><b>⚡ Enforcement</b>nftables rules</div><div class="arch-box" style="background:#c6f6d5"><b>📊 Reporting</b>DB + WebSocket</div></div></div>
+<div class="ad">⬇</div>
+<div class="arch-layer" style="border-color:#9b2c2c"><span class="lt" style="color:#9b2c2c">Phase 4: Deception Layer</span>
+<div class="arch-inner"><div class="arch-box" style="background:#fed7d7"><b>🐚 Cowrie SSH</b>Port 30022→2222</div><div class="arch-box" style="background:#fed7d7"><b>🌐 HTTP Honeypot</b>Port 8888</div><div class="arch-box" style="background:#fed7d7"><b>🔗 Redirect Context</b>NAT IP mapping</div></div></div>
+<div class="ad">⬇</div>
+<div class="arch-layer" style="border-color:#dd6b20"><span class="lt" style="color:#dd6b20">Phase 5: Real-Time Dashboard</span>
+<div class="arch-inner"><div class="arch-box" style="background:#feebc8"><b>📱 Flutter Web</b>Threat, Firewall, HP</div><div class="arch-box" style="background:#feebc8"><b>📲 Android App</b>Same UI, mobile</div><div class="arch-box" style="background:#feebc8"><b>🔄 WebSocket</b>Live event stream</div></div></div>
+</div>
+<div class="fc">Figure 3.1 — Complete five-phase pipeline from packet capture to live dashboard display</div>
+
+<h2>3.2 Agent-Inspired Pipeline Design</h2>
+<p>We adopt an agent-inspired architecture where each processing stage operates as an autonomous module following the classical perception-reasoning-action pattern defined by Russell and Norvig. Each stage perceives inputs from the event bus, reasons about appropriate responses using its specialized logic, and takes actions within its domain.</p>
+
+<p>The agent-inspired design provides several architectural advantages over monolithic IDS systems. First, <b>fault isolation</b>: if the enforcement agent encounters an error applying a firewall rule, the threat detection and reporting agents continue functioning normally. Second, <b>independent scalability</b>: each agent can be profiled and optimized independently. Third, <b>testability</b>: each agent can be unit-tested with synthetic event bus messages without requiring a live network.</p>
+
+<div class="tc">Table 3.1: Agent Processing Stage Definitions</div>
+<table>
+<tr><th>Processing Stage</th><th>Perceives</th><th>Reasons</th><th>Acts</th></tr>
+<tr><td><b>Threat Agent</b></td><td>10-dim packet features</td><td>6 IDS rules + Isolation Forest ML model</td><td>Publishes risk score + GeoIP enrichment</td></tr>
+<tr><td><b>Decision Agent</b></td><td>Risk score + protocol context</td><td>Protocol-aware policy engine with scan counting</td><td>Selects: block / honeypot / throttle / log</td></tr>
+<tr><td><b>Enforcement Agent</b></td><td>Action directive</td><td>Rule deduplication + flow analysis</td><td>Applies nftables/iptables kernel firewall rules</td></tr>
+<tr><td><b>Reporting Agent</b></td><td>Complete event data</td><td>Victim identification + priority</td><td>SQLite DB + WebSocket broadcast</td></tr>
+</table>
+
+<!-- Pipeline flow -->
+<div class="diagram">
+<div class="tc">Figure 3.2: Agent Pipeline — Sequential Processing Flow</div>
+<div class="flow">
+<div class="fb">📦 Packet<small>Scapy</small></div><div class="fa">→</div>
+<div class="fb g">🛡 Threat<small>IDS+ML</small></div><div class="fa">→</div>
+<div class="fb p">🧠 Decision<small>Policy</small></div><div class="fa">→</div>
+<div class="fb r">⚡ Enforce<small>nftables</small></div><div class="fa">→</div>
+<div class="fb o">📊 Report<small>DB+WS</small></div><div class="fa">→</div>
+<div class="fb">📱 Dashboard<small>Live</small></div>
+</div>
+<p style="text-align:center;font-size:10pt;color:#555;margin-top:6px">Processing time: ~42 ms scoring + ~18 ms decision + ~67 ms enforcement = ~127 ms total</p>
+</div>
+
+<h2>3.3 Asynchronous Event Bus</h2>
+<p>The processing stages communicate through a publish-subscribe event bus implemented using Python asyncio queues with a capacity of 5,000 events. This decoupled design ensures fault isolation — if one stage fails, others continue processing. The event bus uses a single-threaded asyncio event loop for dispatching, ensuring thread safety without requiring explicit locking.</p>
+
+<p>The event bus implements back-pressure handling through its bounded queue. When the queue reaches capacity (5,000 events), new publications are dropped with a warning log, preventing memory exhaustion under sustained attack traffic. Events are dispatched in FIFO order, maintaining temporal ordering of security decisions.</p>
+
+<div class="tc">Table 3.2: Event Bus Topic Channels</div>
+<table>
+<tr><th>Topic</th><th>Publisher</th><th>Consumer</th><th>Payload</th></tr>
+<tr><td><code>device_seen</code></td><td>Packet Sniffer</td><td>Threat Agent</td><td>10-dim feature vector + metadata</td></tr>
+<tr><td><code>threat_detected</code></td><td>Threat Agent</td><td>Decision Agent</td><td>Risk score + GeoIP + threat type</td></tr>
+<tr><td><code>enforcement_action</code></td><td>Decision Agent</td><td>Enforcement Agent</td><td>Action + incident context</td></tr>
+<tr><td><code>report_event</code></td><td>Enforcement Agent</td><td>Reporting Agent</td><td>Complete event for DB + dashboard</td></tr>
+</table>
+
+<h2>3.4 Hybrid Risk Scoring Model</h2>
+
+<h3>3.4.1 Feature Extraction</h3>
+<p>Each captured packet is transformed into a 10-dimensional numerical feature vector suitable for both rule-based evaluation and machine learning scoring. The feature extraction process is implemented in the <code>feature_extractor.py</code> module and runs synchronously within the packet callback to minimize latency.</p>
+
+<div class="tc">Table 3.3: Feature Vector Description (10 dimensions)</div>
+<table>
+<tr><th>#</th><th>Feature</th><th>Type</th><th>Range</th><th>IDS Relevance</th></tr>
+<tr><td>1</td><td>packet_length</td><td>Integer</td><td>20–65535</td><td>Crafted packet detection</td></tr>
+<tr><td>2</td><td>destination_port</td><td>Integer</td><td>0–65535</td><td>Service vs unusual port</td></tr>
+<tr><td>3</td><td>is_syn</td><td>Binary</td><td>0/1</td><td>SYN flood, port scan</td></tr>
+<tr><td>4</td><td>is_ack</td><td>Binary</td><td>0/1</td><td>Connection state</td></tr>
+<tr><td>5</td><td>is_rst</td><td>Binary</td><td>0/1</td><td>Connection rejection</td></tr>
+<tr><td>6</td><td>is_fin</td><td>Binary</td><td>0/1</td><td>Connection teardown</td></tr>
+<tr><td>7</td><td>protocol_encoded</td><td>Float</td><td>0.0–3.0</td><td>TCP / UDP / ICMP</td></tr>
+<tr><td>8</td><td>tcp_window_size</td><td>Integer</td><td>0–65535</td><td>OS fingerprinting</td></tr>
+<tr><td>9</td><td>ttl</td><td>Integer</td><td>0–255</td><td>Spoofing detection</td></tr>
+<tr><td>10</td><td>payload_entropy</td><td>Float</td><td>0.0–8.0</td><td>Encrypted vs plaintext</td></tr>
+</table>
+
+<h3>3.4.2 Rule Engine Detectors</h3>
+<p>The rule engine implements seven sliding-window detectors that operate on per-source-IP bounded deques. Each detector maintains a time-windowed history of events and calculates a score in [0.0, 1.0] based on whether observed activity exceeds defined thresholds.</p>
+
+<div class="tc">Table 3.4: IDS Rule Engine — Seven Sliding-Window Detectors</div>
+<table>
+<tr><th>Detector</th><th>Window</th><th>Threshold</th><th>Score Logic</th></tr>
+<tr><td><b>Port Scan</b></td><td>15 seconds</td><td>4 unique ports</td><td>≥ threshold → 1.0; else min(count/4, 0.8)</td></tr>
+<tr><td><b>Host Sweep</b></td><td>15 seconds</td><td>3 unique targets</td><td>≥ threshold → 1.0; else min(count/3, 0.8)</td></tr>
+<tr><td><b>Stealth Scan</b></td><td>10 seconds</td><td>FIN/NULL/XMAS flags</td><td>≥ 3 stealth probes → 1.0</td></tr>
+<tr><td><b>SYN Flood</b></td><td>1 second</td><td>80 SYN/sec</td><td>≥ threshold → 1.0; else min(rate/80, 0.8)</td></tr>
+<tr><td><b>ICMP Flood</b></td><td>1 second</td><td>50 pings/sec</td><td>≥ threshold → 1.0; else min(rate/50, 0.8)</td></tr>
+<tr><td><b>ARP Sweep</b></td><td>10 seconds</td><td>5 ARP probes</td><td>≥ threshold → 1.0</td></tr>
+<tr><td><b>Brute Force</b></td><td>120 seconds</td><td>3 auth attempts</td><td>≥ threshold → 1.0; else min(attempts/3, 0.8)</td></tr>
+</table>
+
+<h3>3.4.3 Isolation Forest Anomaly Detection</h3>
+<p>The machine learning component uses scikit-learn's Isolation Forest algorithm configured with 100 estimators and a contamination parameter of 0.05 (5% expected anomaly rate). The model is trained on baseline normal traffic and produces anomaly scores in the range [-1, 1], which are normalized to [0, 1] for combination with the rule score.</p>
+
+<p>The key advantage of Isolation Forest for our use case is that it is <b>unsupervised</b> — it does not require labeled attack data for training. Instead, it learns the statistical distribution of normal network traffic and flags deviations. This makes it suitable for deployment in networks where attack data may not be available for training, and it can detect novel zero-day attacks that rule-based systems would miss.</p>
+
+<h3>3.4.4 Combined Scoring Formula</h3>
+<p style="text-align:center;font-size:14pt;font-weight:bold;padding:12px;background:#e8f0fe;border-radius:6px;margin:14px 0">risk = 0.6 × rule_score + 0.4 × ml_score</p>
+
+<p>The weights (0.6 for rules, 0.4 for ML) were determined through empirical testing. The rule-based component receives higher weight because it provides deterministic, interpretable decisions for known attack patterns. The ML component provides coverage for novel attacks that rules cannot detect. A confidence boost mechanism raises the combined score to a minimum of 0.90 when a rule detector achieves maximum confidence (rule_score = 1.0), ensuring that confirmed attacks always trigger enforcement actions.</p>
+
+<h3>3.4.5 Threat Escalation Logic</h3>
+<p>The system implements intelligent threat escalation to balance intelligence gathering with network protection:</p>
+
+<div class="tc">Table 3.5: Risk Score → Action Mapping with Escalation</div>
+<table>
+<tr><th>Risk Range</th><th>Action</th><th>Description</th><th>Mechanism</th></tr>
+<tr><td>&lt; 0.15</td><td>Allow</td><td>Normal traffic</td><td>No action</td></tr>
+<tr><td>0.15 – 0.25</td><td>Log</td><td>Record for review</td><td>Database entry only</td></tr>
+<tr><td>0.25 – 0.40</td><td>Rate Limit</td><td>Throttle traffic</td><td>nftables: limit 10/sec</td></tr>
+<tr style="background:#fff5f5"><td>0.40 – 0.80</td><td><b>Honeypot</b></td><td>Redirect to deception</td><td>iptables DNAT to Cowrie</td></tr>
+<tr style="background:#fed7d7"><td>≥ 0.80</td><td><b>Block</b></td><td>Drop all packets</td><td>nftables: drop</td></tr>
+</table>
+
+<div class="tc">Table 3.5b: Scan-Based Escalation Thresholds</div>
+<table>
+<tr><th>Attack Type</th><th>Count 1–5</th><th>Count 6+</th><th>Rationale</th></tr>
+<tr><td>Port Scan / Host Sweep</td><td>Honeypot redirect</td><td><b>Block</b></td><td>Gather intel first, then contain</td></tr>
+<tr><td>SSH Brute Force</td><td>Honeypot redirect</td><td>Block after 10 sessions</td><td>Capture credentials + commands</td></tr>
+<tr><td>SYN Flood / ICMP Flood</td><td colspan="2"><b>Immediate block</b></td><td>Cannot interact with honeypot</td></tr>
+<tr><td>ARP Sweep</td><td colspan="2"><b>Immediate block</b></td><td>Layer 2 attack, no TCP redirect</td></tr>
+</table>
+
+<h2>3.5 Flow-Aware Dynamic Honeypot Deployment</h2>
+<p>Unlike static honeypots that are deployed before attacks occur, NTTH creates targeted NAT redirection rules for specific network flows in real-time. When the Decision Agent determines a honeypot response, the Enforcement Agent creates an iptables DNAT rule scoped to the bridge interface:</p>
+<pre>iptables -t nat -I PREROUTING -i br-ntth -s {attacker} -d {victim} -p tcp --dport {port} -j DNAT --to-destination {gateway}:{honeypot_port}</pre>
+<p>This provides three key advantages:</p>
+<ol>
+<li><b>Selective deception:</b> Only the attacker's malicious traffic is redirected; legitimate traffic passes normally.</li>
+<li><b>Dynamic activation:</b> Honeypot rules are created in response to detected threats, not pre-configured.</li>
+<li><b>Contextual correlation:</b> Each honeypot session is linked to the original threat assessment through a redirect context registry.</li>
+</ol>
+
+<p>The system only creates DNAT rules for well-known service ports (22, 23, 80, 443, 3306, 3389, 5432, 5900, 8080) to prevent pollution of iptables with rules for random nmap probe ports. SSH-like ports (22, 23, 3389, 5900) are redirected to Cowrie (port 30022), while HTTP ports (80, 443, 8080) are redirected to the custom HTTP honeypot (port 8888).</p>
+
+<!-- Honeypot Flow Diagram -->
+<div class="diagram">
+<div class="tc">Figure 3.4: Flow-Aware Honeypot Deployment — How Attackers Are Trapped</div>
+<div style="display:flex;gap:16px;flex-wrap:wrap">
+<div style="flex:1;min-width:200px;text-align:center">
+<div style="font-weight:bold;color:#e53e3e;margin-bottom:6px">Before NTTH (Static)</div>
+<div class="flow" style="flex-direction:column;gap:4px">
+<div class="fb r" style="width:85%">Attacker → Victim:22<small>Direct connection</small></div>
+<div class="fa">↓</div>
+<div class="fb r" style="width:85%">Honeypot sits idle<small>Port 30022 (unused)</small></div>
+</div>
+</div>
+<div style="flex:1;min-width:200px;text-align:center">
+<div style="font-weight:bold;color:#38a169;margin-bottom:6px">After NTTH (Dynamic)</div>
+<div class="flow" style="flex-direction:column;gap:4px">
+<div class="fb g" style="width:85%">Attacker → Victim:22<small>Detected by IDS+ML</small></div>
+<div class="fa">↓</div>
+<div class="fb g" style="width:85%">iptables DNAT redirect<small>Transparent to attacker</small></div>
+<div class="fa">↓</div>
+<div class="fb g" style="width:85%">Cowrie captures everything<small>Commands + credentials</small></div>
+</div>
+</div>
+</div>
+</div>
+
+<h3>3.5.1 Honeypot Intelligence Escalation</h3>
+<p>When an attacker is redirected to the Cowrie SSH honeypot, the session logger tracks per-attacker command counts. The system observes attackers for their first 10 command interactions ("Log Only" mode) to gather threat intelligence — including login credentials, commands executed, malware URLs downloaded, and lateral movement attempts. After 10 interactions, the system autonomously escalates to a "Block" action, terminating all further communication from the attacker's IP address.</p>
+
+<p>This two-phase approach maximizes intelligence gathering while limiting attacker exposure time, addressing the finding by Vetterl and Clayton that 72% of SSH honeypot sessions last less than 60 seconds.</p>
+
+<h2>3.6 Database Schema</h2>
+<p>The system uses SQLite for persistent storage, chosen for its zero-configuration deployment and single-file portability. The schema consists of four core tables plus supporting tables for device statistics and firewall rule lifecycle management.</p>
+
+<div class="tc">Table 3.6: Database Tables</div>
+<table>
+<tr><th>Table</th><th>Key Fields</th><th>Purpose</th></tr>
+<tr><td><b>threat_events</b></td><td>src_ip, dst_ip, dst_port, threat_type, risk_score, action_taken, rule_score, ml_score, country, city, asn, detected_at</td><td>Every detected threat with full context including GeoIP enrichment</td></tr>
+<tr><td><b>firewall_rules</b></td><td>rule_type, target_ip, dst_ip, dst_port, nft_handle, active, reason, created_at, expires_at</td><td>All nftables/iptables rules with lifecycle tracking</td></tr>
+<tr><td><b>honeypot_sessions</b></td><td>session_id, attacker_ip, honeypot_type, commands[], credentials, duration, started_at, ended_at</td><td>Captured attacker behavior from Cowrie and HTTP honeypot</td></tr>
+<tr><td><b>devices</b></td><td>ip_address, mac_address, hostname, vendor, risk_score, is_trusted, first_seen, last_seen</td><td>Monitored network asset inventory with risk tracking</td></tr>
+<tr><td><b>captured_packets</b></td><td>src_ip, dst_ip, protocol, dst_port, packet_length, flags, captured_at</td><td>Raw packet metadata for forensic analysis</td></tr>
+<tr><td><b>device_stats</b></td><td>device_id, packets_in, packets_out, bytes_in, bytes_out, timestamp</td><td>Per-device traffic statistics snapshots</td></tr>
+</table>
+
+<h3>3.6.1 Data Retention and Cleanup</h3>
+<p>The system implements automatic data lifecycle management. Firewall rules have configurable TTLs (default: 1 hour for rate limits, 24 hours for blocks) and are automatically deactivated by a scheduled background task. Captured packet metadata is retained indefinitely for forensic analysis, while device statistics are aggregated into 5-minute snapshots to manage storage growth.</p>
+
+</body>
+</html>

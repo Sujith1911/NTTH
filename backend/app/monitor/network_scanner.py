@@ -107,6 +107,15 @@ def _arp_table() -> dict[str, str]:
     return result
 
 
+def _lease_is_current(expiry: str, now_epoch: int) -> bool:
+    """dnsmasq uses an epoch expiry; zero denotes an infinite lease."""
+    try:
+        expiry_epoch = int(expiry)
+    except (TypeError, ValueError):
+        return False
+    return expiry_epoch == 0 or expiry_epoch > now_epoch
+
+
 def _choose_scan_network() -> Optional[ipaddress.IPv4Network]:
     """Pick the subnet we should probe for device discovery."""
     candidates = [
@@ -335,24 +344,28 @@ async def scan_network() -> list[dict]:
                 log.info("network_scanner.device_ports",
                          ip=ip, hostname=hostname, open_ports=open_ports)
 
-        # ── Also register DHCP-leased devices (VMs that don't respond to ping) ──
+        # Also register silent QEMU VMs while their DHCP lease is current.
+        # Expired/removed leases must not refresh disconnected VM nodes.
         dhcp_ips = set()
         try:
             import os
+            import time
             lease_file = "/var/lib/misc/dnsmasq.leases"
             if os.path.isfile(lease_file):
+                now_epoch = int(time.time())
                 with open(lease_file, "r") as f:
                     for line in f:
                         parts = line.strip().split()
-                        if len(parts) >= 4:
+                        if len(parts) >= 4 and _lease_is_current(parts[0], now_epoch):
                             lease_mac = parts[1]
                             lease_ip = parts[2]
                             lease_hostname = parts[3] if parts[3] != "*" else None
-                            # Only include silent DHCP-leased devices if they are QEMU VMs
-                            # (since QEMU VMs can be silent/idle but should remain).
-                            # Normal user devices (like phones) that don't respond to ping are offline.
                             is_qemu = lease_mac.lower().startswith("52:54:00")
-                            if is_managed_asset_ip(lease_ip) and lease_ip not in live_ips and is_qemu:
+                            if (
+                                is_qemu
+                                and is_managed_asset_ip(lease_ip)
+                                and lease_ip not in live_ips
+                            ):
                                 dhcp_ips.add(lease_ip)
                                 await crud.upsert_device_details(
                                     db,

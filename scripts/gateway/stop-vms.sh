@@ -36,6 +36,8 @@ echo ""
 echo "🔌 Cleaning up TAP interfaces..."
 for i in $(seq 0 $((VM_COUNT - 1))); do
   TAP="tap${i}"
+  while ebtables -D FORWARD -i "$TAP" -p IPv4 --ip-proto udp --ip-sport 67 -j DROP 2>/dev/null; do :; done
+  while ebtables -D FORWARD -i "$TAP" -p ARP --arp-ip-src "192.168.4.1" -j DROP 2>/dev/null; do :; done
   if ip link show "$TAP" &>/dev/null; then
     ip link set "$TAP" down 2>/dev/null || true
     ip link delete "$TAP" 2>/dev/null || true

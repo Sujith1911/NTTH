@@ -80,7 +80,7 @@ class Settings(BaseSettings):
     # ── Packet retention / performance ────────────────────────────
     packet_retention_days: int = 7
     packet_export_limit: int = 5000
-    cowrie_redirect_port: int = 2222
+    cowrie_redirect_port: int = 30022
 
     event_bus_queue_size: int = 5000
     enable_simulation_routes: bool = False

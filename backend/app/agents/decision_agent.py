@@ -96,9 +96,16 @@ def _choose_response_action(payload: dict, base_action: str) -> tuple[str, str, 
     if base_action == "honeypot" and risk_score < 0.85 and payload.get("threat_type") not in _rule_detected_threats:
         return "rate_limit", "observe_and_throttle", None
 
+    # Only redirect well-known service ports to honeypot.
+    # Random high ports from nmap scans should NOT create DNAT rules.
+    _HONEYPOT_WORTHY_PORTS = {21, 22, 23, 25, 80, 110, 443, 3306, 3389, 5432, 5900, 8080, 8443}
     if base_action == "honeypot" and protocol == "tcp":
-        honeypot_port = settings.cowrie_redirect_port if dst_port in {21, 22, 23, 3389, 5900} else settings.http_honeypot_port
-        return "honeypot", "redirect_and_hide_target", honeypot_port
+        if dst_port and dst_port in _HONEYPOT_WORTHY_PORTS:
+            honeypot_port = settings.cowrie_redirect_port if dst_port in {21, 22, 23, 3389, 5900} else settings.http_honeypot_port
+            return "honeypot", "redirect_and_hide_target", honeypot_port
+        else:
+            # Random/high port from scan — just log, don't create DNAT
+            return "log", "observe_scan_probe", None
 
     if base_action == "block":
         return "block", "quarantine_source", None
@@ -137,14 +144,16 @@ async def _handle_threat_detected(payload: dict) -> None:
     if src_ip in _self_ips:
         return
 
-    base_action = determine_action(risk_score, payload.get("threat_type", "normal"))
+    base_action = determine_action(risk_score, payload.get("threat_type", "normal"), src_ip=src_ip)
     action, response_mode, honeypot_port = _choose_response_action(payload, base_action)
     victim_ip = payload.get("dst_ip")
     threat_type = payload.get("threat_type", "unknown")
     dedupe_key = (src_ip, victim_ip or "", threat_type)
     now = time.monotonic()
     last_seen = _RECENT_DECISIONS.get(dedupe_key)
-    if last_seen is not None and now - last_seen < 2.0:
+    # Shorter dedupe for high-risk threats so risk accumulates visibly
+    dedupe_ttl = 0.5 if action in {"block", "honeypot"} else 2.0
+    if last_seen is not None and now - last_seen < dedupe_ttl:
         return
     _RECENT_DECISIONS[dedupe_key] = now
     incident_context = {

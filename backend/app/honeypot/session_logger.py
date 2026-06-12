@@ -22,6 +22,10 @@ settings = get_settings()
 _REDIRECT_CONTEXT_TTL_SECONDS = 900
 _recent_redirect_contexts: list[dict[str, Any]] = []
 
+# Track per-attacker honeypot command count for escalation
+_attacker_command_counts: dict[str, int] = {}
+_HONEYPOT_BLOCK_THRESHOLD = 10  # Block after 10+ commands in honeypot
+
 
 def _normalize_timestamp(raw: str | None, fallback: datetime | None = None) -> datetime:
     if not raw:
@@ -255,6 +259,23 @@ async def _save_session(
             created = existing is None
             await db.commit()
         if created:
+            # Count sessions per attacker — escalate to block after threshold
+            _attacker_command_counts[attacker_ip] = _attacker_command_counts.get(attacker_ip, 0) + 1
+            cmd_count = _attacker_command_counts[attacker_ip]
+            
+            if cmd_count >= _HONEYPOT_BLOCK_THRESHOLD:
+                # Attacker has interacted enough — block them now
+                log.warning("session_logger.escalating_to_block",
+                            ip=attacker_ip, sessions=cmd_count,
+                            threshold=_HONEYPOT_BLOCK_THRESHOLD)
+                escalated_action = "block"
+            else:
+                # Still gathering intelligence — log only
+                log.info("session_logger.monitoring_attacker",
+                         ip=attacker_ip, sessions=cmd_count,
+                         remaining=_HONEYPOT_BLOCK_THRESHOLD - cmd_count)
+                escalated_action = "log"
+
             await publish("report_event", {
                 "src_ip": attacker_ip,
                 "dst_ip": victim_ip or settings.server_display_ip or None,
@@ -264,7 +285,7 @@ async def _save_session(
                 "risk_score": 0.98,
                 "rule_score": 1.0,
                 "ml_score": 0.0,
-                "action": "honeypot",
+                "action": escalated_action,
                 "country": session.country,
                 "city": session.city,
                 "asn": session.asn,
@@ -283,7 +304,9 @@ async def _save_session(
                     "target_hidden": True,
                     "honeypot_port": settings.cowrie_redirect_port if honeypot_type == "ssh" else settings.http_honeypot_port,
                     "tracked_commands": honeypot_type == "ssh",
-                    "response_priority": "aggressive",
+                    "response_priority": "aggressive" if escalated_action == "block" else "observe",
+                    "honeypot_sessions": cmd_count,
+                    "response_summary": f"Attacker blocked after {cmd_count} honeypot sessions" if escalated_action == "block" else None,
                 },
                 "incident_notes": json.dumps({
                     "source_tag": f"attacker::{attacker_ip.replace('.', '-')}",

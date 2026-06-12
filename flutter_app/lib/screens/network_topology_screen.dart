@@ -55,7 +55,7 @@ class _NetworkTopologyScreenState extends State<NetworkTopologyScreen>
       _listenWS();
     });
     _refreshTimer =
-        Timer.periodic(const Duration(seconds: 30), (_) => _fetchTopology());
+        Timer.periodic(const Duration(seconds: 10), (_) => _fetchTopology());
   }
 
   @override
@@ -83,9 +83,9 @@ class _NetworkTopologyScreenState extends State<NetworkTopologyScreen>
       if (latest['type'] == 'topology_updated' ||
           latest['type'] == 'device_seen' ||
           latest['type'] == 'device_updated') {
-        // Debounce: wait 3s after last event before fetching
+        // Coalesce packet bursts while keeping presence changes near-realtime.
         _wsDebounce?.cancel();
-        _wsDebounce = Timer(const Duration(seconds: 3), () {
+        _wsDebounce = Timer(const Duration(milliseconds: 500), () {
           if (mounted) _fetchTopology();
         });
       }
@@ -215,7 +215,9 @@ class _NetworkTopologyScreenState extends State<NetworkTopologyScreen>
           final radius = isRing2 ? r2 : r1;
           // Offset ring2 by half a slot to stagger nodes
           final offset = isRing2 ? math.pi / math.max(ringTotal, 1) : 0.0;
-          final angle = offset + 2 * math.pi * ringIdx / math.max(ringTotal, 1) - math.pi / 2;
+          final angle = offset +
+              2 * math.pi * ringIdx / math.max(ringTotal, 1) -
+              math.pi / 2;
           _nodePositions[id] = Offset(
             cx + radius * math.cos(angle),
             cy + radius * math.sin(angle),

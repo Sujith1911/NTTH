@@ -33,6 +33,7 @@ _TARGET_WINDOW_MAXLEN = 500     # Max entries per IP for target sweep tracking
 _ARP_WINDOW_MAXLEN = 500        # Max entries per IP for ARP sweep tracking
 _STEALTH_WINDOW_MAXLEN = 100    # Max entries per IP for stealth flag tracking
 _SYN_WINDOW_MAXLEN = 200        # Max entries per IP for SYN flood tracking
+_ICMP_WINDOW_MAXLEN = 200       # Max entries per IP for ICMP flood tracking
 _BRUTE_WINDOW_MAXLEN = 200      # Max entries per IP for brute force tracking
 _MAX_TRACKED_IPS = 5_000        # Trigger stale-key pruning above this
 _STALE_SECONDS = 300            # 5 min — remove keys idle longer than this
@@ -54,6 +55,9 @@ _stealth_windows: dict[str, deque[tuple[float, str]]] = defaultdict(
 )
 _syn_windows: dict[str, deque[float]] = defaultdict(
     lambda: deque(maxlen=_SYN_WINDOW_MAXLEN)
+)
+_icmp_windows: dict[str, deque[float]] = defaultdict(
+    lambda: deque(maxlen=_ICMP_WINDOW_MAXLEN)
 )
 _brute_windows: dict[str, deque[float]] = defaultdict(
     lambda: deque(maxlen=_BRUTE_WINDOW_MAXLEN)
@@ -251,6 +255,31 @@ def _detect_syn_flood(src_ip: str, is_syn: bool) -> tuple[float, dict]:
     return min(rate / THRESHOLDS.syn_flood_per_second, 0.8), detail
 
 
+def _detect_icmp_flood(src_ip: str, protocol: str | None, icmp_type: int | None) -> tuple[float, dict]:
+    """Score = 1.0 if ICMP echo request rate > 50 per second."""
+    if protocol != "icmp" or icmp_type != 8:  # type 8 = echo request
+        return 0.0, {"rule": "icmp_flood", "matched": False, "reason": "Not an ICMP echo request"}
+    now = time.monotonic()
+    window = _icmp_windows[src_ip]
+    window.append(now)
+    cutoff = now - 1.0  # 1-second window
+    while window and window[0] < cutoff:
+        window.popleft()
+    rate = len(window)
+    threshold = 50  # 50 pings/sec = flood
+    detail = {
+        "rule": "icmp_flood",
+        "matched": rate >= threshold,
+        "pings_per_second": rate,
+        "threshold": threshold,
+        "window_seconds": 1,
+    }
+    if rate >= threshold:
+        log.warning("ids.icmp_flood", src_ip=src_ip, rate=rate)
+        return 1.0, detail
+    return min(rate / threshold, 0.8), detail
+
+
 def _detect_brute_force(src_ip: str, dst_port: int | None, is_syn: bool) -> tuple[float, dict]:
     """Score = 1.0 if auth port packet rate > threshold in window.
 
@@ -303,9 +332,10 @@ def evaluate(features: dict) -> dict:
     arp_score, arp_detail = _detect_arp_sweep(src_ip, features.get("arp_target_ip"), bool(features.get("is_arp_request")))
     stealth_score, stealth_detail = _detect_stealth_scan(src_ip, protocol, flags)
     syn_score, syn_detail = _detect_syn_flood(src_ip, is_syn)
+    icmp_score, icmp_detail = _detect_icmp_flood(src_ip, protocol, features.get("icmp_type"))
     brute_score, brute_detail = _detect_brute_force(src_ip, dst_port, is_syn)
 
-    rule_score = max(port_score, host_score, arp_score, stealth_score, syn_score, brute_score)
+    rule_score = max(port_score, host_score, arp_score, stealth_score, syn_score, icmp_score, brute_score)
 
     threat_type = "normal"
     if rule_score >= 0.9:
@@ -319,6 +349,8 @@ def evaluate(features: dict) -> dict:
             threat_type = "stealth_scan"
         elif syn_score >= 0.9:
             threat_type = "syn_flood"
+        elif icmp_score >= 0.9:
+            threat_type = "icmp_flood"
         elif brute_score >= 0.9:
             threat_type = "brute_force"
     elif rule_score > 0:
@@ -332,6 +364,7 @@ def evaluate(features: dict) -> dict:
         "arp_score": round(arp_score, 4),
         "stealth_score": round(stealth_score, 4),
         "syn_score": round(syn_score, 4),
+        "icmp_score": round(icmp_score, 4),
         "brute_score": round(brute_score, 4),
         "rule_details": {
             "port_scan": port_detail,
@@ -339,6 +372,7 @@ def evaluate(features: dict) -> dict:
             "arp_sweep": arp_detail,
             "stealth_scan": stealth_detail,
             "syn_flood": syn_detail,
+            "icmp_flood": icmp_detail,
             "brute_force": brute_detail,
             "winning_rule": (
                 "port_scan" if port_score == rule_score and rule_score > 0 else
@@ -346,6 +380,7 @@ def evaluate(features: dict) -> dict:
                 "arp_sweep" if arp_score == rule_score and rule_score > 0 else
                 "stealth_scan" if stealth_score == rule_score and rule_score > 0 else
                 "syn_flood" if syn_score == rule_score and rule_score > 0 else
+                "icmp_flood" if icmp_score == rule_score and rule_score > 0 else
                 "brute_force" if brute_score == rule_score and rule_score > 0 else
                 "none"
             ),

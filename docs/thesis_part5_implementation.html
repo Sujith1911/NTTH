@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NTTH Thesis — Part 5: Chapter 4 Implementation</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Times+New+Roman&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Times New Roman',Times,serif;font-size:12pt;line-height:1.5;color:#000;background:#fff;max-width:8.5in;margin:0 auto;padding:1in}
+h1{font-size:14pt;font-weight:bold;text-align:center;margin:0 0 14px;color:#000}
+h2{font-size:14pt;font-weight:bold;margin:0 0 10px;color:#000}
+h3{font-size:12pt;font-weight:bold;margin:0 0 8px;color:#000}
+p{text-align:justify;margin:0 0 0pt;line-height:1.5}
+ul,ol{margin-left:28px;margin-bottom:0pt}
+ul li,ol li{margin-bottom:0pt;text-align:justify;line-height:1.5}
+table{width:100%;border-collapse:collapse;margin:10px 0;font-size:12pt}
+th{background:#1b3a5c;color:#fff;font-weight:bold;padding:6px 10px;text-align:left;border:1px solid #1b3a5c;font-size:12pt}
+td{padding:5px 10px;border:1px solid #999;vertical-align:top;font-size:12pt}
+tr:nth-child(even){background:#f5f7fa}
+pre{background:#f4f4f4;border:1px solid #ddd;border-radius:4px;padding:12px 14px;font-size:9.5pt;font-family:'Courier New',monospace;overflow-x:auto;margin:12px 0;line-height:1.4;white-space:pre-wrap;word-wrap:break-word}
+code{font-family:'Courier New',monospace;font-size:10pt;background:#f0f0f0;padding:1px 4px;border-radius:2px}
+.tc{font-size:12pt;font-weight:bold;text-align:center;margin:6px 0 4px;color:#1b3a5c}
+.fc{font-size:10pt;text-align:center;color:#555;margin:4px 0 16px;font-style:italic}
+.pb{page-break-before:always;margin-top:30px}
+@media print{body{padding:1in}th{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+</style>
+</head>
+<body>
+
+<h1>CHAPTER 4: IMPLEMENTATION</h1>
+
+<h2>4.1 Technology Stack</h2>
+<p>The NTTH system is built using a carefully selected technology stack optimized for real-time packet processing, low-latency event-driven architecture, and cross-platform dashboard delivery. Each technology was chosen based on specific requirements: Python for its rich networking library ecosystem (Scapy, scikit-learn), FastAPI for its native async/await support critical for non-blocking packet processing, Flutter for single-codebase web and mobile deployment, and nftables for kernel-level packet filtering with minimal overhead.</p>
+
+<div class="tc">Table 4.1: Software Technology Stack</div>
+<table>
+<tr><th>Category</th><th>Technology</th><th>Version</th><th>Purpose</th></tr>
+<tr><td rowspan="5"><b>Backend</b></td><td>Python</td><td>3.12</td><td>Core language — async/await, networking</td></tr>
+<tr><td>FastAPI</td><td>0.109</td><td>REST API + WebSocket server</td></tr>
+<tr><td>Scapy</td><td>2.5</td><td>Raw packet capture and dissection</td></tr>
+<tr><td>scikit-learn</td><td>1.4</td><td>Isolation Forest anomaly detection</td></tr>
+<tr><td>Uvicorn</td><td>0.27</td><td>ASGI server with hot reload</td></tr>
+<tr><td rowspan="2"><b>Database</b></td><td>SQLite</td><td>3.45</td><td>Zero-config persistent storage</td></tr>
+<tr><td>SQLAlchemy</td><td>2.0</td><td>Async ORM with connection pooling</td></tr>
+<tr><td rowspan="2"><b>Honeypot</b></td><td>Cowrie</td><td>Latest</td><td>SSH/Telnet honeypot (Docker)</td></tr>
+<tr><td>HTTP Honeypot</td><td>Custom</td><td>Python aiohttp deception service</td></tr>
+<tr><td rowspan="2"><b>Frontend</b></td><td>Flutter</td><td>3.19</td><td>Dashboard (Web + Android)</td></tr>
+<tr><td>Dart</td><td>3.3</td><td>Frontend language with null safety</td></tr>
+<tr><td rowspan="2"><b>Firewall</b></td><td>nftables</td><td>Kernel 6.5+</td><td>Forward-chain packet filtering (block)</td></tr>
+<tr><td>iptables</td><td>1.8</td><td>NAT PREROUTING DNAT (honeypot redirect)</td></tr>
+<tr><td rowspan="2"><b>Virtualization</b></td><td>KVM/QEMU</td><td>8.2</td><td>Attack VMs (Alpine, Debian)</td></tr>
+<tr><td>Linux Bridge</td><td>br-ntth</td><td>Layer-2 bridge for VM networking</td></tr>
+<tr><td><b>Infra</b></td><td>Docker Compose</td><td>v2</td><td>Container orchestration</td></tr>
+<tr><td><b>GeoIP</b></td><td>MaxMind GeoLite2</td><td>Latest</td><td>IP geolocation enrichment</td></tr>
+</table>
+
+<h2>4.2 Hardware Requirements</h2>
+<p>A key design goal of NTTH is deployability on commodity hardware accessible to small organizations and educational institutions. The entire system — backend server, packet capture, honeypot containers, firewall enforcement, and dashboard — runs on a single laptop without requiring dedicated network appliances or cloud infrastructure.</p>
+
+<div class="tc">Table 4.2: Hardware Specifications</div>
+<table>
+<tr><th>Component</th><th>Specification</th><th>Purpose</th></tr>
+<tr><td><b>Host Machine</b></td><td>Lenovo IdeaPad 5, Intel i5-1235U, 16 GB RAM, 512 GB NVMe SSD</td><td>Backend server, packet capture, firewall, VM host</td></tr>
+<tr><td><b>WiFi Adapter</b></td><td>Atheros AR9271 USB (~$10), ath9k_htc driver</td><td>Monitor mode for 802.11 probe tracking</td></tr>
+<tr><td><b>Network Bridge</b></td><td>br-ntth (Linux bridge, 192.168.4.0/24)</td><td>Layer-2 bridge connecting VMs and gateway</td></tr>
+<tr><td><b>Attack VMs</b></td><td>4× KVM guests (Alpine Linux, Debian), 512MB RAM each</td><td>Controlled attack sources (nmap, SSH, ping flood)</td></tr>
+<tr><td><b>Operating System</b></td><td>Ubuntu 22.04 LTS, Kernel 6.5</td><td>Host OS with nftables and br_netfilter support</td></tr>
+</table>
+
+<h3>4.2.1 Network Testbed Architecture</h3>
+<p>The experimental testbed uses a Linux bridge (br-ntth) to create an isolated Layer-2 network segment. The Ubuntu host machine acts as a gateway (192.168.4.1) providing NAT connectivity to the upstream WiFi network. Four KVM virtual machines are connected to this bridge, simulating both attacker and victim hosts. The br_netfilter kernel module is loaded to enable iptables processing of bridged packets, which is essential for DNAT-based honeypot redirection.</p>
+
+<div class="tc">Table 4.2b: Virtual Machine Configuration</div>
+<table>
+<tr><th>VM Name</th><th>IP Address</th><th>OS</th><th>Role</th><th>Tools Installed</th></tr>
+<tr><td>vm-atk-01</td><td>192.168.4.177</td><td>Alpine Linux</td><td>Attacker</td><td>nmap, hping3, arping</td></tr>
+<tr><td>vm-atk-02</td><td>192.168.4.178</td><td>Alpine Linux</td><td>Attacker</td><td>nmap, SSH client</td></tr>
+<tr><td>vm-tgt-01</td><td>192.168.4.181</td><td>Debian 12</td><td>Target</td><td>SSH server, Apache</td></tr>
+<tr><td>vm-tgt-02</td><td>192.168.4.182</td><td>Debian 12</td><td>Target</td><td>SSH server, nginx</td></tr>
+</table>
+
+<h2>4.3 Backend Implementation</h2>
+<h3>4.3.1 Application Entry Point (main.py)</h3>
+<p>The FastAPI application initializes all components on startup through a lifespan context manager. This ensures all subsystems — database, event bus, packet sniffer, honeypots, and scheduled tasks — are started in the correct order and gracefully shut down on termination.</p>
+<pre>@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # 1. Initialize database tables
+    await init_db()
+    
+    # 2. Seed admin user
+    await create_user(db, settings.admin_username, 
+                      hash_password(settings.admin_password))
+    
+    # 3. Start asynchronous event bus
+    await start_event_bus()
+    
+    # 4. Start background scheduler
+    await start_scheduler()
+    
+    # 5. Start Scapy packet sniffer
+    sniffer_task = asyncio.create_task(start_sniffer())
+    
+    # 6. Start HTTP honeypot (port 8888)
+    honeypot_task = asyncio.create_task(start_http_honeypot())
+    
+    # 7. Start Cowrie JSON log watcher
+    cowrie_task = asyncio.create_task(watch_cowrie_log())
+    
+    # 8. Periodic network scan (every 5 min)
+    scan_task = asyncio.create_task(_periodic_scan())
+    
+    yield  # Application is running
+    
+    # Shutdown: cancel all tasks
+    for task in [sniffer_task, honeypot_task, cowrie_task, scan_task]:
+        task.cancel()
+    await stop_event_bus()</pre>
+
+<h3>4.3.2 Packet Sniffer (packet_sniffer.py)</h3>
+<p>The packet sniffer uses Scapy's AsyncSniffer to capture all IP packets on the bridge interface. It runs in the host's network namespace to access real LAN traffic. Each captured packet is processed through the feature extractor and published to the event bus for threat analysis. The sniffer uses a BPF filter ("ip") to capture only IPv4 traffic, reducing processing overhead from ARP and other Layer-2 frames.</p>
+<pre>async def start_sniffer():
+    from scapy.all import AsyncSniffer
+    
+    def _packet_callback(pkt):
+        features = extract_features(pkt)
+        if not features:
+            return
+        # Update live stats and device registry
+        update_live_stats(features)
+        registry_update(features)
+        # Publish to event bus (thread-safe)
+        asyncio.run_coroutine_threadsafe(
+            publish("device_seen", features), loop
+        )
+    
+    sniffer = AsyncSniffer(
+        prn=_packet_callback,
+        store=False,
+        filter="ip",
+        iface=settings.network_interface
+    )
+    sniffer.start()</pre>
+
+<p>The <code>store=False</code> parameter is critical for memory safety — without it, Scapy would store every captured packet in memory, leading to out-of-memory conditions during sustained traffic. The callback uses <code>asyncio.run_coroutine_threadsafe</code> because Scapy's sniffer runs in a separate thread, while the event bus operates in the asyncio event loop.</p>
+
+<h2>4.4 Agent Code Walkthrough</h2>
+
+<h3>4.4.1 Threat Agent (threat_agent.py)</h3>
+<p>The Threat Agent is the first processing stage in the pipeline. It subscribes to <code>device_seen</code> events from the packet sniffer and runs the complete IDS + ML scoring pipeline. The agent filters out benign outbound traffic (normal browsing, DNS, HTTPS) from managed devices to prevent false positives from legitimate internet activity.</p>
+<pre>async def _handle_device_seen(features: dict):
+    # Filter: outbound traffic to common service ports is always benign
+    if features.get("direction") == "outbound" \
+       and is_managed_asset_ip(src_ip) \
+       and dst_port in _COMMON_CLIENT_SERVICE_PORTS:
+        return
+    
+    # 1. Rule-based scoring (7 sliding-window detectors)
+    rule_result = rule_engine.evaluate(features)
+    
+    # 2. ML anomaly scoring (Isolation Forest)
+    ml_score = anomaly_model.score(features)
+    
+    # 3. Combined risk calculation
+    risk_score = calculate(rule_result["rule_score"], ml_score)
+    
+    # 4. Determine action with scan-based escalation
+    action = determine_action(risk_score, 
+                              rule_result.get("threat_type", "normal"),
+                              src_ip=src_ip)
+    
+    if action == "allow":
+        return  # Normal traffic, no event
+    
+    # 5. GeoIP enrichment (non-blocking, best-effort)
+    geo_info = lookup(features["src_ip"])
+    
+    # 6. Publish threat event
+    await event_bus.publish("threat_detected", {
+        **features, **rule_result,
+        "ml_score": ml_score,
+        "risk_score": risk_score,
+        "action": action,
+        **geo_info
+    })
+
+# Auto-subscribe at module import
+event_bus.subscribe("device_seen", _handle_device_seen)</pre>
+
+<h3>4.4.2 Decision Agent (decision_agent.py)</h3>
+<p>The Decision Agent implements protocol-aware response selection with intelligent deduplication. It subscribes to <code>threat_detected</code> events and determines the appropriate enforcement action based on threat type, protocol, destination port, and risk score. The agent implements a deduplicate mechanism that allows only one decision per 0.5 seconds for enforcement actions and 2.0 seconds for monitoring actions per unique flow tuple (src_ip, dst_ip, threat_type).</p>
+<pre>async def _handle_threat_detected(payload: dict):
+    src_ip = payload["src_ip"]
+    risk_score = payload["risk_score"]
+    
+    # Skip gateway IP (never block the router)
+    if src_ip in {settings.gateway_ip, settings.server_display_ip}:
+        return
+    
+    # Protocol-aware routing: SSH → Cowrie, HTTP → HTTP honeypot
+    # Only redirect well-known service ports, not random nmap probes
+    _HONEYPOT_PORTS = {21, 22, 23, 80, 443, 3306, 3389, 5432, 5900, 8080}
+    if protocol == "tcp" and dst_port in _HONEYPOT_PORTS:
+        if dst_port in {21, 22, 23, 3389, 5900}:
+            honeypot_port = 30022  # → Cowrie SSH
+        else:
+            honeypot_port = 8888   # → HTTP honeypot
+        action = "honeypot"
+    
+    await event_bus.publish("enforcement_action", {
+        **payload,
+        "action": action,
+        "incident_context": { ... }
+    })</pre>
+
+<h3>4.4.3 Enforcement Agent (enforcement_agent.py)</h3>
+<p>The Enforcement Agent translates decision directives into real Linux kernel firewall rules. It operates on the <code>enforcement_action</code> event bus topic and creates nftables (for blocking) or iptables (for DNAT redirection) rules. The agent implements rule deduplication to prevent identical rules from being created multiple times for the same attacker-victim-port flow.</p>
+<pre>async def _apply_enforcement(payload: dict):
+    nft = NFTManager()
+    
+    if action == "rate_limit":
+        await nft.add_rate_limit(src_ip, reason="...")
+        
+    elif action == "honeypot":
+        # Create flow-aware DNAT redirect (scoped to bridge)
+        handle = await nft.add_redirect(
+            src_ip, src_port=dst_port,
+            dst_port=honeypot_port, dst_ip=dst_ip
+        )
+        # Register redirect context for NAT correlation
+        register_redirect_context(
+            attacker_ip=src_ip,
+            honeypot_type="ssh" if port == 30022 else "http"
+        )
+        # Flush stale conntrack for this attacker only
+        await _flush_conntrack_for_ip(src_ip)
+        
+    elif action == "block":
+        # Block forwarded traffic, preserve gateway access
+        await nft.add_block(src_ip, reason="...")</pre>
+
+<h3>4.4.4 Event Bus Core (event_bus.py)</h3>
+<p>The event bus is the communication backbone connecting all agents. It implements a bounded asyncio queue with publish-subscribe semantics. The single-dispatcher design ensures events are processed sequentially, preventing race conditions in firewall rule creation.</p>
+<pre>_queue = asyncio.Queue(maxsize=5000)
+_subscribers = defaultdict(list)
+
+def subscribe(topic, handler):
+    _subscribers[topic].append(handler)
+
+async def publish(topic, payload):
+    _queue.put_nowait({"topic": topic, "payload": payload})
+
+async def _dispatch_loop():
+    while True:
+        event = await _queue.get()
+        for handler in _subscribers[event["topic"]]:
+            try:
+                await handler(event["payload"])
+            except Exception as exc:
+                log.error("handler_error", error=str(exc))
+        _queue.task_done()</pre>
+
+<h3>4.4.5 Risk Calculator (risk_calculator.py)</h3>
+<p>The risk calculator combines rule-based and ML scores and implements per-IP scan tracking for graduated threat escalation.</p>
+<pre>_scan_counts: dict[str, int] = defaultdict(int)
+_SCAN_BLOCK_THRESHOLD = 6  # Block after 6+ scans
+
+def calculate(rule_score: float, ml_score: float) -> float:
+    risk = 0.6 * rule_score + 0.4 * ml_score
+    if rule_score >= 1.0:
+        risk = max(risk, 0.90)  # Boost confirmed attacks
+    return round(min(max(risk, 0.0), 1.0), 4)
+
+def determine_action(risk_score, threat_type="normal", src_ip=""):
+    # Honeypot interactions — already trapped, don't block
+    if threat_type in {"honeypot_ssh", "honeypot_http"}:
+        return "log"
+    
+    # Scan attacks — track count, escalate after threshold
+    if threat_type in {"port_scan", "host_sweep", "stealth_scan"}:
+        if src_ip:
+            _scan_counts[src_ip] += 1
+            if _scan_counts[src_ip] >= _SCAN_BLOCK_THRESHOLD:
+                return "block"
+        return "honeypot"
+    
+    # SSH brute force — always honeypot for deception
+    if threat_type == "brute_force":
+        return "honeypot"
+    
+    # Flood attacks — block immediately
+    if threat_type in {"syn_flood", "icmp_flood", "arp_sweep"}:
+        return "block"
+    
+    # Score-based fallback
+    if risk_score >= 0.80: return "block"
+    if risk_score >= 0.40: return "honeypot"
+    if risk_score >= 0.25: return "rate_limit"
+    if risk_score >= 0.15: return "log"
+    return "allow"</pre>
+
+<h2>4.5 Firewall and Honeypot Integration</h2>
+<h3>4.5.1 nftables/iptables Manager (nft_manager.py)</h3>
+<p>The NFTManager class wraps Linux kernel firewall commands via subprocess calls. The system uses a hybrid firewall approach: <b>nftables</b> for forward-chain blocking (with the <code>inet ntth_filter</code> table) and <b>iptables</b> for NAT PREROUTING DNAT redirection (required for br_netfilter compatibility with bridged traffic).</p>
+
+<p>Key design decisions in the firewall manager:</p>
+<ul>
+<li><b>Bridge-scoped DNAT:</b> All iptables DNAT rules use <code>-i br-ntth</code> to ensure redirection only applies to bridged VM traffic, preventing interference with upstream WiFi connectivity.</li>
+<li><b>Targeted conntrack flush:</b> Instead of flushing the entire connection tracking table (which disconnects all active connections), the system flushes only entries for the specific attacker IP using <code>conntrack -D -s {attacker_ip}</code>.</li>
+<li><b>Gateway-safe blocking:</b> nftables block rules use <code>ip daddr != {gateway_ip} drop</code> to ensure blocked attackers can still reach the gateway for DNS/DHCP, preventing cascading network disruptions.</li>
+</ul>
+
+<h3>4.5.2 Cowrie SSH Honeypot</h3>
+<p>Cowrie runs as a Docker container (image: cowrie/cowrie:latest) on port 30022 externally mapped to port 2222 internally. It simulates a Debian Linux shell environment, accepting any credentials and logging all attacker activity to a JSON log file shared via Docker volume. The backend's <code>cowrie_watcher</code> continuously tails this log file, parsing login events, command input, file downloads, and session closures in real-time.</p>
+
+<h3>4.5.3 Session Logger and Intelligence Escalation</h3>
+<p>The <code>session_logger.py</code> module tracks per-attacker command counts across honeypot sessions. When an attacker has executed 10 or more commands in the honeypot, the system escalates to an automatic block action. This two-phase approach maximizes intelligence gathering — capturing credentials, lateral movement attempts, and malware download URLs — before terminating the attacker's access.</p>
+
+<h2>4.6 Flutter Dashboard</h2>
+<p>The frontend is built with Flutter 3.19 targeting both Web and Android platforms from a single Dart codebase. The dashboard implements a persistent WebSocket connection to the backend, providing sub-second live updates for all security events. The UI follows a dark-themed "Command Center" design language optimized for security operations.</p>
+
+<p>The dashboard consists of 9 screens:</p>
+<ol>
+<li><b>Login:</b> JWT-based authentication with animated gradient background and system status badges</li>
+<li><b>Dashboard:</b> Network Command Center with live incident counts, system health indicators, and real-time analysis feed showing the most recent threat events</li>
+<li><b>Devices:</b> Protected Asset Inventory showing IP address, MAC address, hostname, vendor, risk score with color-coded severity, and administrative actions (Clear Risk, Trust/Untrust)</li>
+<li><b>Threat Map:</b> Threat Intelligence Stream with severity filtering (High/Medium/Low), full-text search, and real-time sync indicators showing timestamp of last event</li>
+<li><b>Topology:</b> Live Network Graph using force-directed layout, showing device relationships with color-coded legend (Gateway, Server, Trusted, Unknown, High-Risk, Honeypot nodes)</li>
+<li><b>Firewall:</b> Containment Controls with Active/History toggle, showing rule type (block/redirect/rate-limit), target IP, creation time, expiry, and administrative delete capability</li>
+<li><b>Honeypot:</b> Deception Surface with terminal-style command display showing captured attacker commands, attempted credentials, session duration, and attacker IP correlation</li>
+<li><b>System:</b> System health monitoring showing sniffer status, event bus queue depth, database connections, and uptime</li>
+<li><b>Settings:</b> Configuration management including dark/light theme toggle, notification preferences, and API endpoint configuration</li>
+</ol>
+
+<h3>4.6.1 WebSocket Live Updates</h3>
+<p>The dashboard maintains a persistent WebSocket connection to the backend at <code>/ws/live</code>. The connection uses automatic reconnection with exponential backoff (1s, 2s, 4s, up to 30s maximum). Events received via WebSocket trigger immediate UI updates through Dart's <code>StreamController</code> pattern, providing sub-second latency from threat detection to dashboard display.</p>
+
+<h2>4.7 Docker Deployment</h2>
+<div class="tc">Table 4.4: Docker Container Configuration</div>
+<table>
+<tr><th>Container</th><th>Image</th><th>Network</th><th>Ports</th><th>Key Config</th></tr>
+<tr><td><b>ntth_backend</b></td><td>backend-backend</td><td>host mode</td><td>8001</td><td>Host network for real traffic capture; <code>--privileged</code> for nftables</td></tr>
+<tr><td><b>ntth_cowrie</b></td><td>cowrie/cowrie:latest</td><td>bridge</td><td>30022→2222</td><td>Shared volume for JSON logs; auto-restart on failure</td></tr>
+</table>
+
+<p>The backend container runs in <code>host</code> network mode because it needs direct access to the physical network interface for packet capture. The <code>--privileged</code> flag is required for nftables and iptables rule manipulation. The Cowrie container runs in standard bridge mode with port mapping, and its JSON log file is shared with the backend via a Docker volume mount.</p>
+
+<h2>4.8 REST API Endpoints</h2>
+<div class="tc">Table 4.3: Backend REST API Endpoints</div>
+<table>
+<tr><th>Method</th><th>Endpoint</th><th>Auth</th><th>Description</th></tr>
+<tr><td>POST</td><td>/api/v1/auth/login</td><td>None</td><td>JWT login (username + password)</td></tr>
+<tr><td>POST</td><td>/api/v1/auth/refresh</td><td>JWT</td><td>Refresh expired JWT token</td></tr>
+<tr><td>GET</td><td>/api/v1/threats</td><td>JWT</td><td>List threat events (paginated, filterable)</td></tr>
+<tr><td>GET</td><td>/api/v1/firewall/rules</td><td>JWT</td><td>List active firewall rules</td></tr>
+<tr><td>DELETE</td><td>/api/v1/firewall/rules/{id}</td><td>Admin</td><td>Delete a firewall rule + remove from kernel</td></tr>
+<tr><td>GET</td><td>/api/v1/honeypot/sessions</td><td>JWT</td><td>List honeypot sessions with commands</td></tr>
+<tr><td>GET</td><td>/api/v1/devices</td><td>JWT</td><td>List discovered devices with risk scores</td></tr>
+<tr><td>POST</td><td>/api/v1/devices/by-ip/{ip}/clear-risk</td><td>Admin</td><td>Reset risk score (preserves threat history)</td></tr>
+<tr><td>GET</td><td>/api/v1/network/topology</td><td>JWT</td><td>Network topology graph data</td></tr>
+<tr><td>POST</td><td>/api/v1/network/scan</td><td>Admin</td><td>Trigger manual ARP scan</td></tr>
+<tr><td>GET</td><td>/api/v1/system/health</td><td>JWT</td><td>System health + sniffer status</td></tr>
+<tr><td>WS</td><td>/ws/live</td><td>JWT</td><td>WebSocket live event stream</td></tr>
+</table>
+
+<p>All authenticated endpoints require a valid JWT token in the <code>Authorization: Bearer {token}</code> header. Admin-only endpoints additionally verify the user's role. The API follows RESTful conventions with proper HTTP status codes (200 OK, 201 Created, 401 Unauthorized, 404 Not Found, 422 Unprocessable Entity).</p>
+
+</body>
+</html>

@@ -86,6 +86,7 @@ if [ "$GATEWAY_WAS_ACTIVE" = true ]; then
   # Flush hotspot interface IP
   sudo ip addr flush dev "$GW_IFACE" 2>/dev/null || true
   sudo ip link set "$GW_IFACE" down 2>/dev/null || true
+  sudo nmcli device set "$GW_IFACE" managed yes 2>/dev/null || true
   echo "   Flushed $GW_IFACE"
 
   # Restore monitor-mode .env if backup exists

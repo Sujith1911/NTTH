@@ -126,12 +126,17 @@ class NFTManager:
         reason: Optional[str] = None,
         ttl_seconds: Optional[int] = 0,
     ) -> Optional[str]:
-        """Drop forwarded internet traffic from src_ip while keeping Wi-Fi/local gateway access."""
+        """Drop forwarded internet traffic from src_ip while keeping Wi-Fi/local gateway access.
+
+        Only blocks FORWARDED traffic (VM-to-internet, VM-to-VM), never INPUT
+        (device-to-gateway). Real WiFi devices' gateway/DNS access is preserved.
+        """
         if src_ip in {settings.gateway_ip, settings.server_display_ip, "127.0.0.1"}:
             log.warning("nft_manager.block_refused_infrastructure_ip", ip=src_ip)
             return None
         await self.ensure_infra()
-        rule = f"ip saddr {src_ip} drop"
+        # Only drop forwarded traffic, not traffic TO the gateway itself
+        rule = f"ip saddr {src_ip} ip daddr != {settings.gateway_ip} drop"
         rc, _, stderr = await _run_nft(
             "add",
             "rule",
@@ -170,48 +175,120 @@ class NFTManager:
         created_by: str = "system",
         reason: Optional[str] = None,
     ) -> Optional[str]:
-        """Redirect src_ip TCP traffic from src_port to the honeypot via DNAT.
+        """Redirect src_ip TCP traffic from src_port to the honeypot via iptables DNAT.
 
-        Uses 'dnat to <gateway_ip>:<dst_port>' instead of 'redirect to' because
-        the traffic is forwarded through the gateway (not addressed to it).
-        The 'redirect' target only works for traffic destined to the local machine.
+        Uses iptables instead of nftables because iptables has better support
+        for br_netfilter — critical for redirecting bridged VM-to-VM traffic.
+        After adding the rule, conntrack is flushed so existing connections
+        are re-evaluated through the new DNAT rule.
         """
-        await self.ensure_infra()
         gateway_ip = settings.gateway_ip
-        match_dst = f"ip daddr {dst_ip} " if dst_ip else ""
-        rule = f"ip saddr {src_ip} {match_dst}tcp dport {src_port} dnat to {gateway_ip}:{dst_port}"
-        rc, _, stderr = await _run_nft(
-            "add",
-            "rule",
-            *_chain_ref(_NAT_TABLE_FAMILY, _NAT_TABLE_NAME, _NAT_CHAIN),
-            *rule.split(),
-        )
-        if rc == 0:
-            handle = await self._get_rule_handle(
-                _NAT_TABLE_FAMILY,
-                _NAT_TABLE_NAME,
-                _NAT_CHAIN,
-                rule,
+
+        # Build iptables DNAT rule — scoped to bridge interface only
+        # -i br-ntth ensures only bridge traffic is affected, never upstream WiFi
+        bridge = settings.network_interface  # br-ntth
+        ipt_cmd = [
+            "iptables", "-t", "nat", "-I", "PREROUTING",
+            "-i", bridge,
+            "-s", src_ip,
+            "-p", "tcp", "--dport", str(src_port),
+        ]
+        if dst_ip:
+            ipt_cmd += ["-d", dst_ip]
+        ipt_cmd += ["-j", "DNAT", "--to-destination", f"{gateway_ip}:{dst_port}"]
+
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *ipt_cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
             )
+            stdout, stderr = await proc.communicate()
+            rc = proc.returncode
+        except Exception as exc:
+            log.error("nft_manager.iptables_redirect_failed", error=str(exc))
+            return None
+
+        if rc == 0:
+            handle_id = f"ipt-{src_ip}-{src_port}-{dst_port}"
             if persist:
                 await track_rule(
                     src_ip,
                     "redirect",
-                    f"nat:{handle}",
+                    f"ipt:{handle_id}",
                     target_port=dst_port,
                     match_dst_ip=dst_ip,
                     match_dst_port=src_port,
                     created_by=created_by,
                     reason=reason,
                 )
-            log.info("nft_manager.redirected", ip=src_ip, from_port=src_port, to_port=dst_port, gateway=gateway_ip)
-            return f"nat:{handle}"
-        log.error("nft_manager.redirect_failed", ip=src_ip, error=stderr)
+            log.info("nft_manager.redirected", ip=src_ip, from_port=src_port,
+                     to_port=dst_port, gateway=gateway_ip, method="iptables")
+
+            # Flush ONLY the attacker's conntrack entries — never full flush
+            # Full flush (conntrack -F) would kill ALL device connections
+            # causing WiFi disconnections for phones/laptops
+            try:
+                flush_proc = await asyncio.create_subprocess_exec(
+                    "conntrack", "-D", "-s", src_ip,
+                    "-p", "tcp", "--dport", str(src_port),
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                await flush_proc.communicate()
+                log.debug("nft_manager.conntrack_flushed", ip=src_ip, port=src_port)
+            except FileNotFoundError:
+                log.warning("nft_manager.conntrack_not_installed",
+                            hint="Install conntrack: sudo apt install conntrack")
+            except Exception:
+                pass
+
+            return f"ipt:{handle_id}"
+
+        log.error("nft_manager.redirect_failed", ip=src_ip,
+                  error=stderr.decode() if isinstance(stderr, bytes) else stderr)
         return None
 
     async def delete_rule(self, handle: str) -> bool:
         """Delete a rule by its handle."""
         zone, raw_handle = self._split_handle(handle)
+
+        # iptables-based redirect rules
+        if zone == "ipt":
+            # Handle format: ipt-<src_ip>-<src_port>-<dst_port>
+            parts = raw_handle.split("-")
+            if len(parts) >= 3:
+                src_ip = "-".join(parts[:-2])  # IP may not contain hyphens, but be safe
+                src_port = parts[-2]
+                dst_port = parts[-1]
+                gateway_ip = settings.gateway_ip
+                bridge = settings.network_interface
+                ipt_cmd = [
+                    "iptables", "-t", "nat", "-D", "PREROUTING",
+                    "-i", bridge,
+                    "-s", src_ip,
+                    "-p", "tcp", "--dport", src_port,
+                    "-j", "DNAT", "--to-destination", f"{gateway_ip}:{dst_port}",
+                ]
+                try:
+                    proc = await asyncio.create_subprocess_exec(
+                        *ipt_cmd,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                    )
+                    await proc.communicate()
+                    success = proc.returncode == 0
+                except Exception:
+                    success = False
+            else:
+                success = False
+            if success:
+                log.info("nft_manager.rule_deleted", handle=handle, method="iptables")
+            else:
+                log.error("nft_manager.delete_failed", handle=handle)
+            return success
+
+        # nftables-based rules (block, filter)
         if zone == "nat":
             family, table, chain = (_NAT_TABLE_FAMILY, _NAT_TABLE_NAME, _NAT_CHAIN)
         elif zone == "forward":

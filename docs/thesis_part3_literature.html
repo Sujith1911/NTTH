@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NTTH Thesis — Part 3: Chapter 2 Literature Review</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Times+New+Roman&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Times New Roman',Times,serif;font-size:12pt;line-height:1.5;color:#000;background:#fff;max-width:8.5in;margin:0 auto;padding:1in}
+h1{font-size:14pt;font-weight:bold;text-align:center;margin:0 0 14px;color:#000}
+h2{font-size:14pt;font-weight:bold;margin:0 0 10px;color:#000}
+h3{font-size:12pt;font-weight:bold;margin:0 0 8px;color:#000}
+p{text-align:justify;margin:0 0 0pt;line-height:1.5}
+ul,ol{margin-left:28px;margin-bottom:0pt}
+ul li,ol li{margin-bottom:0pt;text-align:justify;line-height:1.5}
+table{width:100%;border-collapse:collapse;margin:10px 0;font-size:12pt}
+th{background:#1b3a5c;color:#fff;font-weight:bold;padding:6px 10px;text-align:left;border:1px solid #1b3a5c;font-size:12pt}
+td{padding:5px 10px;border:1px solid #999;vertical-align:top;font-size:12pt}
+tr:nth-child(even){background:#f5f7fa}
+.tc{font-size:12pt;font-weight:bold;text-align:center;margin:6px 0 4px;color:#1b3a5c}
+.fc{font-size:10pt;text-align:center;color:#555;margin:4px 0 16px;font-style:italic}
+@media print{body{padding:1in}th{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+</style>
+</head>
+<body>
+
+<h1>CHAPTER 2: LITERATURE REVIEW</h1>
+
+<h2>2.1 Signature-Based Intrusion Detection Systems</h2>
+<p>Snort, created by Martin Roesch in 1999, is the most widely deployed open-source network IDS. It uses a rule-based engine that matches packet payloads against a database of known attack signatures, processing packets in a single-threaded pipeline. Suricata, developed by the Open Information Security Foundation (OISF), extends this model with multi-threaded packet processing, protocol-aware detection, and file extraction capabilities.</p>
+<p>Both systems output alerts in standardized formats but provide no automated response mechanism. When a threat is detected, an administrator must manually interpret the alert, correlate it with other events, assess the risk, configure a firewall rule, and verify its effectiveness. Research by Alahmadi et al. demonstrated that security analysts in enterprise environments investigate only 4–8% of generated IDS alerts, leading to significant threat coverage gaps.</p>
+
+<h2>2.2 Honeypot Systems</h2>
+<p>Cowrie is a medium-interaction SSH honeypot that simulates a Linux shell environment, accepting any credentials and logging all commands typed by attackers. T-Pot combines multiple honeypot services (Cowrie, Dionaea, Conpot) into a single deployment with an Elasticsearch-Kibana visualization stack. Both systems provide valuable threat intelligence but require static pre-deployment and manual configuration. They have no mechanism for automatically redirecting suspicious traffic to honeypot services based on real-time threat assessment.</p>
+<p>Vetterl and Clayton analyzed attacker behavior in SSH honeypots and found that 72% of sessions last less than 60 seconds, highlighting the importance of immediate redirection to maximize intelligence capture.</p>
+
+<h2>2.3 Machine Learning for Intrusion Detection</h2>
+<p>Isolation Forest, proposed by Liu, Ting, and Zhou (2008), is an unsupervised anomaly detection algorithm based on random partitioning. It identifies outliers by measuring how easily data points can be "isolated" through random axis-aligned cuts. Points that require fewer cuts to isolate are considered more anomalous. The algorithm has been shown effective for network anomaly detection due to its ability to identify outliers without requiring labeled attack data.</p>
+<p>Random Forest classifiers have achieved detection rates exceeding 99% on benchmark datasets such as CICIDS2017, but require labeled attack data for training. Vinayakumar et al. applied deep learning approaches (CNN, LSTM) to intrusion detection, achieving 97.2% accuracy but requiring GPU hardware not suitable for commodity deployment.</p>
+
+<h2>2.4 Autonomous Defense Architectures</h2>
+<p>The Autonomous Attack Response Framework (AARF) employs multi-agent dynamic games and reinforcement learning for optimal response strategy selection. However, AARF operates in simulation and does not report real-world latency measurements.</p>
+<p>AETHER proposes an AI-driven deception ecosystem using generative models to create dynamic decoy assets. This system targets cloud infrastructure and does not address commodity hardware.</p>
+<p>The LLM Agent Honeypot project demonstrates detection of autonomous AI-driven hacking agents through prompt injection traps. It focuses on detection only without enforcement.</p>
+
+<h2>2.5 WiFi Probe Request Monitoring</h2>
+<p>Mobile devices broadcast 802.11 Probe Request frames seeking known WiFi networks. Freudiger demonstrated that these broadcasts reveal device presence and historical network associations. Vanhoef and Piessens showed that MAC address randomization can be defeated through timing analysis. Our system repurposes this monitoring for defensive security using the AR9271 adapter.</p>
+
+<h2>2.6 Summary of Gaps in Existing Literature</h2>
+<div class="tc">Table 2.1: Comparison with Closest Related Systems</div>
+<table>
+<tr><th>Feature</th><th>Snort</th><th>Suricata</th><th>AARF</th><th>AETHER</th><th>NTTH (Ours)</th></tr>
+<tr><td>Detection Method</td><td>Signatures</td><td>Signatures</td><td>RL game theory</td><td>Gen. AI</td><td><b>Hybrid IDS+ML</b></td></tr>
+<tr><td>Response</td><td>Alert only</td><td>Alert only</td><td>Simulated</td><td>Cloud</td><td><b>nftables kernel</b></td></tr>
+<tr><td>Honeypot</td><td>None</td><td>None</td><td>Static</td><td>AI-gen.</td><td><b>Flow-aware dynamic</b></td></tr>
+<tr><td>Response Latency</td><td>N/A</td><td>N/A</td><td>Not measured</td><td>Not measured</td><td><b>~127 ms</b></td></tr>
+<tr><td>Hardware</td><td>Commodity</td><td>Commodity</td><td>Cloud</td><td>Cloud</td><td><b>Commodity ($10)</b></td></tr>
+<tr><td>Wireless</td><td>No</td><td>No</td><td>No</td><td>No</td><td><b>AR9271 monitor</b></td></tr>
+<tr><td>Dashboard</td><td>Basic</td><td>EveBox</td><td>No</td><td>No</td><td><b>Flutter WebSocket</b></td></tr>
+<tr><td>Open Source</td><td>Yes</td><td>Yes</td><td>No</td><td>No</td><td><b>Full codebase</b></td></tr>
+</table>
+<div class="fc">Table 2.1 — No existing system combines detection, ML scoring, kernel enforcement, dynamic honeypot deployment, wireless monitoring, and real-time dashboard on commodity hardware.</div>
+
+</body>
+</html>

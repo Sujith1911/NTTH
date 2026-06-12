@@ -148,7 +148,7 @@ async def _handle_device_seen(features: dict) -> None:
         if ml_score < 0.9:
             return
         rule_result["threat_type"] = "anomaly"
-    action = determine_action(risk_score, rule_result.get("threat_type", "normal"))
+    action = determine_action(risk_score, rule_result.get("threat_type", "normal"), src_ip=src_ip)
 
     # Only emit threat events above the log threshold
     if action == "allow":

@@ -94,7 +94,14 @@ async def upsert_device_details(
     return device, created
 
 
-async def list_devices(db: AsyncSession, page: int = 1, page_size: int = 50) -> tuple[int, Sequence[Device]]:
+async def list_devices(
+    db: AsyncSession,
+    page: int = 1,
+    page_size: int = 50,
+    *,
+    seen_after: Optional[datetime] = None,
+    exclude_ips: set[str] | None = None,
+) -> tuple[int, Sequence[Device]]:
     valid_host_filters = (
         ~Device.ip_address.like("%.255"),
         ~Device.ip_address.like("%.0"),
@@ -102,11 +109,16 @@ async def list_devices(db: AsyncSession, page: int = 1, page_size: int = 50) -> 
         ~Device.ip_address.like("239.%"),
         ~Device.ip_address.like("127.%"),
     )
-    count_q = select(func.count()).select_from(Device).where(*valid_host_filters)
+    filters = list(valid_host_filters)
+    if seen_after is not None:
+        filters.append(Device.last_seen >= seen_after)
+    if exclude_ips:
+        filters.append(Device.ip_address.not_in(exclude_ips))
+    count_q = select(func.count()).select_from(Device).where(*filters)
     total = (await db.execute(count_q)).scalar_one()
     q = (
         select(Device)
-        .where(*valid_host_filters)
+        .where(*filters)
         .offset((page - 1) * page_size)
         .limit(page_size)
         .order_by(Device.last_seen.desc())
@@ -126,11 +138,21 @@ async def get_device(db: AsyncSession, device_id: str) -> Optional[Device]:
 
 
 async def update_device_risk(db: AsyncSession, device_id: str, risk_score: float) -> None:
-    """Update device risk score using max(current, new) so repeated attacks accumulate."""
+    """Update device risk score — accumulates with each attack.
+
+    Uses max(current, new) for different attack types, and adds a small
+    increment for repeated same-type attacks so risk keeps climbing.
+    """
     result = await db.execute(select(Device).where(Device.id == device_id))
     device = result.scalar_one_or_none()
     if device:
-        device.risk_score = max(device.risk_score or 0.0, risk_score)
+        current = device.risk_score or 0.0
+        if risk_score > current:
+            # New higher-risk attack — take the higher score
+            device.risk_score = min(risk_score, 1.0)
+        elif risk_score >= 0.2:
+            # Same or lower risk — still increment by 5% to show accumulation
+            device.risk_score = min(current + 0.05, 1.0)
         device.last_seen = utc_now_naive()
 
 
