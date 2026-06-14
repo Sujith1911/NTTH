@@ -27,16 +27,16 @@ def connection_count() -> int:
 
 
 async def broadcast(payload: dict) -> None:
-    """Send a message to all active WebSocket clients."""
+    """Send a message to all active WebSocket clients (non-blocking with timeout)."""
     if not _connections:
         return
-    message = json.dumps(payload)
+    message = json.dumps(payload, default=str)
     async with _lock:
         dead: set[WebSocket] = set()
         for ws in _connections:
             try:
-                await ws.send_text(message)
-            except Exception:
+                await asyncio.wait_for(ws.send_text(message), timeout=0.5)
+            except (asyncio.TimeoutError, Exception):
                 dead.add(ws)
         _connections.difference_update(dead)
 
@@ -64,10 +64,21 @@ async def websocket_live(
     log.info("ws.client_connected", user=payload.get("sub"), total=len(_connections))
 
     try:
-        # Keep the connection alive; ping every 30s
+        # Keep the connection alive; ping every 15s, also consume client messages
         while True:
-            await asyncio.sleep(30)
-            await websocket.send_text(json.dumps({"type": "ping"}))
+            try:
+                # Wait for client messages (pong responses, etc.) with timeout
+                msg = await asyncio.wait_for(websocket.receive_text(), timeout=15)
+                # Client sent something — connection is alive, continue
+            except asyncio.TimeoutError:
+                # No client message in 15s — send keepalive ping
+                try:
+                    await asyncio.wait_for(
+                        websocket.send_text(json.dumps({"type": "ping"})),
+                        timeout=2.0,
+                    )
+                except (asyncio.TimeoutError, Exception):
+                    break  # Client unresponsive — exit loop
     except (WebSocketDisconnect, Exception):
         pass
     finally:

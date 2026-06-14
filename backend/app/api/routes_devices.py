@@ -123,7 +123,6 @@ async def clear_device_risk_by_ip(
         "unblocked": True,
         "removed_rules": removed_rules,
         "deactivated_rules": deactivated_rules,
-        "risk_history_cleanup": risk_history_cleanup,
     }
 
 

@@ -61,11 +61,20 @@ class NFTManager:
             *_chain_ref(_FILTER_TABLE_FAMILY, _FILTER_TABLE_NAME, _FILTER_CHAIN),
             "{ type filter hook input priority 0; }",
         )
+        # Forward chain at priority 0 (not -10) so Scapy on the bridge can
+        # still see all packets before nftables acts on them.
         await _run_nft(
             "add",
             "chain",
             *_chain_ref(_FILTER_TABLE_FAMILY, _FILTER_TABLE_NAME, _FORWARD_CHAIN),
-            "{ type filter hook forward priority -10; }",
+            "{ type filter hook forward priority 0; }",
+        )
+        # Accept established/related connections so blocking a NEW attacker
+        # doesn't tear down existing sessions (dashboard, SSH, etc.)
+        await _run_nft(
+            "add", "rule",
+            *_chain_ref(_FILTER_TABLE_FAMILY, _FILTER_TABLE_NAME, _FORWARD_CHAIN),
+            "ct", "state", "established,related", "accept",
         )
         await _run_nft("add", "table", *_table_ref(_NAT_TABLE_FAMILY, _NAT_TABLE_NAME))
         await _run_nft(
@@ -126,29 +135,43 @@ class NFTManager:
         reason: Optional[str] = None,
         ttl_seconds: Optional[int] = 0,
     ) -> Optional[str]:
-        """Drop forwarded internet traffic from src_ip while keeping Wi-Fi/local gateway access.
+        """Drop forwarded internet traffic from src_ip while keeping gateway/server access.
 
         Only blocks FORWARDED traffic (VM-to-internet, VM-to-VM), never INPUT
-        (device-to-gateway). Real WiFi devices' gateway/DNS access is preserved.
+        (device-to-gateway). Real WiFi devices' gateway/DNS/dashboard access is preserved.
         """
-        if src_ip in {settings.gateway_ip, settings.server_display_ip, "127.0.0.1"}:
+        protected_ips = {settings.gateway_ip, settings.server_display_ip, "127.0.0.1"}
+        if src_ip in protected_ips:
             log.warning("nft_manager.block_refused_infrastructure_ip", ip=src_ip)
             return None
         await self.ensure_infra()
-        # Only drop forwarded traffic, not traffic TO the gateway itself
-        rule = f"ip saddr {src_ip} ip daddr != {settings.gateway_ip} drop"
+        # Build exception: gateway + server (so dashboard remains reachable)
+        # When both are the same IP (e.g., 192.168.4.1), use single IP syntax
+        exception_ips = {ip for ip in (settings.gateway_ip, settings.server_display_ip) if ip}
+        if len(exception_ips) > 1:
+            # Use nft anonymous set: ip daddr != { ip1, ip2 } drop
+            ip_list = ", ".join(sorted(exception_ips))
+            rule_parts = [
+                "ip", "saddr", src_ip,
+                "ip", "daddr", "!=", "{", ip_list, "}",
+                "drop",
+            ]
+        else:
+            safe_ip = next(iter(exception_ips)) if exception_ips else settings.gateway_ip
+            rule_parts = f"ip saddr {src_ip} ip daddr != {safe_ip} drop".split()
         rc, _, stderr = await _run_nft(
             "add",
             "rule",
             *_chain_ref(_FILTER_TABLE_FAMILY, _FILTER_TABLE_NAME, _FORWARD_CHAIN),
-            *rule.split(),
+            *rule_parts,
         )
         if rc == 0:
+            rule_str = " ".join(rule_parts)
             handle = await self._get_rule_handle(
                 _FILTER_TABLE_FAMILY,
                 _FILTER_TABLE_NAME,
                 _FORWARD_CHAIN,
-                rule,
+                rule_str,
             )
             if persist:
                 await track_rule(

@@ -119,10 +119,16 @@ async def _handle_device_seen(features: dict) -> None:
     ):
         return
 
-    # Skip ALL ICMP from/to managed devices.
-    # Browsing generates ICMP (traceroute, CDN pings, gateway pings) — not a threat.
-    if protocol == "icmp" and (is_managed_asset_ip(src_ip) or is_managed_asset_ip(dst_ip)):
-        return
+    # Skip normal ICMP pings from managed devices to the gateway/public IPs.
+    # But DO NOT skip ICMP between managed VMs — ICMP floods from attacker VMs
+    # to target VMs must still be evaluated by the rule engine.
+    if protocol == "icmp":
+        if src_ip in {_settings.gateway_ip, _settings.server_display_ip}:
+            return  # Gateway/server pinging devices — not a threat
+        if is_managed_asset_ip(src_ip) and dst_ip in {_settings.gateway_ip, _settings.server_display_ip}:
+            return  # Device pinging gateway — normal
+        if is_managed_asset_ip(src_ip) and not is_managed_asset_ip(dst_ip):
+            return  # Device pinging public IP — normal traceroute/CDN
 
     # Update device registry (for non-managed IPs that made it past whitelists)
     if not is_managed_asset_ip(src_ip):

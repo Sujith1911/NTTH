@@ -137,7 +137,8 @@ async def _handle_report_event(payload: dict) -> None:
 
         from app.websocket.live_updates import broadcast
 
-        # Broadcast full threat event — all fields required by frontend + test_realtime.py
+        # Consolidated broadcast — single message with all fields to prevent
+        # WebSocket lock contention during high-rate attack traffic.
         await broadcast({
             "type": "threat",
             "id": event.id,
@@ -170,31 +171,8 @@ async def _handle_report_event(payload: dict) -> None:
             "quarantine_target": incident_context.get("quarantine_target"),
             "honeypot_port": incident_context.get("honeypot_port"),
             "notes": event.notes,
-        })
-
-        # Real-time device risk update for Devices screen
-        await broadcast({
-            "type": "device_updated",
-            "ip": managed_asset_ip,
-            "risk_score": payload.get("risk_score", 0.0),
-            "country": payload.get("country"),
-            "city": payload.get("city"),
-            "action": payload.get("action"),
-        })
-
-        await broadcast({
-            "type": "incident_response",
-            "src_ip": payload.get("src_ip"),
-            "victim_ip": incident_context.get("victim_ip"),
-            "threat_type": payload.get("threat_type"),
-            "risk_score": payload.get("risk_score", 0.0),
-            "action": payload.get("action"),
-            "source_tag": incident_context.get("source_tag"),
-            "response_mode": incident_context.get("response_mode"),
-            "network_origin": incident_context.get("network_origin"),
-            "location_summary": incident_context.get("location_summary"),
-            "target_hidden": incident_context.get("target_hidden"),
-            "honeypot_port": incident_context.get("honeypot_port"),
+            # device_updated fields (so frontend can update device list too)
+            "managed_ip": managed_asset_ip,
             "timestamp": payload.get("timestamp"),
         })
 
@@ -339,9 +317,11 @@ async def _handle_threat_packet_persist(payload: dict) -> None:
 
 
 async def _handle_sample_normal_packet(payload: dict) -> None:
-    """Persist live packets so the inspector shows real traffic immediately."""
+    """Persist sampled normal packets for inspector. Only 1 in 50 to avoid DB storms."""
     global _packet_sample_counter
     _packet_sample_counter += 1
+    if _packet_sample_counter % 50 != 0:
+        return
     await _persist_packet(payload)
 
 

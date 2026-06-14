@@ -31,12 +31,29 @@ def subscribe(topic: str, handler: Callable[..., Coroutine]) -> None:
     log.debug("event_bus.subscribe", topic=topic, handler=handler.__name__)
 
 
+_device_seen_rate: dict[str, float] = {}  # ip -> last publish time
+_DEVICE_SEEN_RATE_LIMIT = 1.0  # Max 1 device_seen per IP per second
+
 async def publish(topic: str, payload: Any) -> None:
     """Put an event onto the queue (non-blocking if space available)."""
-    if topic == "device_seen" and _queue.qsize() > int(settings.event_bus_queue_size * 0.8):
-        log.warning("event_bus.dropped_low_priority", topic=topic, queue_size=_queue.qsize())
-        _metrics["dropped_events"] += 1
-        return
+    # Rate-limit device_seen per IP to prevent flood-induced queue saturation
+    if topic == "device_seen":
+        import time
+        src_ip = payload.get("src_ip", "") if isinstance(payload, dict) else ""
+        now = time.monotonic()
+        last = _device_seen_rate.get(src_ip, 0.0)
+        if now - last < _DEVICE_SEEN_RATE_LIMIT:
+            return  # Skip duplicate within rate window
+        _device_seen_rate[src_ip] = now
+        # Prune stale entries periodically
+        if len(_device_seen_rate) > 500:
+            cutoff = now - 10.0
+            _device_seen_rate.clear()
+
+        if _queue.qsize() > int(settings.event_bus_queue_size * 0.9):
+            log.warning("event_bus.dropped_low_priority", topic=topic, queue_size=_queue.qsize())
+            _metrics["dropped_events"] += 1
+            return
     try:
         _queue.put_nowait({"topic": topic, "payload": payload})
         _metrics["published_events"] += 1

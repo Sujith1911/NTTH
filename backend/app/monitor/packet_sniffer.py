@@ -15,7 +15,6 @@ from typing import Any
 from app.config import get_settings
 from app.core.event_bus import publish
 from app.core.logger import get_logger
-from app.monitor.device_registry import update as registry_update
 from app.monitor.feature_extractor import extract_features
 from app.monitor.network_scanner import update_live_stats
 
@@ -189,10 +188,8 @@ async def start_sniffer() -> None:
         # Update in-memory live stats (no DB needed)
         update_live_stats(features)
 
-        # Update device registry (publishes device_seen to event bus)
-        registry_update(features)
-
-        # Publish to event bus async-safe
+        # Publish to event bus async-safe — threat_agent handles registry
+        # and IDS evaluation in the event loop (thread-safe)
         asyncio.run_coroutine_threadsafe(
             publish("device_seen", features), loop
         )
