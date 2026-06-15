@@ -20,7 +20,7 @@ class AppShellDrawer extends StatelessWidget {
     final items = const [
       _DrawerItem('Dashboard', Icons.dashboard_outlined, '/dashboard'),
       _DrawerItem('Devices', Icons.devices_outlined, '/devices'),
-      _DrawerItem('Threat Map', Icons.public_outlined, '/threats'),
+      _DrawerItem('Threat Details', Icons.gpp_maybe_outlined, '/threats'),
       _DrawerItem('Topology', Icons.hub_outlined, '/topology'),
       _DrawerItem('Firewall', Icons.security_outlined, '/firewall'),
       _DrawerItem('Honeypot', Icons.bug_report_outlined, '/honeypot'),

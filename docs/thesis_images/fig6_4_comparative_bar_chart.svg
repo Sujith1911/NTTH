@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="900" viewBox="0 0 1500 900" role="img" aria-labelledby="title desc">
+  <title id="title">Fig 6.4 - Comparative Bar Chart: Detection Coverage and Response</title>
+  <desc id="desc">Grouped bar chart comparing Snort, Suricata, and NTTH across detection rate, false positive rate, slow attack detection, and autonomous response.</desc>
+  <defs>
+    <style>
+      .text { font-family: Arial, Helvetica, sans-serif; fill: #111111; }
+      .title { font-size: 30px; font-weight: 700; }
+      .axis { stroke: #222222; stroke-width: 2; }
+      .grid { stroke: #dddddd; stroke-width: 1; }
+      .snort { fill: #ffffff; stroke: #222222; stroke-width: 2; }
+      .suricata { fill: #dddddd; stroke: #222222; stroke-width: 2; }
+      .ntth { fill: #777777; stroke: #222222; stroke-width: 2; }
+      .label { font-size: 17px; font-weight: 400; }
+      .metric { font-size: 16px; font-weight: 700; }
+      .legend { font-size: 18px; font-weight: 700; }
+      .value { font-size: 15px; font-weight: 700; }
+    </style>
+  </defs>
+
+  <rect width="1500" height="900" fill="#ffffff"/>
+  <text x="750" y="58" text-anchor="middle" class="text title">Fig 6.4 - Comparative Bar Chart: Detection Coverage and Response</text>
+
+  <g transform="translate(145 115)">
+    <rect x="0" y="0" width="1160" height="600" fill="#ffffff" stroke="#222222" stroke-width="2"/>
+
+    <line x1="0" y1="120" x2="1160" y2="120" class="grid"/>
+    <line x1="0" y1="240" x2="1160" y2="240" class="grid"/>
+    <line x1="0" y1="360" x2="1160" y2="360" class="grid"/>
+    <line x1="0" y1="480" x2="1160" y2="480" class="grid"/>
+    <line x1="0" y1="600" x2="1160" y2="600" class="axis"/>
+    <line x1="0" y1="0" x2="0" y2="600" class="axis"/>
+
+    <text x="-18" y="606" text-anchor="end" class="text label">0</text>
+    <text x="-18" y="486" text-anchor="end" class="text label">20</text>
+    <text x="-18" y="366" text-anchor="end" class="text label">40</text>
+    <text x="-18" y="246" text-anchor="end" class="text label">60</text>
+    <text x="-18" y="126" text-anchor="end" class="text label">80</text>
+    <text x="-18" y="8" text-anchor="end" class="text label">100</text>
+
+    <g transform="translate(105 0)">
+      <rect class="snort" x="0" y="90" width="55" height="510"/>
+      <rect class="suricata" x="70" y="72" width="55" height="528"/>
+      <rect class="ntth" x="140" y="30" width="55" height="570"/>
+      <text x="27.5" y="78" text-anchor="middle" class="text value">85</text>
+      <text x="97.5" y="60" text-anchor="middle" class="text value">88</text>
+      <text x="167.5" y="18" text-anchor="middle" class="text value">95</text>
+      <text x="97.5" y="642" text-anchor="middle" class="text metric">Detection Rate</text>
+    </g>
+
+    <g transform="translate(380 0)">
+      <rect class="snort" x="0" y="540" width="55" height="60"/>
+      <rect class="suricata" x="70" y="558" width="55" height="42"/>
+      <rect class="ntth" x="140" y="576" width="55" height="24"/>
+      <text x="27.5" y="528" text-anchor="middle" class="text value">10</text>
+      <text x="97.5" y="546" text-anchor="middle" class="text value">7</text>
+      <text x="167.5" y="564" text-anchor="middle" class="text value">4</text>
+      <text x="97.5" y="642" text-anchor="middle" class="text metric">FPR</text>
+    </g>
+
+    <g transform="translate(655 0)">
+      <rect class="snort" x="0" y="270" width="55" height="330"/>
+      <rect class="suricata" x="70" y="240" width="55" height="360"/>
+      <rect class="ntth" x="140" y="90" width="55" height="510"/>
+      <text x="27.5" y="258" text-anchor="middle" class="text value">55</text>
+      <text x="97.5" y="228" text-anchor="middle" class="text value">60</text>
+      <text x="167.5" y="78" text-anchor="middle" class="text value">85</text>
+      <text x="97.5" y="642" text-anchor="middle" class="text metric">Slow-attack Detection</text>
+    </g>
+
+    <g transform="translate(930 0)">
+      <rect class="snort" x="0" y="600" width="55" height="0"/>
+      <rect class="suricata" x="70" y="600" width="55" height="0"/>
+      <rect class="ntth" x="140" y="0" width="55" height="600"/>
+      <text x="27.5" y="580" text-anchor="middle" class="text value">No</text>
+      <text x="97.5" y="580" text-anchor="middle" class="text value">No</text>
+      <text x="167.5" y="-10" text-anchor="middle" class="text value">Yes</text>
+      <text x="97.5" y="642" text-anchor="middle" class="text metric">Autonomous Response</text>
+    </g>
+
+    <text x="580" y="705" text-anchor="middle" class="text label">Metrics</text>
+    <text x="-300" y="-90" text-anchor="middle" transform="rotate(-90)" class="text label">% or yes/no</text>
+  </g>
+
+  <g transform="translate(1025 780)">
+    <rect class="snort" x="0" y="0" width="28" height="18"/>
+    <text x="42" y="15" class="text legend">Snort</text>
+    <rect class="suricata" x="130" y="0" width="28" height="18"/>
+    <text x="172" y="15" class="text legend">Suricata</text>
+    <rect class="ntth" x="300" y="0" width="28" height="18"/>
+    <text x="342" y="15" class="text legend">NTTH</text>
+  </g>
+</svg>

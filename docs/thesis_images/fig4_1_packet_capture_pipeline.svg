@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1700" height="520" viewBox="0 0 1700 520" role="img" aria-labelledby="title desc">
+  <title id="title">Fig 4.1 - Packet Capture Pipeline</title>
+  <desc id="desc">NIC to Scapy AsyncSniffer with BPF filtering, 5-second source IP keyed window buffer, feature vector computation, and Redis ntth features publish.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="14" markerHeight="14" refX="12" refY="7" orient="auto" markerUnits="strokeWidth">
+      <path d="M1,1 L13,7 L1,13 Z" fill="#222222"/>
+    </marker>
+    <style>
+      .text { font-family: Arial, Helvetica, sans-serif; fill: #111111; }
+      .title { font-size: 30px; font-weight: 700; }
+      .box-title { font-size: 20px; font-weight: 700; }
+      .box-sub { font-size: 16px; font-weight: 400; }
+      .box { fill: #ffffff; stroke: #222222; stroke-width: 2; }
+      .line { stroke: #222222; stroke-width: 2.5; fill: none; marker-end: url(#arrow); }
+    </style>
+  </defs>
+  <rect width="1700" height="520" fill="#ffffff"/>
+  <text x="850" y="58" text-anchor="middle" class="text title">Fig 4.1 - Packet Capture Pipeline</text>
+
+  <g transform="translate(70 215)">
+    <rect class="box" x="0" y="0" width="155" height="95"/>
+    <text x="77.5" y="58" text-anchor="middle" class="text box-title">NIC</text>
+  </g>
+  <g transform="translate(320 215)">
+    <rect class="box" x="0" y="0" width="255" height="95"/>
+    <text x="127.5" y="42" text-anchor="middle" class="text box-title">Scapy AsyncSniffer</text>
+    <text x="127.5" y="70" text-anchor="middle" class="text box-sub">BPF filtered</text>
+  </g>
+  <g transform="translate(670 215)">
+    <rect class="box" x="0" y="0" width="300" height="95"/>
+    <text x="150" y="39" text-anchor="middle" class="text box-title">5-second Window Buffer</text>
+    <text x="150" y="69" text-anchor="middle" class="text box-sub">keyed by src_ip</text>
+  </g>
+  <g transform="translate(1065 215)">
+    <rect class="box" x="0" y="0" width="285" height="95"/>
+    <text x="142.5" y="42" text-anchor="middle" class="text box-title">Feature Vector</text>
+    <text x="142.5" y="70" text-anchor="middle" class="text box-title">Computation</text>
+  </g>
+  <g transform="translate(1445 215)">
+    <rect class="box" x="0" y="0" width="205" height="95"/>
+    <text x="102.5" y="42" text-anchor="middle" class="text box-title">Redis Publish</text>
+    <text x="102.5" y="70" text-anchor="middle" class="text box-sub">ntth:features</text>
+  </g>
+
+  <path class="line" d="M225 262.5 H320"/>
+  <path class="line" d="M575 262.5 H670"/>
+  <path class="line" d="M970 262.5 H1065"/>
+  <path class="line" d="M1350 262.5 H1445"/>
+</svg>

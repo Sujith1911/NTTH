@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1700" height="820" viewBox="0 0 1700 820" role="img" aria-labelledby="title desc">
+  <title id="title">Fig 3.6 - Database Entity-Relationship Diagram</title>
+  <desc id="desc">Entity relationship diagram showing threat_events to enforcement_actions, optional honeypot_sessions, firewall_rules, wifi_events, and network_devices foreign key via source IP.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="14" markerHeight="14" refX="12" refY="7" orient="auto" markerUnits="strokeWidth">
+      <path d="M1,1 L13,7 L1,13 Z" fill="#222222"/>
+    </marker>
+    <style>
+      .text { font-family: Arial, Helvetica, sans-serif; fill: #111111; }
+      .title { font-size: 30px; font-weight: 700; }
+      .entity-title { font-size: 21px; font-weight: 700; }
+      .field { font-size: 15px; font-weight: 400; }
+      .rel { font-size: 16px; font-weight: 700; }
+      .box { fill: #ffffff; stroke: #222222; stroke-width: 2; }
+      .line { stroke: #222222; stroke-width: 2.5; fill: none; marker-end: url(#arrow); }
+      .optional { stroke-dasharray: 8 8; }
+    </style>
+  </defs>
+
+  <rect width="1700" height="820" fill="#ffffff"/>
+  <text x="850" y="58" text-anchor="middle" class="text title">Fig 3.6 - Database Entity-Relationship Diagram</text>
+
+  <g transform="translate(665 145)">
+    <rect class="box" x="0" y="0" width="320" height="150"/>
+    <text x="160" y="36" text-anchor="middle" class="text entity-title">threat_events</text>
+    <line x1="0" y1="52" x2="320" y2="52" stroke="#222222" stroke-width="2"/>
+    <text x="24" y="82" class="text field">id (PK)</text>
+    <text x="24" y="108" class="text field">src_ip (FK)</text>
+    <text x="24" y="134" class="text field">score, timestamp, type</text>
+  </g>
+
+  <g transform="translate(665 440)">
+    <rect class="box" x="0" y="0" width="320" height="150"/>
+    <text x="160" y="36" text-anchor="middle" class="text entity-title">enforcement_actions</text>
+    <line x1="0" y1="52" x2="320" y2="52" stroke="#222222" stroke-width="2"/>
+    <text x="24" y="82" class="text field">id (PK)</text>
+    <text x="24" y="108" class="text field">threat_event_id (FK)</text>
+    <text x="24" y="134" class="text field">action, status, timestamp</text>
+  </g>
+
+  <g transform="translate(1120 440)">
+    <rect class="box" x="0" y="0" width="300" height="150"/>
+    <text x="150" y="36" text-anchor="middle" class="text entity-title">honeypot_sessions</text>
+    <line x1="0" y1="52" x2="300" y2="52" stroke="#222222" stroke-width="2"/>
+    <text x="24" y="82" class="text field">id (PK)</text>
+    <text x="24" y="108" class="text field">enforcement_action_id (FK)</text>
+    <text x="24" y="134" class="text field">commands, duration, log_path</text>
+  </g>
+
+  <g transform="translate(1120 645)">
+    <rect class="box" x="0" y="0" width="300" height="130"/>
+    <text x="150" y="36" text-anchor="middle" class="text entity-title">firewall_rules</text>
+    <line x1="0" y1="52" x2="300" y2="52" stroke="#222222" stroke-width="2"/>
+    <text x="24" y="82" class="text field">id (PK)</text>
+    <text x="24" y="108" class="text field">enforcement_action_id (FK)</text>
+  </g>
+
+  <g transform="translate(230 440)">
+    <rect class="box" x="0" y="0" width="300" height="150"/>
+    <text x="150" y="36" text-anchor="middle" class="text entity-title">wifi_events</text>
+    <line x1="0" y1="52" x2="300" y2="52" stroke="#222222" stroke-width="2"/>
+    <text x="24" y="82" class="text field">id (PK)</text>
+    <text x="24" y="108" class="text field">threat_event_id (FK)</text>
+    <text x="24" y="134" class="text field">ssid, bssid, channel</text>
+  </g>
+
+  <g transform="translate(230 145)">
+    <rect class="box" x="0" y="0" width="300" height="150"/>
+    <text x="150" y="36" text-anchor="middle" class="text entity-title">network_devices</text>
+    <line x1="0" y1="52" x2="300" y2="52" stroke="#222222" stroke-width="2"/>
+    <text x="24" y="82" class="text field">id (PK)</text>
+    <text x="24" y="108" class="text field">ip_address</text>
+    <text x="24" y="134" class="text field">mac, hostname, last_seen</text>
+  </g>
+
+  <path class="line" d="M825 295 V440"/>
+  <text x="790" y="372" text-anchor="middle" class="text rel">1</text>
+  <text x="870" y="372" text-anchor="middle" class="text rel">many</text>
+
+  <path class="line optional" d="M985 515 H1120"/>
+  <text x="1034" y="500" text-anchor="middle" class="text rel">1</text>
+  <text x="1070" y="540" text-anchor="middle" class="text rel">0..1</text>
+
+  <path class="line" d="M985 565 C1060 600 1095 650 1120 710"/>
+  <text x="1045" y="618" text-anchor="middle" class="text rel">rules</text>
+
+  <path class="line" d="M665 260 C560 330 455 390 380 440"/>
+  <text x="510" y="360" text-anchor="middle" class="text rel">wifi chain</text>
+
+  <path class="line" d="M530 220 H665"/>
+  <text x="598" y="205" text-anchor="middle" class="text rel">src_ip FK</text>
+</svg>

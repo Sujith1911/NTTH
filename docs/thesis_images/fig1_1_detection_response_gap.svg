@@ -1,0 +1,119 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="650" viewBox="0 0 1600 650" role="img" aria-labelledby="title desc">
+  <title id="title">Fig 1.1 - Traditional vs NTTH Detection-to-Response Gap</title>
+  <desc id="desc">Timeline comparison showing Traditional IDS alert to manual review to 15-30 minute action versus NTTH detect to auto-score to less than 500 millisecond enforcement.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="14" markerHeight="14" refX="12" refY="7" orient="auto" markerUnits="strokeWidth">
+      <path d="M1,1 L13,7 L1,13 Z" fill="#222222"/>
+    </marker>
+    <style>
+      .text {
+        font-family: Arial, Helvetica, sans-serif;
+        fill: #111111;
+      }
+      .title {
+        font-size: 30px;
+        font-weight: 700;
+      }
+      .row-title {
+        font-size: 24px;
+        font-weight: 700;
+      }
+      .box-title {
+        font-size: 21px;
+        font-weight: 700;
+      }
+      .box-sub {
+        font-size: 16px;
+        font-weight: 400;
+      }
+      .gap {
+        font-size: 26px;
+        font-weight: 700;
+      }
+      .box {
+        fill: #ffffff;
+        stroke: #222222;
+        stroke-width: 2;
+      }
+      .line {
+        stroke: #222222;
+        stroke-width: 2.5;
+        fill: none;
+        marker-end: url(#arrow);
+      }
+      .baseline {
+        stroke: #222222;
+        stroke-width: 2;
+        fill: none;
+      }
+      .divider {
+        stroke: #777777;
+        stroke-width: 1.5;
+        stroke-dasharray: 8 8;
+      }
+    </style>
+  </defs>
+
+  <rect width="1600" height="650" fill="#ffffff"/>
+
+  <text x="800" y="58" text-anchor="middle" class="text title">Fig 1.1 - Traditional vs NTTH Detection-to-Response Gap</text>
+
+  <line x1="80" y1="325" x2="1520" y2="325" class="divider"/>
+
+  <text x="115" y="168" text-anchor="start" class="text row-title">Traditional IDS</text>
+  <text x="115" y="468" text-anchor="start" class="text row-title">NTTH</text>
+
+  <g transform="translate(300 115)">
+    <rect class="box" x="0" y="0" width="190" height="95"/>
+    <text x="95" y="58" text-anchor="middle" class="text box-title">Alert</text>
+  </g>
+
+  <g transform="translate(585 115)">
+    <rect class="box" x="0" y="0" width="230" height="95"/>
+    <text x="115" y="48" text-anchor="middle" class="text box-title">Manual Review</text>
+    <text x="115" y="74" text-anchor="middle" class="text box-sub">analyst decision</text>
+  </g>
+
+  <g transform="translate(915 115)">
+    <rect class="box" x="0" y="0" width="220" height="95"/>
+    <text x="110" y="58" text-anchor="middle" class="text gap">15-30 min</text>
+  </g>
+
+  <g transform="translate(1235 115)">
+    <rect class="box" x="0" y="0" width="190" height="95"/>
+    <text x="95" y="58" text-anchor="middle" class="text box-title">Action</text>
+  </g>
+
+  <path class="line" d="M490 162.5 H585"/>
+  <path class="line" d="M815 162.5 H915"/>
+  <path class="line" d="M1135 162.5 H1235"/>
+  <path class="baseline" d="M300 250 H1425"/>
+  <text x="862.5" y="280" text-anchor="middle" class="text box-sub">Detection-to-response depends on manual analysis and delayed enforcement</text>
+
+  <g transform="translate(300 415)">
+    <rect class="box" x="0" y="0" width="190" height="95"/>
+    <text x="95" y="58" text-anchor="middle" class="text box-title">Detect</text>
+  </g>
+
+  <g transform="translate(585 415)">
+    <rect class="box" x="0" y="0" width="230" height="95"/>
+    <text x="115" y="48" text-anchor="middle" class="text box-title">Auto-Score</text>
+    <text x="115" y="74" text-anchor="middle" class="text box-sub">risk calculation</text>
+  </g>
+
+  <g transform="translate(915 415)">
+    <rect class="box" x="0" y="0" width="220" height="95"/>
+    <text x="110" y="58" text-anchor="middle" class="text gap">&lt;500 ms</text>
+  </g>
+
+  <g transform="translate(1235 415)">
+    <rect class="box" x="0" y="0" width="190" height="95"/>
+    <text x="95" y="58" text-anchor="middle" class="text box-title">Enforce</text>
+  </g>
+
+  <path class="line" d="M490 462.5 H585"/>
+  <path class="line" d="M815 462.5 H915"/>
+  <path class="line" d="M1135 462.5 H1235"/>
+  <path class="baseline" d="M300 550 H1425"/>
+  <text x="862.5" y="580" text-anchor="middle" class="text box-sub">Detection, scoring, and enforcement are executed automatically in near real time</text>
+</svg>

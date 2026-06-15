@@ -1,0 +1,125 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="650" viewBox="0 0 1600 650" role="img" aria-labelledby="title desc">
+  <title id="title">Fig 3.1 - System Architecture: Five-Phase Pipeline</title>
+  <desc id="desc">Clean system architecture structure showing LAN Traffic to Scapy Capture, Feature Extractor, Risk Scorer, Decision Engine, nftables Enforcer, Honeypot Redirector, Flutter Dashboard, and Logging.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="14" markerHeight="14" refX="12" refY="7" orient="auto" markerUnits="strokeWidth">
+      <path d="M1,1 L13,7 L1,13 Z" fill="#222222"/>
+    </marker>
+    <style>
+      .text {
+        font-family: Arial, Helvetica, sans-serif;
+        fill: #111111;
+      }
+      .title {
+        font-size: 30px;
+        font-weight: 700;
+      }
+      .box-title {
+        font-size: 21px;
+        font-weight: 700;
+      }
+      .box-sub {
+        font-size: 16px;
+        font-weight: 400;
+      }
+      .phase {
+        font-size: 14px;
+        font-weight: 700;
+      }
+      .box {
+        fill: #ffffff;
+        stroke: #222222;
+        stroke-width: 2;
+      }
+      .decision {
+        fill: #ffffff;
+        stroke: #222222;
+        stroke-width: 2;
+      }
+      .line {
+        stroke: #222222;
+        stroke-width: 2.5;
+        fill: none;
+        marker-end: url(#arrow);
+      }
+      .dash {
+        stroke-dasharray: 8 8;
+      }
+    </style>
+  </defs>
+
+  <rect width="1600" height="650" fill="#ffffff"/>
+
+  <text x="800" y="58" text-anchor="middle" class="text title">Fig 3.1 - System Architecture: Five-Phase Pipeline</text>
+
+  <g transform="translate(60 145)">
+    <rect class="box" x="0" y="0" width="165" height="95"/>
+    <text x="82.5" y="34" text-anchor="middle" class="text phase">INPUT</text>
+    <text x="82.5" y="63" text-anchor="middle" class="text box-title">LAN Traffic</text>
+  </g>
+
+  <g transform="translate(285 145)">
+    <rect class="box" x="0" y="0" width="180" height="95"/>
+    <text x="90" y="34" text-anchor="middle" class="text phase">PHASE 1</text>
+    <text x="90" y="63" text-anchor="middle" class="text box-title">Scapy Capture</text>
+  </g>
+
+  <g transform="translate(525 145)">
+    <rect class="box" x="0" y="0" width="200" height="95"/>
+    <text x="100" y="34" text-anchor="middle" class="text phase">PHASE 2</text>
+    <text x="100" y="63" text-anchor="middle" class="text box-title">Feature Extractor</text>
+  </g>
+
+  <g transform="translate(785 125)">
+    <rect class="box" x="0" y="0" width="245" height="135"/>
+    <text x="122.5" y="34" text-anchor="middle" class="text phase">PHASE 3</text>
+    <text x="122.5" y="66" text-anchor="middle" class="text box-title">Risk Scorer</text>
+    <text x="122.5" y="98" text-anchor="middle" class="text box-sub">IDS + Isolation Forest</text>
+  </g>
+
+  <g transform="translate(1110 125)">
+    <path class="decision" d="M120 0 L240 67.5 L120 135 L0 67.5 Z"/>
+    <text x="120" y="44" text-anchor="middle" class="text phase">PHASE 4</text>
+    <text x="120" y="76" text-anchor="middle" class="text box-title">Decision Engine</text>
+    <text x="120" y="104" text-anchor="middle" class="text box-sub">Allow / Isolate</text>
+  </g>
+
+  <g transform="translate(945 400)">
+    <rect class="box" x="0" y="0" width="220" height="95"/>
+    <text x="110" y="34" text-anchor="middle" class="text phase">PHASE 5A</text>
+    <text x="110" y="63" text-anchor="middle" class="text box-title">nftables Enforcer</text>
+  </g>
+
+  <g transform="translate(1245 400)">
+    <rect class="box" x="0" y="0" width="250" height="95"/>
+    <text x="125" y="34" text-anchor="middle" class="text phase">PHASE 5B</text>
+    <text x="125" y="63" text-anchor="middle" class="text box-title">Honeypot Redirector</text>
+  </g>
+
+  <g transform="translate(330 400)">
+    <rect class="box" x="0" y="0" width="245" height="95"/>
+    <text x="122.5" y="34" text-anchor="middle" class="text phase">OUTPUT</text>
+    <text x="122.5" y="63" text-anchor="middle" class="text box-title">Flutter Dashboard</text>
+  </g>
+
+  <g transform="translate(635 400)">
+    <rect class="box" x="0" y="0" width="210" height="95"/>
+    <text x="105" y="34" text-anchor="middle" class="text phase">OUTPUT</text>
+    <text x="105" y="63" text-anchor="middle" class="text box-title">Logging</text>
+  </g>
+
+  <path class="line" d="M225 192.5 H285"/>
+  <path class="line" d="M465 192.5 H525"/>
+  <path class="line" d="M725 192.5 H785"/>
+  <path class="line" d="M1030 192.5 H1110"/>
+
+  <path class="line" d="M1230 260 V345 H1055 V400"/>
+  <path class="line" d="M1230 260 V345 H1370 V400"/>
+
+  <path class="line dash" d="M907.5 260 V330 H452.5 V400"/>
+  <path class="line dash" d="M1230 260 V330 H740 V400"/>
+
+  <text x="1055" y="375" text-anchor="middle" class="text box-sub">Allowed traffic</text>
+  <text x="1370" y="375" text-anchor="middle" class="text box-sub">High-risk traffic</text>
+  <text x="592" y="352" text-anchor="middle" class="text box-sub">Events and decisions</text>
+</svg>

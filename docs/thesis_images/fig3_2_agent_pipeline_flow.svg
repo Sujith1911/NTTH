@@ -1,0 +1,111 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="520" viewBox="0 0 1800 520" role="img" aria-labelledby="title desc">
+  <title id="title">Fig 3.2 - Agent Pipeline Sequential Processing Flow</title>
+  <desc id="desc">Sequential processing flow from Capture Agent to Redis feature vectors, Threat Assessment Agent, Redis threat events, Decision Agent, Redis directives, Enforcement Agent, Reporting Agent, and Dashboard WebSocket.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="14" markerHeight="14" refX="12" refY="7" orient="auto" markerUnits="strokeWidth">
+      <path d="M1,1 L13,7 L1,13 Z" fill="#222222"/>
+    </marker>
+    <style>
+      .text {
+        font-family: Arial, Helvetica, sans-serif;
+        fill: #111111;
+      }
+      .title {
+        font-size: 30px;
+        font-weight: 700;
+      }
+      .box-title {
+        font-size: 19px;
+        font-weight: 700;
+      }
+      .box-sub {
+        font-size: 15px;
+        font-weight: 400;
+      }
+      .box {
+        fill: #ffffff;
+        stroke: #222222;
+        stroke-width: 2;
+      }
+      .queue {
+        fill: #ffffff;
+        stroke: #222222;
+        stroke-width: 2;
+        stroke-dasharray: 7 6;
+      }
+      .line {
+        stroke: #222222;
+        stroke-width: 2.5;
+        fill: none;
+        marker-end: url(#arrow);
+      }
+    </style>
+  </defs>
+
+  <rect width="1800" height="520" fill="#ffffff"/>
+
+  <text x="900" y="58" text-anchor="middle" class="text title">Fig 3.2 - Agent Pipeline Sequential Processing Flow</text>
+
+  <g transform="translate(55 205)">
+    <rect class="box" x="0" y="0" width="175" height="95"/>
+    <text x="87.5" y="44" text-anchor="middle" class="text box-title">Capture</text>
+    <text x="87.5" y="70" text-anchor="middle" class="text box-title">Agent</text>
+  </g>
+
+  <g transform="translate(285 205)">
+    <rect class="queue" x="0" y="0" width="190" height="95"/>
+    <text x="95" y="42" text-anchor="middle" class="text box-title">Redis</text>
+    <text x="95" y="68" text-anchor="middle" class="text box-sub">feature_vectors</text>
+  </g>
+
+  <g transform="translate(530 205)">
+    <rect class="box" x="0" y="0" width="230" height="95"/>
+    <text x="115" y="44" text-anchor="middle" class="text box-title">Threat Assessment</text>
+    <text x="115" y="70" text-anchor="middle" class="text box-title">Agent</text>
+  </g>
+
+  <g transform="translate(815 205)">
+    <rect class="queue" x="0" y="0" width="180" height="95"/>
+    <text x="90" y="42" text-anchor="middle" class="text box-title">Redis</text>
+    <text x="90" y="68" text-anchor="middle" class="text box-sub">threat_events</text>
+  </g>
+
+  <g transform="translate(1050 205)">
+    <rect class="box" x="0" y="0" width="175" height="95"/>
+    <text x="87.5" y="44" text-anchor="middle" class="text box-title">Decision</text>
+    <text x="87.5" y="70" text-anchor="middle" class="text box-title">Agent</text>
+  </g>
+
+  <g transform="translate(1280 205)">
+    <rect class="queue" x="0" y="0" width="165" height="95"/>
+    <text x="82.5" y="42" text-anchor="middle" class="text box-title">Redis</text>
+    <text x="82.5" y="68" text-anchor="middle" class="text box-sub">directives</text>
+  </g>
+
+  <g transform="translate(1500 145)">
+    <rect class="box" x="0" y="0" width="210" height="95"/>
+    <text x="105" y="44" text-anchor="middle" class="text box-title">Enforcement</text>
+    <text x="105" y="70" text-anchor="middle" class="text box-title">Agent</text>
+  </g>
+
+  <g transform="translate(1500 330)">
+    <rect class="box" x="0" y="0" width="210" height="95"/>
+    <text x="105" y="44" text-anchor="middle" class="text box-title">Reporting</text>
+    <text x="105" y="70" text-anchor="middle" class="text box-title">Agent</text>
+  </g>
+
+  <g transform="translate(1135 330)">
+    <rect class="box" x="0" y="0" width="240" height="95"/>
+    <text x="120" y="44" text-anchor="middle" class="text box-title">Dashboard</text>
+    <text x="120" y="70" text-anchor="middle" class="text box-title">WebSocket</text>
+  </g>
+
+  <path class="line" d="M230 252.5 H285"/>
+  <path class="line" d="M475 252.5 H530"/>
+  <path class="line" d="M760 252.5 H815"/>
+  <path class="line" d="M995 252.5 H1050"/>
+  <path class="line" d="M1225 252.5 H1280"/>
+  <path class="line" d="M1445 252.5 H1500 V192.5"/>
+  <path class="line" d="M1605 240 V330"/>
+  <path class="line" d="M1500 377.5 H1375"/>
+</svg>

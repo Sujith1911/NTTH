@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1700" height="700" viewBox="0 0 1700 700" role="img" aria-labelledby="title desc">
+  <title id="title">Fig 4.3 - nftables Rule Chain Diagram</title>
+  <desc id="desc">Incoming packet enters ntth_nat prerouting, DNAT check redirects matched packets to honeypot, otherwise ntth_filter forward performs DROP check, matched packets drop, otherwise forward to destination.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="14" markerHeight="14" refX="12" refY="7" orient="auto" markerUnits="strokeWidth">
+      <path d="M1,1 L13,7 L1,13 Z" fill="#222222"/>
+    </marker>
+    <style>
+      .text { font-family: Arial, Helvetica, sans-serif; fill: #111111; }
+      .title { font-size: 30px; font-weight: 700; }
+      .box-title { font-size: 20px; font-weight: 700; }
+      .box-sub { font-size: 16px; font-weight: 400; }
+      .box,.decision { fill: #ffffff; stroke: #222222; stroke-width: 2; }
+      .line { stroke: #222222; stroke-width: 2.5; fill: none; marker-end: url(#arrow); }
+      .label { font-size: 16px; font-weight: 700; }
+    </style>
+  </defs>
+  <rect width="1700" height="700" fill="#ffffff"/>
+  <text x="850" y="58" text-anchor="middle" class="text title">Fig 4.3 - nftables Rule Chain Diagram</text>
+
+  <g transform="translate(70 275)"><rect class="box" width="210" height="90"/><text x="105" y="55" text-anchor="middle" class="text box-title">Incoming Packet</text></g>
+  <g transform="translate(370 275)"><rect class="box" width="230" height="90"/><text x="115" y="42" text-anchor="middle" class="text box-title">ntth_nat</text><text x="115" y="68" text-anchor="middle" class="text box-sub">prerouting</text></g>
+  <g transform="translate(700 235)"><path class="decision" d="M115 0 L230 85 L115 170 L0 85 Z"/><text x="115" y="77" text-anchor="middle" class="text box-title">DNAT</text><text x="115" y="103" text-anchor="middle" class="text box-title">check</text></g>
+  <g transform="translate(1030 115)"><rect class="box" width="245" height="90"/><text x="122.5" y="42" text-anchor="middle" class="text box-title">Redirect to</text><text x="122.5" y="68" text-anchor="middle" class="text box-title">Honeypot</text></g>
+  <g transform="translate(1030 275)"><rect class="box" width="230" height="90"/><text x="115" y="42" text-anchor="middle" class="text box-title">ntth_filter</text><text x="115" y="68" text-anchor="middle" class="text box-sub">forward</text></g>
+  <g transform="translate(1350 235)"><path class="decision" d="M115 0 L230 85 L115 170 L0 85 Z"/><text x="115" y="77" text-anchor="middle" class="text box-title">DROP</text><text x="115" y="103" text-anchor="middle" class="text box-title">check</text></g>
+  <g transform="translate(1350 500)"><rect class="box" width="230" height="90"/><text x="115" y="55" text-anchor="middle" class="text box-title">Drop Packet</text></g>
+  <g transform="translate(1030 500)"><rect class="box" width="245" height="90"/><text x="122.5" y="42" text-anchor="middle" class="text box-title">Forward to</text><text x="122.5" y="68" text-anchor="middle" class="text box-title">Destination</text></g>
+
+  <path class="line" d="M280 320 H370"/>
+  <path class="line" d="M600 320 H700"/>
+  <path class="line" d="M815 235 V160 H1030"/>
+  <text x="925" y="146" text-anchor="middle" class="text label">matched</text>
+  <path class="line" d="M930 320 H1030"/>
+  <text x="982" y="305" text-anchor="middle" class="text label">else</text>
+  <path class="line" d="M1260 320 H1350"/>
+  <path class="line" d="M1465 405 V500"/>
+  <text x="1510" y="460" text-anchor="middle" class="text label">matched</text>
+  <path class="line" d="M1350 320 C1300 365 1210 455 1152 500"/>
+  <text x="1238" y="415" text-anchor="middle" class="text label">else</text>
+</svg>

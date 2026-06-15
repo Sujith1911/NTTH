@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1750" height="650" viewBox="0 0 1750 650" role="img" aria-labelledby="title desc">
+  <title id="title">Fig 4.4 - Flutter Dashboard Architecture</title>
+  <desc id="desc">Flutter app with Provider state management connects through dart io WebSocket client to FastAPI WebSocket endpoint, Redis subscriber, real-time data streams, and REST API calls for historical data and control operations.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="14" markerHeight="14" refX="12" refY="7" orient="auto" markerUnits="strokeWidth">
+      <path d="M1,1 L13,7 L1,13 Z" fill="#222222"/>
+    </marker>
+    <style>
+      .text { font-family: Arial, Helvetica, sans-serif; fill: #111111; }
+      .title { font-size: 30px; font-weight: 700; }
+      .box-title { font-size: 20px; font-weight: 700; }
+      .box-sub { font-size: 16px; font-weight: 400; }
+      .box { fill: #ffffff; stroke: #222222; stroke-width: 2; }
+      .line { stroke: #222222; stroke-width: 2.5; fill: none; marker-end: url(#arrow); }
+      .dash { stroke-dasharray: 8 8; }
+      .label { font-size: 16px; font-weight: 700; }
+    </style>
+  </defs>
+  <rect width="1750" height="650" fill="#ffffff"/>
+  <text x="875" y="58" text-anchor="middle" class="text title">Fig 4.4 - Flutter Dashboard Architecture</text>
+
+  <g transform="translate(60 230)"><rect class="box" width="230" height="100"/><text x="115" y="42" text-anchor="middle" class="text box-title">Flutter App</text><text x="115" y="70" text-anchor="middle" class="text box-sub">Provider state</text></g>
+  <g transform="translate(390 230)"><rect class="box" width="245" height="100"/><text x="122.5" y="42" text-anchor="middle" class="text box-title">WebSocket Client</text><text x="122.5" y="70" text-anchor="middle" class="text box-sub">dart:io</text></g>
+  <g transform="translate(735 230)"><rect class="box" width="285" height="100"/><text x="142.5" y="42" text-anchor="middle" class="text box-title">FastAPI WebSocket</text><text x="142.5" y="70" text-anchor="middle" class="text box-sub">endpoint</text></g>
+  <g transform="translate(1120 230)"><rect class="box" width="235" height="100"/><text x="117.5" y="42" text-anchor="middle" class="text box-title">Redis Subscriber</text><text x="117.5" y="70" text-anchor="middle" class="text box-sub">pub/sub listener</text></g>
+  <g transform="translate(1455 230)"><rect class="box" width="235" height="100"/><text x="117.5" y="42" text-anchor="middle" class="text box-title">Real-time Data</text><text x="117.5" y="70" text-anchor="middle" class="text box-sub">streams</text></g>
+
+  <g transform="translate(735 455)"><rect class="box" width="285" height="100"/><text x="142.5" y="42" text-anchor="middle" class="text box-title">REST API Calls</text><text x="142.5" y="70" text-anchor="middle" class="text box-sub">history and controls</text></g>
+  <g transform="translate(1120 455)"><rect class="box" width="235" height="100"/><text x="117.5" y="42" text-anchor="middle" class="text box-title">Backend Services</text><text x="117.5" y="70" text-anchor="middle" class="text box-sub">query and operations</text></g>
+
+  <path class="line" d="M290 280 H390"/>
+  <path class="line" d="M635 280 H735"/>
+  <path class="line" d="M1020 280 H1120"/>
+  <path class="line" d="M1355 280 H1455"/>
+  <path class="line dash" d="M175 330 C250 445 500 505 735 505"/>
+  <text x="460" y="465" text-anchor="middle" class="text label">REST</text>
+  <path class="line dash" d="M1020 505 H1120"/>
+</svg>

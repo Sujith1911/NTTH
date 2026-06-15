@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
@@ -302,6 +303,20 @@ class _NetworkTopologyScreenState extends State<NetworkTopologyScreen>
             tooltip: 'Reset view',
           ),
           IconButton(
+            icon: const Icon(Icons.zoom_in),
+            onPressed: () {
+              setState(() => _scale = (_scale * 1.2).clamp(0.4, 2.5));
+            },
+            tooltip: 'Zoom in',
+          ),
+          IconButton(
+            icon: const Icon(Icons.zoom_out),
+            onPressed: () {
+              setState(() => _scale = (_scale / 1.2).clamp(0.4, 2.5));
+            },
+            tooltip: 'Zoom out',
+          ),
+          IconButton(
             icon: const Icon(Icons.auto_fix_high),
             onPressed: () {
               setState(() {
@@ -468,7 +483,19 @@ class _NetworkTopologyScreenState extends State<NetworkTopologyScreen>
       return null;
     }
 
-    return GestureDetector(
+    return Listener(
+      onPointerSignal: (event) {
+        if (event is PointerScrollEvent) {
+          setState(() {
+            if (event.scrollDelta.dy < 0) {
+              _scale = (_scale * 1.1).clamp(0.4, 2.5);
+            } else {
+              _scale = (_scale / 1.1).clamp(0.4, 2.5);
+            }
+          });
+        }
+      },
+      child: GestureDetector(
       onScaleStart: (d) {
         final hitId = hitTestNode(d.focalPoint);
         if (hitId != null) {
@@ -535,6 +562,7 @@ class _NetworkTopologyScreenState extends State<NetworkTopologyScreen>
             ),
           ),
         ),
+      ),
       ),
     );
   }

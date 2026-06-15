@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="850" viewBox="0 0 1200 850" role="img" aria-labelledby="title desc">
+  <title id="title">Fig 4.2 - Isolation Forest Feature Space Visualization</title>
+  <desc id="desc">PCA-reduced 2D feature space with normal traffic cluster near center, attack vectors near periphery, and dashed decision boundary.</desc>
+  <defs>
+    <style>
+      .text { font-family: Arial, Helvetica, sans-serif; fill: #111111; }
+      .title { font-size: 30px; font-weight: 700; }
+      .axis { stroke: #222222; stroke-width: 2; }
+      .grid { stroke: #dddddd; stroke-width: 1; }
+      .boundary { fill: none; stroke: #222222; stroke-width: 2.5; stroke-dasharray: 10 8; }
+      .normal { fill: #2f6fbe; opacity: 0.78; }
+      .attack { fill: #c93535; opacity: 0.86; }
+      .label { font-size: 17px; font-weight: 400; }
+      .legend { font-size: 18px; font-weight: 700; }
+    </style>
+  </defs>
+  <rect width="1200" height="850" fill="#ffffff"/>
+  <text x="600" y="58" text-anchor="middle" class="text title">Fig 4.2 - Isolation Forest Feature Space Visualization</text>
+
+  <g transform="translate(135 110)">
+    <rect x="0" y="0" width="900" height="620" fill="#ffffff" stroke="#222222" stroke-width="2"/>
+    <line x1="150" y1="0" x2="150" y2="620" class="grid"/>
+    <line x1="300" y1="0" x2="300" y2="620" class="grid"/>
+    <line x1="450" y1="0" x2="450" y2="620" class="grid"/>
+    <line x1="600" y1="0" x2="600" y2="620" class="grid"/>
+    <line x1="750" y1="0" x2="750" y2="620" class="grid"/>
+    <line x1="0" y1="155" x2="900" y2="155" class="grid"/>
+    <line x1="0" y1="310" x2="900" y2="310" class="grid"/>
+    <line x1="0" y1="465" x2="900" y2="465" class="grid"/>
+    <line x1="450" y1="0" x2="450" y2="620" class="axis"/>
+    <line x1="0" y1="310" x2="900" y2="310" class="axis"/>
+
+    <ellipse cx="450" cy="310" rx="240" ry="165" class="boundary"/>
+
+    <circle cx="438" cy="305" r="7" class="normal"/><circle cx="472" cy="294" r="7" class="normal"/>
+    <circle cx="420" cy="334" r="7" class="normal"/><circle cx="495" cy="328" r="7" class="normal"/>
+    <circle cx="452" cy="352" r="7" class="normal"/><circle cx="390" cy="300" r="7" class="normal"/>
+    <circle cx="520" cy="290" r="7" class="normal"/><circle cx="365" cy="350" r="7" class="normal"/>
+    <circle cx="560" cy="345" r="7" class="normal"/><circle cx="410" cy="260" r="7" class="normal"/>
+    <circle cx="490" cy="250" r="7" class="normal"/><circle cx="445" cy="270" r="7" class="normal"/>
+    <circle cx="535" cy="375" r="7" class="normal"/><circle cx="335" cy="320" r="7" class="normal"/>
+    <circle cx="585" cy="305" r="7" class="normal"/><circle cx="470" cy="390" r="7" class="normal"/>
+    <circle cx="375" cy="385" r="7" class="normal"/><circle cx="545" cy="245" r="7" class="normal"/>
+    <circle cx="430" cy="420" r="7" class="normal"/><circle cx="610" cy="365" r="7" class="normal"/>
+    <circle cx="300" cy="275" r="7" class="normal"/><circle cx="635" cy="285" r="7" class="normal"/>
+
+    <circle cx="120" cy="95" r="8" class="attack"/><circle cx="805" cy="90" r="8" class="attack"/>
+    <circle cx="95" cy="500" r="8" class="attack"/><circle cx="815" cy="520" r="8" class="attack"/>
+    <circle cx="210" cy="90" r="8" class="attack"/><circle cx="735" cy="155" r="8" class="attack"/>
+    <circle cx="190" cy="565" r="8" class="attack"/><circle cx="705" cy="555" r="8" class="attack"/>
+    <circle cx="455" cy="70" r="8" class="attack"/><circle cx="465" cy="575" r="8" class="attack"/>
+    <circle cx="70" cy="315" r="8" class="attack"/><circle cx="845" cy="300" r="8" class="attack"/>
+
+    <text x="450" y="675" text-anchor="middle" class="text label">PCA Component 1</text>
+    <text x="-310" y="-70" text-anchor="middle" transform="rotate(-90)" class="text label">PCA Component 2</text>
+  </g>
+
+  <g transform="translate(870 755)">
+    <circle cx="0" cy="0" r="8" class="normal"/>
+    <text x="24" y="6" class="text legend">Normal traffic</text>
+    <circle cx="0" cy="38" r="8" class="attack"/>
+    <text x="24" y="44" class="text legend">Attack vector</text>
+    <line x1="-8" y1="76" x2="18" y2="76" class="boundary"/>
+    <text x="24" y="82" class="text legend">Decision boundary</text>
+  </g>
+</svg>

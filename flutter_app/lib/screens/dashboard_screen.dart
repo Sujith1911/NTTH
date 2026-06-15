@@ -32,7 +32,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         icon: Icons.dashboard_outlined, label: 'Dashboard', path: '/dashboard'),
     _NavItem(icon: Icons.devices_outlined, label: 'Devices', path: '/devices'),
     _NavItem(
-        icon: Icons.public_outlined, label: 'Threat Map', path: '/threats'),
+        icon: Icons.gpp_maybe_outlined, label: 'Threat Details', path: '/threats'),
     _NavItem(icon: Icons.hub_outlined, label: 'Topology', path: '/topology'),
     _NavItem(
         icon: Icons.security_outlined, label: 'Firewall', path: '/firewall'),

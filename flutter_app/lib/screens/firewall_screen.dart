@@ -15,13 +15,88 @@ class FirewallScreen extends StatefulWidget {
   State<FirewallScreen> createState() => _FirewallScreenState();
 }
 
-class _FirewallScreenState extends State<FirewallScreen> {
-  List<FirewallRuleModel> _rules = [];
+class _FirewallScreenState extends State<FirewallScreen>
+    with SingleTickerProviderStateMixin {
+  List<FirewallRuleModel> _activeRules = [];
+  List<FirewallRuleModel> _allRules = [];
   Map<String, dynamic>? _status;
-  bool _loading = true;
+  bool _loadingActive = true;
+  bool _loadingHistory = true;
   String? _error;
   String _query = '';
   DateTime? _lastSyncedAt;
+  late TabController _tabController;
+  int _historyTotal = 0;
+  int _historyPage = 1;
+  final int _historyPageSize = 50;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+    _fetchAll();
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _fetchAll() async {
+    await Future.wait([_fetchActiveRules(), _fetchHistory()]);
+  }
+
+  Future<void> _fetchActiveRules() async {
+    setState(() {
+      _loadingActive = true;
+      _error = null;
+    });
+    try {
+      final api = context.read<AuthService>().api;
+      final responses = await Future.wait([
+        api.get('/firewall/rules'),
+        api.get('/firewall/status'),
+      ]);
+      setState(() {
+        _activeRules = (responses[0].data as List)
+            .map((item) =>
+                FirewallRuleModel.fromJson(item as Map<String, dynamic>))
+            .toList();
+        _status = responses[1].data as Map<String, dynamic>;
+        _loadingActive = false;
+        _lastSyncedAt = DateTime.now();
+      });
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+        _loadingActive = false;
+      });
+    }
+  }
+
+  Future<void> _fetchHistory({int page = 1}) async {
+    setState(() => _loadingHistory = true);
+    try {
+      final api = context.read<AuthService>().api;
+      final resp = await api.get('/firewall/rules/history', params: {
+        'page': page,
+        'page_size': _historyPageSize,
+      });
+      final data = resp.data as Map<String, dynamic>;
+      setState(() {
+        _allRules = (data['items'] as List)
+            .map((item) =>
+                FirewallRuleModel.fromJson(item as Map<String, dynamic>))
+            .toList();
+        _historyTotal = data['total'] ?? 0;
+        _historyPage = page;
+        _loadingHistory = false;
+      });
+    } catch (e) {
+      setState(() => _loadingHistory = false);
+    }
+  }
 
   Future<void> _showAddRuleDialog() async {
     final ipCtrl = TextEditingController();
@@ -92,7 +167,7 @@ class _FirewallScreenState extends State<FirewallScreen> {
         if (reasonCtrl.text.trim().isNotEmpty) 'reason': reasonCtrl.text.trim(),
       };
       await context.read<AuthService>().api.post('/firewall/rules', data);
-      await _fetchRules();
+      await _fetchAll();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -108,45 +183,11 @@ class _FirewallScreenState extends State<FirewallScreen> {
     }
   }
 
-  @override
-  void initState() {
-    super.initState();
-    _fetchRules();
-  }
-
-  Future<void> _fetchRules() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    try {
-      final api = context.read<AuthService>().api;
-      final responses = await Future.wait([
-        api.get('/firewall/rules'),
-        api.get('/firewall/status'),
-      ]);
-      setState(() {
-        _rules = (responses[0].data as List)
-            .map((item) =>
-                FirewallRuleModel.fromJson(item as Map<String, dynamic>))
-            .toList();
-        _status = responses[1].data as Map<String, dynamic>;
-        _loading = false;
-        _lastSyncedAt = DateTime.now();
-      });
-    } catch (e) {
-      setState(() {
-        _error = e.toString();
-        _loading = false;
-      });
-    }
-  }
-
   Future<void> _deleteRule(String ruleId) async {
     try {
       final api = context.read<AuthService>().api;
       await api.delete('/firewall/rules/$ruleId');
-      _fetchRules();
+      _fetchAll();
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
@@ -191,7 +232,7 @@ class _FirewallScreenState extends State<FirewallScreen> {
       try {
         final api = context.read<AuthService>().api;
         await api.post('/firewall/flush', {});
-        _fetchRules();
+        _fetchAll();
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -219,10 +260,10 @@ class _FirewallScreenState extends State<FirewallScreen> {
     };
   }
 
-  List<FirewallRuleModel> get _filteredRules {
-    if (_query.trim().isEmpty) return _rules;
+  List<FirewallRuleModel> _filterRules(List<FirewallRuleModel> rules) {
+    if (_query.trim().isEmpty) return rules;
     final q = _query.trim().toLowerCase();
-    return _rules.where((rule) {
+    return rules.where((rule) {
       return [
         rule.targetIp,
         rule.matchDstIp,
@@ -243,16 +284,19 @@ class _FirewallScreenState extends State<FirewallScreen> {
     final reason = _status?['reason']?.toString();
     final containment = _status?['containment'] as Map<String, dynamic>?;
     final attempted = containment?['attempted'] as Map<String, dynamic>?;
-    final blockCount = _rules.where((rule) => rule.ruleType == 'block').length;
+    final blockCount =
+        _activeRules.where((rule) => rule.ruleType == 'block').length;
     final redirectCount =
-        _rules.where((rule) => rule.ruleType == 'redirect').length;
+        _activeRules.where((rule) => rule.ruleType == 'redirect').length;
     final rateLimitCount =
-        _rules.where((rule) => rule.ruleType == 'rate_limit').length;
+        _activeRules.where((rule) => rule.ruleType == 'rate_limit').length;
+    final totalHistoryRules = _status?['total_rules_seen'] ?? _historyTotal;
 
     return Scaffold(
       drawer: const AppShellDrawer(),
       appBar: AppBar(
-        title: Text('Firewall Rules (${_rules.length})'),
+        title: Text(
+            'Firewall (${_activeRules.length} active, $totalHistoryRules total)'),
         actions: [
           if (isAdmin)
             IconButton(
@@ -266,307 +310,392 @@ class _FirewallScreenState extends State<FirewallScreen> {
               tooltip: 'Emergency Flush',
               onPressed: _emergencyFlush,
             ),
-          IconButton(icon: const Icon(Icons.refresh), onPressed: _fetchRules),
+          IconButton(icon: const Icon(Icons.refresh), onPressed: _fetchAll),
         ],
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: [
+            Tab(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.shield_outlined, size: 16),
+                  const SizedBox(width: 6),
+                  Text('Active (${_activeRules.length})'),
+                ],
+              ),
+            ),
+            Tab(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.history, size: 16),
+                  const SizedBox(width: 6),
+                  Text('History ($totalHistoryRules)'),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
-      body: _loading
-          ? Center(
-              child:
-                  CircularProgressIndicator(color: theme.colorScheme.primary))
-          : _error != null
-              ? Center(
-                  child:
-                      Text(_error!, style: const TextStyle(color: Colors.red)))
-              : RefreshIndicator(
-                  onRefresh: _fetchRules,
-                  child: ListView(
-                    padding: const EdgeInsets.all(16),
+      body: Column(
+        children: [
+          // Status banner + stats
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                _statusBanner(theme, mode, reason),
+                const SizedBox(height: 12),
+                GlassyContainer(
+                  borderRadius: 22,
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _statusBanner(theme, mode, reason),
-                      const SizedBox(height: 16),
-                      GlassyContainer(
-                        borderRadius: 26,
-                        padding: const EdgeInsets.all(20),
-                        child: Wrap(
-                          alignment: WrapAlignment.spaceBetween,
-                          runSpacing: 14,
-                          spacing: 14,
-                          children: [
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Containment controls',
-                                  style: GoogleFonts.spaceGrotesk(
-                                    fontSize: 24,
-                                    fontWeight: FontWeight.w700,
-                                    color: theme.colorScheme.onSurface,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  'This page shows what the firewall can actually enforce, what it is only simulating, and which live containment rules are active.',
-                                  style: TextStyle(
-                                    color: theme.colorScheme.onSurface
-                                        .withOpacity(0.65),
-                                    height: 1.5,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            Wrap(
-                              spacing: 10,
-                              runSpacing: 10,
-                              children: [
-                                _summaryPill(theme, 'Blocks', '$blockCount',
-                                    color: Colors.red),
-                                _summaryPill(
-                                    theme, 'Active redirects', '$redirectCount',
-                                    color: Colors.blue),
-                                _summaryPill(theme, 'Active rate limits',
-                                    '$rateLimitCount',
-                                    color: Colors.orange),
-                                _summaryPill(
-                                  theme,
-                                  'Mode',
-                                  mode[0].toUpperCase() + mode.substring(1),
-                                  color: mode == 'enforcing'
-                                      ? theme.colorScheme.primary
-                                      : mode == 'simulation'
-                                          ? Colors.orange
-                                          : Colors.red,
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        onChanged: (value) => setState(() => _query = value),
-                        style: TextStyle(color: theme.colorScheme.onSurface),
-                        decoration: InputDecoration(
-                          hintText:
-                              'Filter by attacker IP, victim IP, rule type, or reason',
-                          hintStyle: TextStyle(
-                            color:
-                                theme.colorScheme.onSurface.withOpacity(0.45),
+                      Wrap(
+                        spacing: 10,
+                        runSpacing: 10,
+                        children: [
+                          _summaryPill(theme, 'Blocks', '$blockCount',
+                              color: Colors.red),
+                          _summaryPill(
+                              theme, 'Redirects', '$redirectCount',
+                              color: Colors.blue),
+                          _summaryPill(
+                              theme, 'Rate limits', '$rateLimitCount',
+                              color: Colors.orange),
+                          _summaryPill(
+                            theme,
+                            'Mode',
+                            mode[0].toUpperCase() + mode.substring(1),
+                            color: mode == 'enforcing'
+                                ? theme.colorScheme.primary
+                                : mode == 'simulation'
+                                    ? Colors.orange
+                                    : Colors.red,
                           ),
-                          prefixIcon: const Icon(Icons.search),
-                          suffixIcon: _query.isEmpty
-                              ? null
-                              : IconButton(
-                                  icon: const Icon(Icons.close),
-                                  onPressed: () => setState(() => _query = ''),
-                                ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      GlassyContainer(
-                        borderRadius: 22,
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Wrap(
-                              spacing: 10,
-                              runSpacing: 10,
-                              children: [
-                                _metaChip(theme, 'Block = drop all traffic'),
-                                _metaChip(theme,
-                                    'Redirect = send source to honeypot'),
-                                _metaChip(
-                                    theme, 'Rate limit = slow noisy traffic'),
-                                _metaChip(
-                                  theme,
-                                  'Attempts can increase even when active rules stay at zero.',
-                                ),
-                                _metaChip(
-                                  theme,
-                                  _lastSyncedAt == null
-                                      ? 'Last sync: never'
-                                      : 'Last sync: ${timeago.format(_lastSyncedAt!)}',
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 14),
-                            Wrap(
-                              spacing: 10,
-                              runSpacing: 10,
-                              children: [
-                                _summaryPill(
-                                  theme,
-                                  'Attempted redirects',
-                                  '${_toInt(attempted?['honeypot'])}',
-                                  color: Colors.blue,
-                                ),
-                                _summaryPill(
-                                  theme,
-                                  'Attempted blocks',
-                                  '${_toInt(attempted?['block'])}',
-                                  color: Colors.red,
-                                ),
-                                _summaryPill(
-                                  theme,
-                                  'Attempted throttles',
-                                  '${_toInt(attempted?['rate_limit'])}',
-                                  color: Colors.orange,
-                                ),
-                                _summaryPill(
-                                  theme,
-                                  'Observed only',
-                                  '${_toInt(attempted?['log'])}',
-                                  color: theme.colorScheme.primary,
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      if (_filteredRules.isEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 48),
-                          child: Center(
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  mode == 'simulation'
-                                      ? 'Firewall is currently simulating response'
-                                      : mode == 'degraded'
-                                          ? 'Firewall enforcement is currently degraded'
-                                          : 'No active containment rules right now',
-                                  style: TextStyle(
-                                    color: theme.colorScheme.onSurface
-                                        .withOpacity(0.6),
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  reason ??
-                                      'No hostile source currently requires an active firewall rule.',
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    color: theme.colorScheme.onSurface
-                                        .withOpacity(0.45),
-                                    fontSize: 12,
-                                    height: 1.5,
-                                  ),
-                                ),
-                              ],
-                            ),
+                          _summaryPill(
+                            theme,
+                            'Attempted blocks',
+                            '${_toInt(attempted?['block'])}',
+                            color: Colors.red,
                           ),
-                        )
-                      else
-                        ...List.generate(_filteredRules.length, (i) {
-                          final rule = _filteredRules[i];
-                          final color = _ruleColor(rule.ruleType);
-                          return Padding(
-                            padding: EdgeInsets.only(
-                                bottom: i == _filteredRules.length - 1 ? 0 : 8),
-                            child: GlassyContainer(
-                              padding: const EdgeInsets.all(16),
-                              borderRadius: 18,
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 10, vertical: 4),
-                                    decoration: BoxDecoration(
-                                      color: color
-                                          .withOpacity(isDark ? 0.15 : 0.1),
-                                      borderRadius: BorderRadius.circular(999),
-                                      border: Border.all(
-                                          color: color.withOpacity(0.5)),
-                                    ),
-                                    child: Text(
-                                      rule.ruleType.toUpperCase(),
-                                      style: TextStyle(
-                                        color: color,
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          _ruleHeadline(rule),
-                                          style: TextStyle(
-                                            color: theme.colorScheme.onSurface,
-                                            fontWeight: FontWeight.w700,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          rule.reason ??
-                                              'No reason attached to this rule.',
-                                          style: TextStyle(
-                                            color: theme.colorScheme.onSurface
-                                                .withOpacity(0.62),
-                                            fontSize: 12,
-                                            height: 1.4,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 10),
-                                        Wrap(
-                                          spacing: 10,
-                                          runSpacing: 8,
-                                          children: [
-                                            _metaChip(theme,
-                                                'Attacker ${rule.targetIp}'),
-                                            if (rule.matchDstIp != null)
-                                              _metaChip(
-                                                theme,
-                                                rule.matchDstPort != null
-                                                    ? 'Victim ${rule.matchDstIp}:${rule.matchDstPort}'
-                                                    : 'Victim ${rule.matchDstIp}',
-                                              ),
-                                            if (rule.ruleType == 'redirect' &&
-                                                rule.targetPort != null)
-                                              _metaChip(theme,
-                                                  'Honeypot ${rule.targetPort}'),
-                                            _metaChip(theme,
-                                                'Created ${timeago.format(rule.createdAt)}'),
-                                            if (rule.protocol != null)
-                                              _metaChip(theme,
-                                                  rule.protocol!.toUpperCase()),
-                                            if (rule.targetPort != null &&
-                                                rule.ruleType != 'redirect')
-                                              _metaChip(theme,
-                                                  'Port ${rule.targetPort}'),
-                                            if (rule.expiresAt != null)
-                                              _metaChip(
-                                                theme,
-                                                rule.isExpired
-                                                    ? 'Expired'
-                                                    : 'Expires ${timeago.format(rule.expiresAt!)}',
-                                              ),
-                                          ],
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  if (isAdmin)
-                                    IconButton(
-                                      icon: const Icon(Icons.delete_outline,
-                                          color: Colors.red, size: 20),
-                                      onPressed: () => _deleteRule(rule.id),
-                                    ),
-                                ],
-                              ),
-                            ),
-                          );
-                        }),
+                          _summaryPill(
+                            theme,
+                            'Attempted redirects',
+                            '${_toInt(attempted?['honeypot'])}',
+                            color: Colors.blue,
+                          ),
+                          _summaryPill(
+                            theme,
+                            'Last sync',
+                            _lastSyncedAt == null
+                                ? 'Never'
+                                : timeago.format(_lastSyncedAt!),
+                            color: theme.colorScheme.primary,
+                          ),
+                        ],
+                      ),
                     ],
                   ),
                 ),
+                const SizedBox(height: 12),
+                TextField(
+                  onChanged: (value) => setState(() => _query = value),
+                  style: TextStyle(color: theme.colorScheme.onSurface),
+                  decoration: InputDecoration(
+                    hintText:
+                        'Filter by attacker IP, victim IP, rule type, or reason',
+                    hintStyle: TextStyle(
+                      color:
+                          theme.colorScheme.onSurface.withOpacity(0.45),
+                    ),
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: _query.isEmpty
+                        ? null
+                        : IconButton(
+                            icon: const Icon(Icons.close),
+                            onPressed: () => setState(() => _query = ''),
+                          ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Tabbed content
+          Expanded(
+            child: TabBarView(
+              controller: _tabController,
+              children: [
+                // Tab 1: Active rules
+                _buildRulesList(
+                  _filterRules(_activeRules),
+                  _loadingActive,
+                  theme,
+                  isDark,
+                  isAdmin,
+                  mode,
+                  reason,
+                  showStatus: true,
+                ),
+                // Tab 2: Full history
+                _buildRulesList(
+                  _filterRules(_allRules),
+                  _loadingHistory,
+                  theme,
+                  isDark,
+                  isAdmin,
+                  mode,
+                  reason,
+                  showStatus: false,
+                  showPagination: true,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRulesList(
+    List<FirewallRuleModel> rules,
+    bool loading,
+    ThemeData theme,
+    bool isDark,
+    bool isAdmin,
+    String mode,
+    String? reason, {
+    bool showStatus = false,
+    bool showPagination = false,
+  }) {
+    if (loading) {
+      return Center(
+          child: CircularProgressIndicator(color: theme.colorScheme.primary));
+    }
+    if (rules.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.security_outlined,
+                size: 48,
+                color: theme.colorScheme.onSurface.withOpacity(0.3)),
+            const SizedBox(height: 12),
+            Text(
+              showStatus
+                  ? 'No active containment rules right now'
+                  : 'No firewall rule history found',
+              style: TextStyle(
+                color: theme.colorScheme.onSurface.withOpacity(0.6),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      children: [
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: _fetchAll,
+            child: ListView.builder(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              itemCount: rules.length,
+              itemBuilder: (_, i) {
+                final rule = rules[i];
+                return _buildRuleCard(rule, theme, isDark, isAdmin);
+              },
+            ),
+          ),
+        ),
+        if (showPagination && _historyTotal > _historyPageSize)
+          _buildPagination(theme),
+      ],
+    );
+  }
+
+  Widget _buildRuleCard(
+      FirewallRuleModel rule, ThemeData theme, bool isDark, bool isAdmin) {
+    final color = _ruleColor(rule.ruleType);
+    final isExpired = rule.isExpired;
+    final isInactive = !rule.isActive;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: GlassyContainer(
+        padding: const EdgeInsets.all(16),
+        borderRadius: 18,
+        color: isInactive || isExpired
+            ? theme.colorScheme.onSurface.withOpacity(0.03)
+            : null,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Status + type badge column
+            Column(
+              children: [
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color:
+                        color.withOpacity(isDark ? 0.15 : 0.1),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: color.withOpacity(0.5)),
+                  ),
+                  child: Text(
+                    rule.ruleType.toUpperCase(),
+                    style: TextStyle(
+                      color: isInactive ? color.withOpacity(0.5) : color,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                // Active/Expired indicator
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: (rule.isActive && !isExpired
+                            ? Colors.green
+                            : Colors.grey)
+                        .withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 6,
+                        height: 6,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: rule.isActive && !isExpired
+                              ? Colors.green
+                              : Colors.grey,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        rule.isActive && !isExpired ? 'LIVE' : 'EXPIRED',
+                        style: TextStyle(
+                          color: rule.isActive && !isExpired
+                              ? Colors.green
+                              : Colors.grey,
+                          fontSize: 9,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _ruleHeadline(rule),
+                    style: TextStyle(
+                      color: isInactive
+                          ? theme.colorScheme.onSurface.withOpacity(0.5)
+                          : theme.colorScheme.onSurface,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    rule.reason ?? 'No reason attached to this rule.',
+                    style: TextStyle(
+                      color:
+                          theme.colorScheme.onSurface.withOpacity(0.62),
+                      fontSize: 12,
+                      height: 1.4,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _metaChip(theme, 'Attacker ${rule.targetIp}'),
+                      if (rule.matchDstIp != null)
+                        _metaChip(
+                          theme,
+                          rule.matchDstPort != null
+                              ? 'Victim ${rule.matchDstIp}:${rule.matchDstPort}'
+                              : 'Victim ${rule.matchDstIp}',
+                        ),
+                      if (rule.ruleType == 'redirect' &&
+                          rule.targetPort != null)
+                        _metaChip(theme, 'Honeypot ${rule.targetPort}'),
+                      _metaChip(theme,
+                          'Created ${timeago.format(rule.createdAt)}'),
+                      if (rule.protocol != null)
+                        _metaChip(theme, rule.protocol!.toUpperCase()),
+                      if (rule.targetPort != null &&
+                          rule.ruleType != 'redirect')
+                        _metaChip(theme, 'Port ${rule.targetPort}'),
+                      if (rule.expiresAt != null)
+                        _metaChip(
+                          theme,
+                          rule.isExpired
+                              ? 'Expired ${timeago.format(rule.expiresAt!)}'
+                              : 'Expires ${timeago.format(rule.expiresAt!)}',
+                        ),
+                      if (rule.createdBy != null)
+                        _metaChip(theme, 'By ${rule.createdBy}'),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            if (isAdmin && rule.isActive && !isExpired)
+              IconButton(
+                icon: const Icon(Icons.delete_outline,
+                    color: Colors.red, size: 20),
+                onPressed: () => _deleteRule(rule.id),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPagination(ThemeData theme) {
+    final totalPages = (_historyTotal / _historyPageSize).ceil();
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          IconButton(
+            icon: const Icon(Icons.chevron_left),
+            onPressed:
+                _historyPage > 1 ? () => _fetchHistory(page: _historyPage - 1) : null,
+          ),
+          Text(
+            'Page $_historyPage of $totalPages',
+            style: TextStyle(
+              color: theme.colorScheme.onSurface.withOpacity(0.7),
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.chevron_right),
+            onPressed: _historyPage < totalPages
+                ? () => _fetchHistory(page: _historyPage + 1)
+                : null,
+          ),
+        ],
+      ),
     );
   }
 

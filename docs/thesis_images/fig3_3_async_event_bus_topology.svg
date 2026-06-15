@@ -1,0 +1,121 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="850" viewBox="0 0 1600 850" role="img" aria-labelledby="title desc">
+  <title id="title">Fig 3.3 - Asynchronous Event Bus Topology</title>
+  <desc id="desc">Redis broker at center with publish-subscribe relationships between Capture Agent, Threat Assessment Agent, Decision Agent, Enforcement Agent, Reporting Agent, and WebSocket bridge to Flutter clients.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="14" markerHeight="14" refX="12" refY="7" orient="auto" markerUnits="strokeWidth">
+      <path d="M1,1 L13,7 L1,13 Z" fill="#222222"/>
+    </marker>
+    <style>
+      .text {
+        font-family: Arial, Helvetica, sans-serif;
+        fill: #111111;
+      }
+      .title {
+        font-size: 30px;
+        font-weight: 700;
+      }
+      .box-title {
+        font-size: 22px;
+        font-weight: 700;
+      }
+      .box-sub {
+        font-size: 16px;
+        font-weight: 400;
+      }
+      .label {
+        font-size: 15px;
+        font-weight: 400;
+      }
+      .box {
+        fill: #ffffff;
+        stroke: #222222;
+        stroke-width: 2;
+      }
+      .broker {
+        fill: #ffffff;
+        stroke: #222222;
+        stroke-width: 2.5;
+      }
+      .line {
+        stroke: #222222;
+        stroke-width: 2.5;
+        fill: none;
+        marker-end: url(#arrow);
+      }
+      .dash {
+        stroke-dasharray: 8 8;
+      }
+    </style>
+  </defs>
+
+  <rect width="1600" height="850" fill="#ffffff"/>
+
+  <text x="800" y="58" text-anchor="middle" class="text title">Fig 3.3 - Asynchronous Event Bus Topology</text>
+
+  <g transform="translate(650 355)">
+    <rect class="broker" x="0" y="0" width="300" height="120"/>
+    <text x="150" y="52" text-anchor="middle" class="text box-title">Redis Broker</text>
+    <text x="150" y="82" text-anchor="middle" class="text box-sub">Publish-Subscribe Event Bus</text>
+  </g>
+
+  <g transform="translate(130 160)">
+    <rect class="box" x="0" y="0" width="230" height="95"/>
+    <text x="115" y="44" text-anchor="middle" class="text box-title">Capture</text>
+    <text x="115" y="70" text-anchor="middle" class="text box-title">Agent</text>
+  </g>
+
+  <g transform="translate(685 145)">
+    <rect class="box" x="0" y="0" width="230" height="110"/>
+    <text x="115" y="45" text-anchor="middle" class="text box-title">Threat Assessment</text>
+    <text x="115" y="72" text-anchor="middle" class="text box-title">Agent</text>
+  </g>
+
+  <g transform="translate(1240 160)">
+    <rect class="box" x="0" y="0" width="230" height="95"/>
+    <text x="115" y="44" text-anchor="middle" class="text box-title">Decision</text>
+    <text x="115" y="70" text-anchor="middle" class="text box-title">Agent</text>
+  </g>
+
+  <g transform="translate(230 610)">
+    <rect class="box" x="0" y="0" width="245" height="95"/>
+    <text x="122.5" y="44" text-anchor="middle" class="text box-title">Enforcement</text>
+    <text x="122.5" y="70" text-anchor="middle" class="text box-title">Agent</text>
+  </g>
+
+  <g transform="translate(1125 610)">
+    <rect class="box" x="0" y="0" width="230" height="95"/>
+    <text x="115" y="44" text-anchor="middle" class="text box-title">Reporting</text>
+    <text x="115" y="70" text-anchor="middle" class="text box-title">Agent</text>
+  </g>
+
+  <g transform="translate(1125 760)">
+    <rect class="box" x="0" y="0" width="230" height="60"/>
+    <text x="115" y="38" text-anchor="middle" class="text box-title">Flutter Clients</text>
+  </g>
+
+  <path class="line" d="M360 207.5 C485 230 565 300 650 370"/>
+
+  <path class="line dash" d="M740 355 C710 300 715 265 745 255"/>
+
+  <path class="line" d="M860 255 C890 285 910 320 895 355"/>
+
+  <path class="line dash" d="M950 385 C1060 330 1160 275 1240 222"/>
+
+  <path class="line" d="M1240 207.5 C1135 260 1035 335 950 400"/>
+
+  <path class="line dash" d="M650 445 C560 500 470 565 395 610"/>
+
+  <path class="line" d="M475 657.5 C565 600 615 520 650 455"/>
+
+  <path class="line dash" d="M950 455 C1025 520 1120 575 1188 610"/>
+
+  <path class="line" d="M1240 705 V760"/>
+  <text x="1325" y="740" text-anchor="middle" class="text label">WebSocket bridge</text>
+
+  <g transform="translate(80 760)">
+    <line x1="0" y1="0" x2="90" y2="0" class="line"/>
+    <text x="115" y="6" class="text label">publish</text>
+    <line x1="220" y1="0" x2="310" y2="0" class="line dash"/>
+    <text x="335" y="6" class="text label">subscribe</text>
+  </g>
+</svg>

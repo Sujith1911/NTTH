@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1300" height="850" viewBox="0 0 1300 850" role="img" aria-labelledby="title desc">
+  <title id="title">Fig 6.2 - Response Time Distribution</title>
+  <desc id="desc">Histogram of response time from 50 to 600 milliseconds, centered around 312 milliseconds, with a tail toward 550 milliseconds and fastest SYN flood response marked at 187 milliseconds.</desc>
+  <defs>
+    <style>
+      .text { font-family: Arial, Helvetica, sans-serif; fill: #111111; }
+      .title { font-size: 30px; font-weight: 700; }
+      .axis { stroke: #222222; stroke-width: 2; }
+      .grid { stroke: #dddddd; stroke-width: 1; }
+      .bar { fill: #ffffff; stroke: #222222; stroke-width: 2; }
+      .marker { stroke: #222222; stroke-width: 2.5; stroke-dasharray: 8 7; }
+      .label { font-size: 17px; font-weight: 400; }
+      .note { font-size: 16px; font-weight: 700; }
+    </style>
+  </defs>
+
+  <rect width="1300" height="850" fill="#ffffff"/>
+  <text x="650" y="58" text-anchor="middle" class="text title">Fig 6.2 - Response Time Distribution</text>
+
+  <g transform="translate(150 110)">
+    <rect x="0" y="0" width="980" height="580" fill="#ffffff" stroke="#222222" stroke-width="2"/>
+
+    <line x1="0" y1="116" x2="980" y2="116" class="grid"/>
+    <line x1="0" y1="232" x2="980" y2="232" class="grid"/>
+    <line x1="0" y1="348" x2="980" y2="348" class="grid"/>
+    <line x1="0" y1="464" x2="980" y2="464" class="grid"/>
+
+    <line x1="0" y1="580" x2="980" y2="580" class="axis"/>
+    <line x1="0" y1="0" x2="0" y2="580" class="axis"/>
+
+    <rect class="bar" x="36" y="556" width="58" height="24"/>
+    <rect class="bar" x="111" y="532" width="58" height="48"/>
+    <rect class="bar" x="186" y="464" width="58" height="116"/>
+    <rect class="bar" x="261" y="348" width="58" height="232"/>
+    <rect class="bar" x="336" y="232" width="58" height="348"/>
+    <rect class="bar" x="411" y="116" width="58" height="464"/>
+    <rect class="bar" x="486" y="174" width="58" height="406"/>
+    <rect class="bar" x="561" y="290" width="58" height="290"/>
+    <rect class="bar" x="636" y="382" width="58" height="198"/>
+    <rect class="bar" x="711" y="452" width="58" height="128"/>
+    <rect class="bar" x="786" y="510" width="58" height="70"/>
+    <rect class="bar" x="861" y="548" width="58" height="32"/>
+
+    <line x1="247" y1="0" x2="247" y2="580" class="marker"/>
+    <text x="247" y="28" text-anchor="middle" class="text note">SYN flood: 187 ms</text>
+
+    <line x1="466" y1="0" x2="466" y2="580" class="marker"/>
+    <text x="466" y="58" text-anchor="middle" class="text note">Mean: 312 ms</text>
+
+    <line x1="891" y1="0" x2="891" y2="580" class="marker"/>
+    <text x="891" y="88" text-anchor="middle" class="text note">T4 ARP tail: ~550 ms</text>
+
+    <text x="0" y="620" text-anchor="middle" class="text label">50</text>
+    <text x="178" y="620" text-anchor="middle" class="text label">150</text>
+    <text x="356" y="620" text-anchor="middle" class="text label">250</text>
+    <text x="535" y="620" text-anchor="middle" class="text label">350</text>
+    <text x="713" y="620" text-anchor="middle" class="text label">450</text>
+    <text x="891" y="620" text-anchor="middle" class="text label">550</text>
+    <text x="980" y="620" text-anchor="middle" class="text label">600</text>
+
+    <text x="490" y="675" text-anchor="middle" class="text label">Response time (ms)</text>
+    <text x="-290" y="-85" text-anchor="middle" transform="rotate(-90)" class="text label">Frequency count</text>
+  </g>
+</svg>
