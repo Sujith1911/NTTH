@@ -20,8 +20,14 @@ from app.database.schemas import (
 )
 from app.dependencies import get_current_user, get_db, require_admin
 
+import time as _time
+
 router = APIRouter()
 settings = get_settings()
+
+# Short-lived cache for device list (avoids DB hit on rapid dashboard polls)
+_devices_cache: dict = {}  # key → (result, timestamp)
+_DEVICES_CACHE_TTL = 2.0
 
 
 @router.get("", response_model=PaginatedResponse)
@@ -32,6 +38,12 @@ async def list_devices(
     db: AsyncSession = Depends(get_db),
     _user=Depends(get_current_user),
 ):
+    cache_key = (page, page_size, active_only)
+    now = _time.monotonic()
+    cached = _devices_cache.get(cache_key)
+    if cached and (now - cached[1]) < _DEVICES_CACHE_TTL:
+        return cached[0]
+
     presence_seconds = max(120, settings.device_scan_interval_seconds * 2)
     seen_after = (
         utc_now_naive() - timedelta(seconds=presence_seconds)
@@ -49,10 +61,12 @@ async def list_devices(
             if ip
         },
     )
-    return PaginatedResponse(
+    result = PaginatedResponse(
         total=total, page=page, page_size=page_size,
         items=[DeviceRead.model_validate(d) for d in devices],
     )
+    _devices_cache[cache_key] = (result, now)
+    return result
 
 
 @router.post("/by-ip/{ip_address}/clear-risk")

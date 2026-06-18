@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:timeago/timeago.dart' as timeago;
 
+import '../core/api_client.dart';
 import '../core/auth_service.dart';
 import '../core/websocket_service.dart';
 import '../models/device_model.dart';
@@ -80,7 +81,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
       // Only show error if we have no data yet
       if (_devices.isEmpty) {
         setState(() {
-          _error = e.toString();
+          _error = formatApiError(e);
           _loading = false;
         });
       }
@@ -115,7 +116,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+        SnackBar(content: Text(formatApiError(e)), backgroundColor: Colors.red),
       );
     }
   }
@@ -144,7 +145,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+        SnackBar(content: Text(formatApiError(e)), backgroundColor: Colors.red),
       );
     }
   }
@@ -167,7 +168,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
       if (!mounted) return;
       messenger.showSnackBar(
         SnackBar(
-          content: Text('Could not start scan: $error'),
+          content: Text('Could not start scan: ${formatApiError(error)}'),
           backgroundColor: Colors.red,
         ),
       );

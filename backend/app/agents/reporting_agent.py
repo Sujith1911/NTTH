@@ -13,6 +13,9 @@ from app.monitor.network_scanner import is_managed_asset_ip
 log = get_logger("reporting_agent")
 _live_device_flush_at: dict[str, float] = {}
 _LIVE_DEVICE_FLUSH_SECONDS = 3.0
+# Cache resolved hostnames/vendors to avoid repeated DNS/OUI lookups per packet
+_resolved_hostnames: dict[str, str | None] = {}
+_resolved_vendors: dict[str, str | None] = {}
 _SCANNER_PROBE_PORTS = {
     21, 22, 23, 25, 53, 80, 110, 111, 135, 139, 143, 443, 445,
     993, 995, 1433, 1723, 3306, 3389, 5432, 5900, 5985, 6379,
@@ -216,15 +219,44 @@ async def _handle_device_seen_ws(payload: dict) -> None:
         return
     _live_device_flush_at[src_ip] = now
 
+    # The feature extractor uses "src_mac" but upsert expects "mac_address"
+    mac = payload.get("mac_address") or payload.get("src_mac")
+    hostname = payload.get("hostname")
+    vendor = payload.get("vendor")
+
+    # If the scanner hasn't run yet, try to fill in missing metadata
+    # from the packet's Ethernet header (MAC) and DNS/OUI lookups.
+    # Use caches to avoid repeated slow lookups on every event.
+    if mac and not vendor:
+        if mac in _resolved_vendors:
+            vendor = _resolved_vendors[mac]
+        else:
+            try:
+                from app.monitor.network_scanner import _vendor_from_mac
+                vendor = _vendor_from_mac(mac)
+                _resolved_vendors[mac] = vendor
+            except Exception:
+                pass
+    if not hostname:
+        if src_ip in _resolved_hostnames:
+            hostname = _resolved_hostnames[src_ip]
+        else:
+            try:
+                from app.monitor.network_scanner import _resolve_hostname
+                hostname = await _resolve_hostname(src_ip)
+                _resolved_hostnames[src_ip] = hostname
+            except Exception:
+                pass
+
     from app.websocket.live_updates import broadcast
     try:
         async with AsyncSessionLocal() as db:
             await crud.upsert_device_details(
                 db,
                 src_ip,
-                mac_address=payload.get("mac_address"),
-                hostname=payload.get("hostname"),
-                vendor=payload.get("vendor"),
+                mac_address=mac,
+                hostname=hostname,
+                vendor=vendor,
                 open_ports=payload.get("open_ports"),
             )
             await db.commit()
@@ -232,9 +264,9 @@ async def _handle_device_seen_ws(payload: dict) -> None:
         await broadcast({
             "type": "device_seen",
             "ip": src_ip,
-            "mac": payload.get("mac_address"),
-            "hostname": payload.get("hostname"),
-            "vendor": payload.get("vendor"),
+            "mac": mac,
+            "hostname": hostname,
+            "vendor": vendor,
             "timestamp": payload.get("timestamp"),
         })
     except Exception as exc:

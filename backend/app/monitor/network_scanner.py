@@ -304,6 +304,29 @@ async def scan_network() -> list[dict]:
         log.info("network_scanner.port_scan_done", total_open_ports=total_open)
 
     # Build device list
+    # Pre-load dnsmasq leases for MAC/hostname enrichment
+    dhcp_leases: dict[str, dict] = {}  # ip → {mac, hostname}
+    try:
+        import os
+        import time as _time
+        lease_file = "/var/lib/misc/dnsmasq.leases"
+        if os.path.isfile(lease_file):
+            now_epoch = int(_time.time())
+            with open(lease_file, "r") as f:
+                for line in f:
+                    parts = line.strip().split()
+                    if len(parts) >= 4 and _lease_is_current(parts[0], now_epoch):
+                        lease_mac = parts[1]
+                        lease_ip = parts[2]
+                        lease_hostname = parts[3] if parts[3] != "*" else None
+                        if is_managed_asset_ip(lease_ip):
+                            dhcp_leases[lease_ip] = {
+                                "mac": lease_mac,
+                                "hostname": lease_hostname,
+                            }
+    except Exception as exc:
+        log.debug("network_scanner.dhcp_lease_preload_error", error=str(exc))
+
     devices = []
     async with AsyncSessionLocal() as db:
         for ip in live_ips:
@@ -311,6 +334,17 @@ async def scan_network() -> list[dict]:
             hostname = await _resolve_hostname(ip)
             vendor = _vendor_from_mac(mac)
             open_ports = port_results.get(ip, [])
+
+            # Fall back to DHCP lease data for missing MAC/hostname
+            lease = dhcp_leases.get(ip)
+            if lease:
+                if not mac:
+                    mac = lease.get("mac")
+                    if mac and not vendor:
+                        vendor = _vendor_from_mac(mac)
+                if not hostname:
+                    hostname = lease.get("hostname")
+
             device = {
                 "src_ip": ip,
                 "mac_address": mac,
@@ -344,40 +378,31 @@ async def scan_network() -> list[dict]:
                 log.info("network_scanner.device_ports",
                          ip=ip, hostname=hostname, open_ports=open_ports)
 
-        # Also register silent QEMU VMs while their DHCP lease is current.
-        # Expired/removed leases must not refresh disconnected VM nodes.
+        # Also register QEMU VMs with current DHCP leases — but ONLY if
+        # they respond to ping.  A DHCP lease persists for 24 h after the
+        # VM shuts down, so the lease alone is not proof of liveness.
+        # Reuse the pre-loaded dhcp_leases dict (already parsed above).
         dhcp_ips = set()
-        try:
-            import os
-            import time
-            lease_file = "/var/lib/misc/dnsmasq.leases"
-            if os.path.isfile(lease_file):
-                now_epoch = int(time.time())
-                with open(lease_file, "r") as f:
-                    for line in f:
-                        parts = line.strip().split()
-                        if len(parts) >= 4 and _lease_is_current(parts[0], now_epoch):
-                            lease_mac = parts[1]
-                            lease_ip = parts[2]
-                            lease_hostname = parts[3] if parts[3] != "*" else None
-                            is_qemu = lease_mac.lower().startswith("52:54:00")
-                            if (
-                                is_qemu
-                                and is_managed_asset_ip(lease_ip)
-                                and lease_ip not in live_ips
-                            ):
-                                dhcp_ips.add(lease_ip)
-                                await crud.upsert_device_details(
-                                    db,
-                                    lease_ip,
-                                    mac_address=lease_mac,
-                                    hostname=lease_hostname,
-                                    vendor=_vendor_from_mac(lease_mac),
-                                )
-                                log.info("network_scanner.dhcp_lease_device",
-                                         ip=lease_ip, hostname=lease_hostname, mac=lease_mac)
-        except Exception as exc:
-            log.warning("network_scanner.dhcp_lease_read_error", error=str(exc))
+        for lease_ip, lease_data in dhcp_leases.items():
+            lease_mac = lease_data.get("mac", "")
+            lease_hostname = lease_data.get("hostname")
+            is_qemu = lease_mac.lower().startswith("52:54:00")
+            if is_qemu and lease_ip not in live_ips:
+                # Verify the VM is actually reachable before keeping it
+                if not await _ping_host(lease_ip, timeout=1.0):
+                    log.debug("network_scanner.dhcp_lease_unreachable",
+                              ip=lease_ip, hostname=lease_hostname)
+                    continue
+                dhcp_ips.add(lease_ip)
+                await crud.upsert_device_details(
+                    db,
+                    lease_ip,
+                    mac_address=lease_mac,
+                    hostname=lease_hostname,
+                    vendor=_vendor_from_mac(lease_mac),
+                )
+                log.info("network_scanner.dhcp_lease_device",
+                         ip=lease_ip, hostname=lease_hostname, mac=lease_mac)
 
         subnet = get_effective_scan_subnet()
         if subnet:

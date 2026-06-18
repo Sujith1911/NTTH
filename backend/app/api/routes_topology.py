@@ -5,6 +5,7 @@ Also exposes a POST /scan trigger to kick off a network scan on demand.
 """
 from __future__ import annotations
 
+import asyncio
 import socket
 import json
 from datetime import datetime, timedelta
@@ -25,6 +26,12 @@ log = get_logger("routes_topology")
 router = APIRouter()
 settings = get_settings()
 _IGNORED_DISPLAY_NETWORKS = tuple(ip_network(cidr) for cidr in settings.ignored_monitor_cidrs)
+
+# In-memory cache for topology response (avoids DB queries on rapid polls)
+import time as _time
+_topology_cache: dict | None = None
+_topology_cache_at: float = 0.0
+_TOPOLOGY_CACHE_TTL = 2.0  # seconds
 
 
 def _presence_cutoff() -> datetime:
@@ -157,10 +164,22 @@ async def get_topology(
     - edges: connectivity between them
     - live_stats: real-time per-IP packet/byte counts
     """
+    global _topology_cache, _topology_cache_at
+
+    # Return cached response if still fresh (avoids DB queries on rapid polls)
+    now = _time.monotonic()
+    if _topology_cache is not None and (now - _topology_cache_at) < _TOPOLOGY_CACHE_TTL:
+        return _topology_cache
+
     try:
-        _, devices = await crud.list_devices(db, 1, 500)
-        _, honeypot_sessions = await crud.list_honeypot_sessions(db, 1, 50)
-        firewall_rules = await crud.list_active_firewall_rules(db)
+        # Run all three DB queries concurrently for speed
+        presence_cutoff = _presence_cutoff()
+        devices_task = crud.list_devices(db, 1, 500, seen_after=presence_cutoff)
+        honeypot_task = crud.list_honeypot_sessions(db, 1, 50)
+        fw_task = crud.list_active_firewall_rules(db)
+        (_, devices), (_, honeypot_sessions), firewall_rules = await asyncio.gather(
+            devices_task, honeypot_task, fw_task,
+        )
     except Exception as exc:
         log.error("topology.db_error", error=str(exc))
         raise
@@ -214,7 +233,6 @@ async def get_topology(
     redirected_ips = {r.target_ip for r in firewall_rules if r.is_active and r.rule_type == "redirect"}
     throttled_ips = {r.target_ip for r in firewall_rules if r.is_active and r.rule_type == "rate_limit"}
     known_device_ips = {device.ip_address for device in devices}
-    presence_cutoff = _presence_cutoff()
     recent_local_session_ips = {
         session.attacker_ip
         for session in honeypot_sessions
@@ -353,7 +371,7 @@ async def get_topology(
                 "type": "attack",
             })
 
-    return {
+    result = {
         "nodes": nodes,
         "edges": edges,
         "live_stats": get_live_stats(),
@@ -366,6 +384,12 @@ async def get_topology(
             "devices_found_last_scan": scan_state["device_count"],
         },
     }
+
+    # Cache for rapid subsequent polls
+    _topology_cache = result
+    _topology_cache_at = _time.monotonic()
+
+    return result
 
 
 @router.post("/scan")

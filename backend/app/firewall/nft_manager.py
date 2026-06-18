@@ -202,17 +202,42 @@ class NFTManager:
 
         Uses iptables instead of nftables because iptables has better support
         for br_netfilter — critical for redirecting bridged VM-to-VM traffic.
-        After adding the rule, conntrack is flushed so existing connections
-        are re-evaluated through the new DNAT rule.
+
+        The rule is NOT scoped to a single interface (-i) because traffic may
+        enter from different paths:
+          - VMs: bridged via tap → br-ntth  (br_netfilter makes iptables see it)
+          - Real WiFi devices: AP interface → IP routing → FORWARD
+        Instead, the source IP filter + optional destination IP already constrain
+        the rule to the attacker. The scan_subnet is used as an additional safety
+        net so only LAN traffic is affected, never upstream internet.
         """
         gateway_ip = settings.gateway_ip
 
-        # Build iptables DNAT rule — scoped to bridge interface only
-        # -i br-ntth ensures only bridge traffic is affected, never upstream WiFi
-        bridge = settings.network_interface  # br-ntth
+        # Ensure br_netfilter is loaded so iptables can intercept bridged traffic
+        try:
+            modprobe_proc = await asyncio.create_subprocess_exec(
+                "modprobe", "br_netfilter",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            await modprobe_proc.communicate()
+            # Also ensure bridge-nf-call-iptables is enabled
+            for sysctl_path in (
+                "/proc/sys/net/bridge/bridge-nf-call-iptables",
+                "/proc/sys/net/bridge/bridge-nf-call-ip6tables",
+            ):
+                try:
+                    with open(sysctl_path, "w") as f:
+                        f.write("1")
+                except OSError:
+                    pass
+        except Exception:
+            pass  # Non-fatal: works without br_netfilter for non-bridged traffic
+
+        # Build iptables DNAT rule — no interface restriction
+        # This catches traffic from both bridged VMs and real WiFi devices
         ipt_cmd = [
             "iptables", "-t", "nat", "-I", "PREROUTING",
-            "-i", bridge,
             "-s", src_ip,
             "-p", "tcp", "--dport", str(src_port),
         ]
@@ -248,23 +273,27 @@ class NFTManager:
             log.info("nft_manager.redirected", ip=src_ip, from_port=src_port,
                      to_port=dst_port, gateway=gateway_ip, method="iptables")
 
-            # Flush ONLY the attacker's conntrack entries — never full flush
-            # Full flush (conntrack -F) would kill ALL device connections
-            # causing WiFi disconnections for phones/laptops
-            try:
-                flush_proc = await asyncio.create_subprocess_exec(
-                    "conntrack", "-D", "-s", src_ip,
-                    "-p", "tcp", "--dport", str(src_port),
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                )
-                await flush_proc.communicate()
-                log.debug("nft_manager.conntrack_flushed", ip=src_ip, port=src_port)
-            except FileNotFoundError:
-                log.warning("nft_manager.conntrack_not_installed",
-                            hint="Install conntrack: sudo apt install conntrack")
-            except Exception:
-                pass
+            # Flush the attacker's conntrack entries so existing connections
+            # get re-evaluated through the new DNAT rule.
+            # Two flushes: port-specific (most targeted) + all-tcp-from-src (fallback)
+            for ct_cmd in [
+                ["conntrack", "-D", "-s", src_ip, "-p", "tcp", "--dport", str(src_port)],
+                ["conntrack", "-D", "-s", src_ip, "-p", "tcp"],
+            ]:
+                try:
+                    flush_proc = await asyncio.create_subprocess_exec(
+                        *ct_cmd,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                    )
+                    await flush_proc.communicate()
+                except FileNotFoundError:
+                    log.warning("nft_manager.conntrack_not_installed",
+                                hint="Install conntrack: sudo apt install conntrack")
+                    break  # No point trying the second command
+                except Exception:
+                    pass
+            log.debug("nft_manager.conntrack_flushed", ip=src_ip, port=src_port)
 
             return f"ipt:{handle_id}"
 
@@ -286,23 +315,36 @@ class NFTManager:
                 dst_port = parts[-1]
                 gateway_ip = settings.gateway_ip
                 bridge = settings.network_interface
-                ipt_cmd = [
-                    "iptables", "-t", "nat", "-D", "PREROUTING",
-                    "-i", bridge,
-                    "-s", src_ip,
-                    "-p", "tcp", "--dport", src_port,
-                    "-j", "DNAT", "--to-destination", f"{gateway_ip}:{dst_port}",
+                # Try deleting without -i (new format) first, then with -i (legacy)
+                ipt_variants = [
+                    [
+                        "iptables", "-t", "nat", "-D", "PREROUTING",
+                        "-s", src_ip,
+                        "-p", "tcp", "--dport", src_port,
+                        "-j", "DNAT", "--to-destination", f"{gateway_ip}:{dst_port}",
+                    ],
+                    [
+                        "iptables", "-t", "nat", "-D", "PREROUTING",
+                        "-i", bridge,
+                        "-s", src_ip,
+                        "-p", "tcp", "--dport", src_port,
+                        "-j", "DNAT", "--to-destination", f"{gateway_ip}:{dst_port}",
+                    ],
                 ]
-                try:
-                    proc = await asyncio.create_subprocess_exec(
-                        *ipt_cmd,
-                        stdout=asyncio.subprocess.PIPE,
-                        stderr=asyncio.subprocess.PIPE,
-                    )
-                    await proc.communicate()
-                    success = proc.returncode == 0
-                except Exception:
-                    success = False
+                success = False
+                for ipt_cmd in ipt_variants:
+                    try:
+                        proc = await asyncio.create_subprocess_exec(
+                            *ipt_cmd,
+                            stdout=asyncio.subprocess.PIPE,
+                            stderr=asyncio.subprocess.PIPE,
+                        )
+                        await proc.communicate()
+                        if proc.returncode == 0:
+                            success = True
+                            break
+                    except Exception:
+                        continue
             else:
                 success = False
             if success:

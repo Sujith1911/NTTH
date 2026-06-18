@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:timeago/timeago.dart' as timeago;
 
+import '../core/api_client.dart';
 import '../core/auth_service.dart';
 import '../models/firewall_rule_model.dart';
 import '../widgets/app_shell_drawer.dart';
@@ -69,7 +70,7 @@ class _FirewallScreenState extends State<FirewallScreen>
       });
     } catch (e) {
       setState(() {
-        _error = e.toString();
+        _error = formatApiError(e);
         _loadingActive = false;
       });
     }
@@ -190,7 +191,7 @@ class _FirewallScreenState extends State<FirewallScreen>
       _fetchAll();
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+        SnackBar(content: Text(formatApiError(e)), backgroundColor: Colors.red),
       );
     }
   }
@@ -244,7 +245,7 @@ class _FirewallScreenState extends State<FirewallScreen>
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+            SnackBar(content: Text(formatApiError(e)), backgroundColor: Colors.red),
           );
         }
       }

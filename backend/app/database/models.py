@@ -47,7 +47,7 @@ class Device(Base):
     vendor = Column(String(128), nullable=True)
     open_ports = Column(Text, nullable=True)  # JSON list of open ports, e.g. "[22, 80, 443]"
     first_seen = Column(DateTime, default=utc_now_naive, nullable=False)
-    last_seen = Column(DateTime, default=utc_now_naive, nullable=False)
+    last_seen = Column(DateTime, default=utc_now_naive, nullable=False, index=True)
     is_trusted = Column(Boolean, default=False, nullable=False)
     risk_score = Column(Float, default=0.0, nullable=False)
 
@@ -94,7 +94,7 @@ class ThreatEvent(Base):
     latitude = Column(Float, nullable=True)
     longitude = Column(Float, nullable=True)
 
-    detected_at = Column(DateTime, default=utc_now_naive, nullable=False)
+    detected_at = Column(DateTime, default=utc_now_naive, nullable=False, index=True)
     acknowledged = Column(Boolean, default=False, nullable=False)
     acknowledged_by = Column(String(64), nullable=True)
     notes = Column(Text, nullable=True)
@@ -146,7 +146,7 @@ class FirewallRule(Base):
     match_dst_port = Column(Integer, nullable=True)
     protocol = Column(String(8), nullable=True)
     nft_handle = Column(String(64), nullable=True)  # nftables internal handle for deletion
-    is_active = Column(Boolean, default=True, nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False, index=True)
     created_by = Column(String(64), nullable=True)  # "system" | username
     expires_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=utc_now_naive, nullable=False)

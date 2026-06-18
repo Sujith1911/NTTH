@@ -80,8 +80,15 @@ class ApiClient {
 
   Dio get dio => _dio;
 
-  Future<Response> get(String path, {Map<String, dynamic>? params}) =>
-      _dio.get(path, queryParameters: params);
+  /// GET with automatic retry on connection/timeout errors.
+  /// Retries up to [maxRetries] times with exponential backoff.
+  Future<Response> get(String path,
+      {Map<String, dynamic>? params, int maxRetries = 2}) async {
+    return _withRetry(
+      () => _dio.get(path, queryParameters: params),
+      maxRetries: maxRetries,
+    );
+  }
 
   Future<Response> post(String path, dynamic data) =>
       _dio.post(path, data: data);
@@ -90,6 +97,53 @@ class ApiClient {
       _dio.put(path, data: data);
 
   Future<Response> delete(String path) => _dio.delete(path);
+
+  /// Retry wrapper for transient network errors.
+  /// Only retries on connection errors and timeouts, never on 4xx/5xx.
+  Future<Response> _withRetry(
+    Future<Response> Function() request, {
+    int maxRetries = 2,
+  }) async {
+    int attempt = 0;
+    while (true) {
+      try {
+        return await request();
+      } on DioException catch (e) {
+        final isRetryable = e.type == DioExceptionType.connectionError ||
+            e.type == DioExceptionType.connectionTimeout ||
+            e.type == DioExceptionType.receiveTimeout ||
+            e.type == DioExceptionType.sendTimeout;
+        if (!isRetryable || attempt >= maxRetries) rethrow;
+        attempt++;
+        // Exponential backoff: 500ms, 1500ms
+        await Future.delayed(Duration(milliseconds: 300 + (attempt * 500)));
+      }
+    }
+  }
+}
+
+/// Format a DioException into a short, user-friendly message.
+String formatApiError(Object error) {
+  if (error is DioException) {
+    switch (error.type) {
+      case DioExceptionType.connectionError:
+      case DioExceptionType.connectionTimeout:
+        return 'Cannot reach the server. Check your connection.';
+      case DioExceptionType.receiveTimeout:
+      case DioExceptionType.sendTimeout:
+        return 'Server is taking too long to respond.';
+      case DioExceptionType.badResponse:
+        final code = error.response?.statusCode;
+        final msg = error.response?.data?['detail'];
+        if (msg != null) return '$msg (HTTP $code)';
+        return 'Server error (HTTP $code)';
+      case DioExceptionType.cancel:
+        return 'Request was cancelled.';
+      default:
+        return 'Network error. Please retry.';
+    }
+  }
+  return error.toString();
 }
 
 String _defaultServerUrl() {

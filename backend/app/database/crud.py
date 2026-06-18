@@ -641,9 +641,10 @@ async def purge_unseen_devices_in_subnet(
 ) -> int:
     """Remove stale non-live device rows from the scanned subnet.
 
-    Only purge devices that haven't been seen (via any traffic) for over 2 hours
-    AND were not found by the latest scan. This prevents VMs and devices that
-    don't respond to scan probes from being incorrectly deleted.
+    Only purge devices that haven't been seen (via any traffic) for over
+    10 minutes AND were not found by the latest scan.  The scanner runs
+    every ≈60-120 s, so 10 minutes means a device missed ≈5-10 consecutive
+    scans — definitively offline.
     """
     from datetime import datetime, timedelta, timezone
     try:
@@ -652,7 +653,7 @@ async def purge_unseen_devices_in_subnet(
         return 0
 
     preserve = preserve_ips or set()
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=2)
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=10)
     result = await db.execute(
         select(Device.id, Device.ip_address, Device.is_trusted, Device.last_seen)
     )
@@ -844,10 +845,17 @@ async def latest_threat_events_for_ips(
 ) -> dict[str, list[ThreatEvent]]:
     if not ips:
         return {}
+    # Only look at the last 24 hours — avoids full table scan on large histories
+    from datetime import timedelta
+    since = utc_now_naive() - timedelta(hours=24)
     result = await db.execute(
         select(ThreatEvent)
-        .where(ThreatEvent.src_ip.in_(ips))
-        .order_by(ThreatEvent.src_ip.asc(), ThreatEvent.detected_at.desc())
+        .where(
+            ThreatEvent.src_ip.in_(ips),
+            ThreatEvent.detected_at >= since,
+        )
+        .order_by(ThreatEvent.detected_at.desc())
+        .limit(limit_per_ip * len(ips))  # Hard cap to prevent loading entire table
     )
     grouped: dict[str, list[ThreatEvent]] = {ip: [] for ip in ips}
     for event in result.scalars().all():

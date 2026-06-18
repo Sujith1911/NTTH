@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:timeago/timeago.dart' as timeago;
 
+import '../core/api_client.dart';
 import '../core/auth_service.dart';
 import '../core/websocket_service.dart';
 import '../widgets/glassy_container.dart';
@@ -181,7 +182,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       if (!mounted) return;
       messenger.showSnackBar(
         SnackBar(
-          content: Text('Could not start scan: $error'),
+          content: Text('Could not start scan: ${formatApiError(error)}'),
           backgroundColor: const Color(0xFFD14343),
         ),
       );
